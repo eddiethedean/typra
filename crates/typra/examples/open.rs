@@ -8,4 +8,3 @@ fn main() -> Result<(), DbError> {
     println!("opened: {}", db.path().display());
     Ok(())
 }
-

@@ -5,6 +5,9 @@ use crate::error::DbError;
 
 pub trait Store {
     fn len(&self) -> Result<u64, DbError>;
+    fn is_empty(&self) -> Result<bool, DbError> {
+        Ok(self.len()? == 0)
+    }
     fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError>;
     fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError>;
     fn sync(&mut self) -> Result<(), DbError>;

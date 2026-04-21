@@ -39,11 +39,9 @@ impl fmt::Display for DbError {
 impl fmt::Display for FormatError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FormatError::BadMagic { got } => write!(
-                f,
-                "bad magic bytes: expected \"TDB0\", got {:02x?}",
-                got
-            ),
+            FormatError::BadMagic { got } => {
+                write!(f, "bad magic bytes: expected \"TDB0\", got {:02x?}", got)
+            }
             FormatError::TruncatedHeader { got, expected } => {
                 write!(f, "truncated header: got {got} bytes, expected {expected}")
             }

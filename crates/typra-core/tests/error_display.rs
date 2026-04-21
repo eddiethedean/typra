@@ -1,7 +1,7 @@
 use std::error::Error;
 
-use typra_core::DbError;
 use typra_core::error::{FormatError, SchemaError};
+use typra_core::DbError;
 
 #[test]
 fn not_implemented_display_and_source() {
@@ -31,7 +31,10 @@ fn format_error_display_variants() {
     assert!(s.contains("format error"));
     assert!(s.contains("bad magic"));
 
-    let e = DbError::Format(FormatError::TruncatedHeader { got: 1, expected: 32 });
+    let e = DbError::Format(FormatError::TruncatedHeader {
+        got: 1,
+        expected: 32,
+    });
     let s = e.to_string();
     assert!(s.contains("truncated header"));
 }

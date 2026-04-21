@@ -75,4 +75,3 @@ pub fn decode_header(bytes: &[u8]) -> Result<FileHeader, DbError> {
         flags,
     })
 }
-

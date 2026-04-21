@@ -41,7 +41,10 @@ impl Database {
             let _header = decode_header(&buf)?;
         }
 
-        Ok(Self { path, _store: store })
+        Ok(Self {
+            path,
+            _store: store,
+        })
     }
 
     /// Path passed to [`Database::open`](Self::open).

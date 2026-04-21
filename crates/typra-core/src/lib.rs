@@ -8,13 +8,13 @@ pub mod validation;
 
 pub use db::Database;
 pub use error::DbError;
-pub use schema::DbModel;
 pub use schema::CollectionSchema;
+pub use schema::DbModel;
 
 /// Commonly used types and traits.
 pub mod prelude {
     pub use crate::db::Database;
     pub use crate::error::DbError;
-    pub use crate::schema::DbModel;
     pub use crate::schema::CollectionSchema;
+    pub use crate::schema::DbModel;
 }

@@ -64,7 +64,9 @@ fn file_store_write_to_read_only_returns_error() {
         .expect("open read-only");
 
     let mut store = FileStore::new(file);
-    let err = store.write_all_at(0, b"z").expect_err("expected write error");
+    let err = store
+        .write_all_at(0, b"z")
+        .expect_err("expected write error");
     assert!(err.to_string().contains("i/o error"));
 }
 
@@ -88,4 +90,3 @@ fn file_store_read_from_write_only_returns_error() {
         .expect_err("expected read error");
     assert!(err.to_string().contains("i/o error"));
 }
-

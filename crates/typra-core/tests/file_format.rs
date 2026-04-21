@@ -7,7 +7,10 @@ fn decode_header_rejects_wrong_magic() {
     let mut bytes = [0u8; FILE_HEADER_SIZE];
     bytes[0..4].copy_from_slice(b"NOPE");
     let res = decode_header(&bytes);
-    assert!(matches!(res, Err(DbError::Format(FormatError::BadMagic { .. }))));
+    assert!(matches!(
+        res,
+        Err(DbError::Format(FormatError::BadMagic { .. }))
+    ));
 }
 
 #[test]
@@ -32,4 +35,3 @@ fn decode_header_rejects_truncated() {
         Err(DbError::Format(FormatError::TruncatedHeader { .. }))
     ));
 }
-

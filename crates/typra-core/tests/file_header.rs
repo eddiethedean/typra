@@ -92,4 +92,3 @@ fn open_does_not_overwrite_existing_header() {
     let bytes2 = fs::read(&path).expect("read again");
     assert_eq!(bytes2, bytes);
 }
-
