@@ -141,6 +141,12 @@ typra = "0.1"
 
 ---
 
-## 📄 License
+## Development
 
-MIT (planned)
+See [docs/contributing.md](docs/contributing.md) for the workspace layout, how to build, and how to publish crates.
+
+Design specs live under [docs/](docs/).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
