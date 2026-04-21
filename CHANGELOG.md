@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-21
+
+### Added
+
+- **On-disk format scaffolding**: reserve dual superblocks (A/B) after the file header, plus checksummed append-only segments with a minimal segment header and an internal segment scan utility.
+- **Compatibility**: safe `0.2` → `0.3` upgrade path for header-only `0.2` files.
+
 ## [0.2.0] - 2026-04-21
 
 ### Added
@@ -36,3 +43,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [0.1.0]: https://github.com/eddiethedean/typra/releases/tag/v0.1.0
 [0.2.0]: https://github.com/eddiethedean/typra/releases/tag/v0.2.0
+[0.3.0]: https://github.com/eddiethedean/typra/releases/tag/v0.3.0

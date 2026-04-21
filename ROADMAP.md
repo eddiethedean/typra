@@ -50,6 +50,12 @@ Delivered in `0.2.0`:
 Non-goals already in place for `0.2.x`:
 - No persisted schema catalog, record storage, indexes, validation engine, query engine, or transactions yet.
 
+In progress for `0.3.0` (current work):
+- **Rust / on-disk format**:
+  - Reserve **Superblock A/B** regions after the file header and select the newest valid generation on open.
+  - Add **checksummed append-only segments** with a minimal segment header and an internal segment scan utility.
+  - Support a safe **0.2 → 0.3** upgrade path for header-only `0.2` files.
+
 ## Roadmap by release
 
 Each milestone lists:

@@ -5,7 +5,7 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is always correct by design.
 
-**Status (v0.2.0):** Early semver releases. The Rust crates expose `Database::open` and a `DbModel` derive; the storage engine and higher-level Python APIs are still **under development**. See [CHANGELOG.md](CHANGELOG.md).
+**Status (v0.2.0):** Early semver releases. The Rust crates expose `Database::open` and a `DbModel` derive; the storage engine and higher-level Python APIs are still **under development**. The on-disk format work is progressing from “header recognition” toward reserved superblocks + checksummed segment framing. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 

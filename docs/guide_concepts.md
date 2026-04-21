@@ -66,7 +66,7 @@ Typra is a **single-file** database format. The on-disk format is designed to be
 - versioned and forward-evolvable
 - append-friendly
 
-The design spec includes a header, superblocks, append-only segments, indexes, and checkpoints. See [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md).
+The design spec includes a header, **dual superblocks**, checksummed **append-only segments**, indexes, and checkpoints. See [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md).
 
 ## Storage modes (disk, memory, hybrid/streaming)
 

@@ -6,7 +6,7 @@ This guide explains the planned **storage modes** and what they mean for perform
 
 ## Current status (important)
 
-Today, Typra’s implemented surface area is still early (file open/create + header validation). The modes below are part of the roadmap; see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md) for timing.
+Today, Typra’s implemented surface area is still early (file open/create + header validation, plus early on-disk format scaffolding like reserved superblocks and checksummed segments). The modes below are part of the roadmap; see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md) for timing.
 
 ## Mode 1: On-disk (default)
 

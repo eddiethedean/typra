@@ -17,10 +17,12 @@ fn file_store_len_read_write_and_sync() {
 
     let mut store = FileStore::new(file);
     assert_eq!(store.len().expect("len"), 0);
+    assert!(store.is_empty().expect("is_empty"));
 
     store.write_all_at(0, b"hello").expect("write");
     store.sync().expect("sync");
     assert_eq!(store.len().expect("len after write"), 5);
+    assert!(!store.is_empty().expect("is_empty after write"));
 
     let mut buf = [0u8; 5];
     store.read_exact_at(0, &mut buf).expect("read");

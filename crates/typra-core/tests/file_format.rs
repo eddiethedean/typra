@@ -15,7 +15,7 @@ fn decode_header_rejects_wrong_magic() {
 
 #[test]
 fn decode_header_rejects_unsupported_version() {
-    let mut bytes = FileHeader::new_v0_2().encode();
+    let mut bytes = FileHeader::new_v0_3().encode();
     // Mutate version fields.
     bytes[4] = 9;
     bytes[6] = 9;

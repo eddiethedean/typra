@@ -37,6 +37,38 @@ fn format_error_display_variants() {
     });
     let s = e.to_string();
     assert!(s.contains("truncated header"));
+
+    let e = DbError::Format(FormatError::BadSuperblockChecksum);
+    let s = e.to_string();
+    assert!(s.contains("superblock checksum"));
+
+    let e = DbError::Format(FormatError::BadSegmentPayloadChecksum);
+    let s = e.to_string();
+    assert!(s.contains("payload checksum"));
+
+    let e = DbError::Format(FormatError::BadSuperblockMagic { got: *b"NOPE" });
+    assert!(e.to_string().contains("superblock magic"));
+
+    let e = DbError::Format(FormatError::TruncatedSuperblock {
+        got: 1,
+        expected: 2,
+    });
+    assert!(e.to_string().contains("truncated superblock"));
+
+    let e = DbError::Format(FormatError::BadSegmentMagic { got: *b"NOPE" });
+    assert!(e.to_string().contains("segment magic"));
+
+    let e = DbError::Format(FormatError::TruncatedSegmentHeader {
+        got: 1,
+        expected: 2,
+    });
+    assert!(e.to_string().contains("truncated segment header"));
+
+    let e = DbError::Format(FormatError::BadSegmentHeaderChecksum);
+    assert!(e.to_string().contains("header checksum"));
+
+    let e = DbError::Format(FormatError::SegmentPayloadPastEof);
+    assert!(e.to_string().contains("past end of file"));
 }
 
 #[test]

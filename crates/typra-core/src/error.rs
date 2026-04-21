@@ -18,6 +18,14 @@ pub enum FormatError {
     BadMagic { got: [u8; 4] },
     TruncatedHeader { got: usize, expected: usize },
     UnsupportedVersion { major: u16, minor: u16 },
+    TruncatedSuperblock { got: usize, expected: usize },
+    BadSuperblockMagic { got: [u8; 4] },
+    BadSuperblockChecksum,
+    TruncatedSegmentHeader { got: usize, expected: usize },
+    BadSegmentMagic { got: [u8; 4] },
+    BadSegmentHeaderChecksum,
+    BadSegmentPayloadChecksum,
+    SegmentPayloadPastEof,
 }
 
 #[derive(Debug)]
@@ -47,6 +55,40 @@ impl fmt::Display for FormatError {
             }
             FormatError::UnsupportedVersion { major, minor } => {
                 write!(f, "unsupported format version {major}.{minor}")
+            }
+            FormatError::TruncatedSuperblock { got, expected } => {
+                write!(
+                    f,
+                    "truncated superblock: got {got} bytes, expected {expected}"
+                )
+            }
+            FormatError::BadSuperblockMagic { got } => {
+                write!(
+                    f,
+                    "bad superblock magic bytes: expected \"TSB0\", got {:02x?}",
+                    got
+                )
+            }
+            FormatError::BadSuperblockChecksum => write!(f, "superblock checksum mismatch"),
+            FormatError::TruncatedSegmentHeader { got, expected } => {
+                write!(
+                    f,
+                    "truncated segment header: got {got} bytes, expected {expected}"
+                )
+            }
+            FormatError::BadSegmentMagic { got } => {
+                write!(
+                    f,
+                    "bad segment magic bytes: expected \"TSG0\", got {:02x?}",
+                    got
+                )
+            }
+            FormatError::BadSegmentHeaderChecksum => write!(f, "segment header checksum mismatch"),
+            FormatError::BadSegmentPayloadChecksum => {
+                write!(f, "segment payload checksum mismatch")
+            }
+            FormatError::SegmentPayloadPastEof => {
+                write!(f, "segment payload extends past end of file")
             }
         }
     }

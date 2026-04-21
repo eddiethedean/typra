@@ -7,7 +7,7 @@ pub const FILE_MAGIC: [u8; 4] = *b"TDB0";
 /// This is intentionally small and conservative in 0.2.0:
 /// it exists primarily so `Database::open` can recognize Typra files.
 pub const FORMAT_MAJOR: u16 = 0;
-pub const FORMAT_MINOR: u16 = 2;
+pub const FORMAT_MINOR: u16 = 3;
 
 pub const FILE_HEADER_SIZE: usize = 32;
 
@@ -20,7 +20,7 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    pub fn new_v0_2() -> Self {
+    pub fn new_v0_3() -> Self {
         Self {
             format_major: FORMAT_MAJOR,
             format_minor: FORMAT_MINOR,
@@ -56,7 +56,7 @@ pub fn decode_header(bytes: &[u8]) -> Result<FileHeader, DbError> {
 
     let format_major = u16::from_le_bytes([bytes[4], bytes[5]]);
     let format_minor = u16::from_le_bytes([bytes[6], bytes[7]]);
-    if format_major != FORMAT_MAJOR || format_minor != FORMAT_MINOR {
+    if format_major != FORMAT_MAJOR || (format_minor != 2 && format_minor != FORMAT_MINOR) {
         return Err(DbError::Format(FormatError::UnsupportedVersion {
             major: format_major,
             minor: format_minor,

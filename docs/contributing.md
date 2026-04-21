@@ -138,3 +138,10 @@ Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.tom
 3. Validation engine.
 4. Collection registration and insert/get APIs.
 5. Wire Python module around core operations.
+
+### File format notes (0.3.x)
+
+Starting with the `0.3.x` on-disk format work, the database file layout includes reserved **Superblock A/B** regions (for crash-safe metadata publication later) and checksummed **append-only segments**. This scaffolding is still internal, but it changes on-disk compatibility behavior:
+
+- A header-only `0.2` file can be upgraded in-place to the `0.3` layout.
+- Other `0.2` layouts are rejected rather than guessed, to avoid corrupting unknown data.
