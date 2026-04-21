@@ -20,9 +20,10 @@ typra/
 │   ├── typra-query/
 │   ├── typra-migrate/
 │   ├── typra-derive/
-│   ├── typra-python/
 │   ├── typra-cli/
 │   └── typra-bench/
+├── python/
+│   └── typra/          # PyPI package (maturin + PyO3); kept out of crates/
 ├── examples/
 ├── docs/
 └── scripts/
@@ -85,8 +86,8 @@ Contains:
 - field attribute parsing
 - compile-time diagnostics
 
-### `typra-python`
-PyO3 bindings.
+### Python package (`python/typra`)
+PyO3 bindings (Cargo package name may remain `typra-python` for crates.io).
 Contains:
 - Python module entrypoint
 - model registration bridge
@@ -331,8 +332,9 @@ For an MVP, you can start with fewer crates:
 typra/
 ├── crates/
 │   ├── typra-core/
-│   ├── typra-derive/
-│   └── typra-python/
+│   └── typra-derive/
+└── python/
+    └── typra/
 ```
 
 And keep `storage`, `schema`, and `query` as internal modules inside `typra-core` until they grow enough to split out.

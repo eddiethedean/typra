@@ -2,7 +2,7 @@
 
 ## Layout
 
-This repository is a standard Cargo workspace:
+Rust libraries live under **`crates/`**. Python distributions (PyPI) live under **`python/`**, even though the extension is implemented with Rust (PyO3).
 
 ```text
 typra/
@@ -10,10 +10,11 @@ typra/
 ├── Cargo.lock
 ├── LICENSE
 ├── README.md
-├── crates/
+├── crates/             # Rust crates (crates.io)
 │   ├── typra-core/     # engine core and public API
-│   ├── typra-derive/   # proc-macro helpers
-│   └── typra-python/   # PyO3 bindings (`import typra`)
+│   └── typra-derive/   # proc-macro helpers
+├── python/             # Python packages (PyPI)
+│   └── typra/          # `typra` wheel: maturin + PyO3 (`import typra`)
 └── docs/               # design specifications
 ```
 
@@ -32,9 +33,11 @@ Workspace crates and the PyPI distribution are aligned at **0.0.0** (pre-release
 
 ### crates.io (Rust)
 
+Only **`typra-core`** and **`typra-derive`** are ordinary Rust crates under `crates/`.
+
 1. Log in: `cargo login` with an API token from [crates.io account settings](https://crates.io/settings/tokens).
 2. Optionally set `repository = "..."` under `[workspace.package]` in the root `Cargo.toml` (recommended).
-3. Dry-run then publish each crate (no dependency order required today):
+3. Dry-run then publish:
 
 ```bash
 cargo publish -p typra-core --dry-run
@@ -42,7 +45,11 @@ cargo publish -p typra-core
 
 cargo publish -p typra-derive --dry-run
 cargo publish -p typra-derive
+```
 
+The **`typra-python`** Rust package (PyO3) is still a Cargo workspace member for versioning and `cargo check`, but it is **released to PyPI**, not treated as a primary “Rust crate” in the repo layout. To publish its sources to crates.io as well:
+
+```bash
 cargo publish -p typra-python --dry-run
 cargo publish -p typra-python
 ```
@@ -51,20 +58,20 @@ Commit a clean tree before real publishes; omit `--allow-dirty` if you use `carg
 
 ### PyPI (Python)
 
-The PyPI package name is **`typra`** (`crates/typra-python/pyproject.toml`). The Rust crate that builds the extension is **`typra-python`**.
+The PyPI package name is **`typra`** (`python/typra/pyproject.toml`). The Cargo package in that directory is named **`typra-python`** (implementation detail for crates.io).
 
 1. Install [maturin](https://www.maturin.rs/) and configure PyPI credentials (API token or trusted publishing).
 2. Build:
 
 ```bash
-cd crates/typra-python
+cd python/typra
 maturin build --release
 ```
 
 3. Publish:
 
 ```bash
-cd crates/typra-python
+cd python/typra
 maturin publish
 ```
 

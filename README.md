@@ -143,7 +143,7 @@ typra = "0.1"
 
 ## Development
 
-See [docs/contributing.md](docs/contributing.md) for the workspace layout, how to build, and how to publish crates.
+Rust crates live under `crates/`; PyPI packages under `python/` ([`python/README.md`](python/README.md)). See [docs/contributing.md](docs/contributing.md) for layout, build commands, and publishing.
 
 Design specs live under [docs/](docs/).
 

@@ -2,7 +2,7 @@
 members = [
     "crates/typra-core",
     "crates/typra-derive",
-    "crates/typra-python",
+    "python/typra",
 ]
 resolver = "2"
 
