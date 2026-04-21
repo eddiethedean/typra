@@ -1,11 +1,26 @@
 use std::error::Error;
 
 use typra_core::DbError;
+use typra_core::error::{FormatError, SchemaError};
 
 #[test]
 fn not_implemented_display_and_source() {
     let e = DbError::NotImplemented;
     assert_eq!(e.to_string(), "not implemented");
+    assert!(e.source().is_none());
+}
+
+#[test]
+fn format_error_display_and_source() {
+    let e = DbError::Format(FormatError::UnsupportedVersion { major: 9, minor: 9 });
+    assert!(e.to_string().contains("format error"));
+    assert!(e.source().is_none());
+}
+
+#[test]
+fn schema_error_display_and_source() {
+    let e = DbError::Schema(SchemaError::InvalidFieldPath);
+    assert!(e.to_string().contains("schema error"));
     assert!(e.source().is_none());
 }
 
