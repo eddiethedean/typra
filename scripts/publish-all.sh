@@ -34,7 +34,8 @@ if [[ -z "${MATURIN_PYPI_TOKEN:-}" ]]; then
   exit 1
 fi
 
-export MATURIN_NON_INTERACTIVE="${MATURIN_NON_INTERACTIVE:-1}"
+# Maturin expects "true" or "false", not 1/0.
+export MATURIN_NON_INTERACTIVE="${MATURIN_NON_INTERACTIVE:-true}"
 
 echo "Publishing Rust crates to crates.io..."
 cargo publish -p typra-core
