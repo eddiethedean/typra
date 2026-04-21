@@ -9,4 +9,3 @@ fn assert_model<T: DbModel>() {}
 fn derive_implies_db_model() {
     assert_model::<Smoke>();
 }
-

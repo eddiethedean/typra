@@ -17,4 +17,3 @@ fn derive_supports_lifetime_and_type_params() {
     assert_model::<WithLifetime<'static>>();
     assert_model::<WithTypeParam<u32>>();
 }
-
