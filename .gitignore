@@ -14,6 +14,7 @@
 **/.venv-*
 **/__pycache__
 **/.pytest_cache
+.coverage
 **/*.py[cod]
 **/*.egg-info
 **/.eggs

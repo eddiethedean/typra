@@ -12,6 +12,7 @@ TY ?= $(PYTHON) -m ty
 MATURIN ?= $(PYTHON) -m maturin
 
 .PHONY: help venv install-tools python-develop test check-full check-python check-rust
+.PHONY: coverage coverage-rust coverage-python
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-test
 
@@ -36,7 +37,7 @@ venv:
 	@$(PYTHON) -m pip -q install -U pip >/dev/null
 
 install-tools: venv
-	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" >/dev/null
+	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5" >/dev/null
 
 check-full: check-python check-rust test
 
@@ -66,8 +67,25 @@ rust-test:
 	cargo test --workspace --all-features
 
 python-develop: install-tools
-	cd python/typra && $(MATURIN) develop --release
+	cd python/typra && env -u VIRTUAL_ENV $(MATURIN) develop --release
 
 test: python-develop
-	cd python/typra && $(PYTHON) -m pytest -q
+	cd python/typra && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q
+
+coverage: coverage-rust coverage-python
+
+coverage-rust:
+	@mkdir -p target/coverage
+	@cargo llvm-cov --workspace --all-features \
+		--ignore-filename-regex 'python/typra/src/.*' \
+		--lcov --output-path target/coverage/rust.lcov
+	@cargo llvm-cov --workspace --all-features \
+		--ignore-filename-regex 'python/typra/src/.*' \
+		--summary-only
+
+coverage-python: python-develop
+	@mkdir -p target/coverage
+	cd python/typra && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q \
+		--cov=tests --cov-report=term-missing \
+		--cov-report=xml:../../target/coverage/python.xml
 

@@ -25,6 +25,18 @@ fn schema_error_display_and_source() {
 }
 
 #[test]
+fn format_error_display_variants() {
+    let e = DbError::Format(FormatError::BadMagic { got: *b"NOPE" });
+    let s = e.to_string();
+    assert!(s.contains("format error"));
+    assert!(s.contains("bad magic"));
+
+    let e = DbError::Format(FormatError::TruncatedHeader { got: 1, expected: 32 });
+    let s = e.to_string();
+    assert!(s.contains("truncated header"));
+}
+
+#[test]
 fn io_error_display_includes_message() {
     let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
     let e = DbError::Io(inner);

@@ -1,0 +1,14 @@
+[run]
+branch = True
+omit =
+    */.venv/*
+    */.venv_*/
+    */.venv_py/*
+    */site-packages/*
+    */pip/_vendor/*
+    */__pycache__/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

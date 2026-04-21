@@ -40,6 +40,18 @@ CI runs the same Rust and Python checks via [`.github/workflows/ci.yml`](../.git
 
 Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.2.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
+## Coverage (practical 100%)
+
+We aim for **practical 100%** test coverage over first-party code, with an explicit exclusion allowlist for things that are not meaningfully coverable.
+
+- **Rust**: coverage is computed via `cargo llvm-cov`.
+  - Exclusions are explicit and justified. For example, the PyO3 module entrypoint under `python/typra/src/lib.rs` is executed by Python import, not by `cargo test`, so Rust-only coverage runs may exclude it.
+  - We primarily track **line coverage** for “practical 100%”; region/branch coverage may remain <100% in cases where the only missed regions are OS-level IO failure paths that are not deterministic to test.
+- **Python**: coverage is computed via `pytest-cov` (coverage.py).
+  - Virtual environments, `site-packages`, and vendored dependencies are omitted via `.coveragerc`.
+
+CI publishes coverage reports but does not fail builds based on percentage.
+
 ## Publishing
 
 Automated sequence (from repo root, with credentials in the environment):

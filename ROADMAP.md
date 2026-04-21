@@ -101,6 +101,7 @@ Design anchor: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/
   - Roundtrip tests for writing/reading segments.
   - Corruption detection tests (bad checksum/bad magic yields deterministic error).
   - Backwards compatibility behavior documented for `0.2.x` files.
+  - Decoder hardening: malformed segments/headers never panic (and are fuzz-tested once the surface exists).
 
 Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
 
@@ -249,6 +250,10 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](/Users/o
   - Guarantee file format compatibility policy (what is forward/back compatible).
   - Establish a clear “supported types” matrix and behavior for nullability/optionality.
   - Hardening: fuzzing targets for decoding, property tests for index invariants, benchmark suite.
+  - Security hardening and guarantees:
+    - define supported threat model for local embedded usage
+    - robust corruption handling (no panics/UB on malformed files)
+    - document integrity guarantees (checksums, detection vs recovery)
   - Clearly documented **mode semantics**:
     - in-memory (ephemeral) vs in-memory-with-snapshot (explicit save/load)
     - on-disk (durable)
@@ -273,6 +278,11 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](/Users/o
 - **Testing**
   - File-format roundtrips; corruption detection; crash recovery simulations.
   - Invariant testing: uniqueness indexes, record visibility, schema compatibility.
+- **Security**
+  - Threat model document (local attacker, malicious/corrupt file, untrusted input).
+  - Fuzz the file-format decode surface (header/segments/record decode) and treat crashes/panics as bugs.
+  - Prefer memory-safe implementations; isolate any `unsafe` with explicit invariants and fuzz coverage.
+  - Security disclosure process (private reporting channel + coordinated release notes).
 - **Tooling**
   - “Inspect”/debug dump of file structures (header, superblocks, segments).
   - Benchmarks and profiling harness for `get(pk)` and indexed equality queries.
@@ -301,6 +311,7 @@ From the architecture spec’s v1 non-goals:
 - **Optionality semantics**: required vs nullable vs defaulted (keep v1 simple as per spec).
 - **Python model story**: Pydantic-first vs lightweight models vs engine-first validation.
 - **Index physical layout**: embedded in record log vs separate index segments and rebuild strategies.
+- **Encryption / secrets**: whether to support optional at-rest encryption (and key management) for on-disk databases.
 
 ## In-memory, hybrid, and streaming execution (refined plan)
 

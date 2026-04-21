@@ -34,6 +34,36 @@ fn open_non_typra_file_returns_format_error() {
 }
 
 #[test]
+fn open_wrong_magic_with_full_header_returns_format_error() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("bad_magic.typra");
+
+    // Make the file long enough to pass the truncated-header check, but with wrong magic.
+    let mut bytes = vec![0u8; 32];
+    bytes[0..4].copy_from_slice(b"NOPE");
+    fs::write(&path, bytes).expect("write");
+
+    let res = Database::open(&path);
+    assert!(matches!(res, Err(DbError::Format(_))));
+}
+
+#[test]
+fn open_unsupported_version_returns_format_error() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("bad_version.typra");
+
+    let mut bytes = vec![0u8; 32];
+    bytes[0..4].copy_from_slice(b"TDB0");
+    // major=9, minor=9 in little-endian at offsets 4..8
+    bytes[4] = 9;
+    bytes[6] = 9;
+    fs::write(&path, bytes).expect("write");
+
+    let res = Database::open(&path);
+    assert!(matches!(res, Err(DbError::Format(_))));
+}
+
+#[test]
 fn open_truncated_file_returns_format_error() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("truncated.typra");
