@@ -68,7 +68,7 @@ Typra is a **single-file** database format. The on-disk format is designed to be
 
 The design spec includes a header, **dual superblocks**, checksummed **append-only segments**, indexes, and checkpoints. See [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md).
 
-As of `0.3.0`, Typra also publishes a minimal **MANIFEST** pointer by alternating superblocks, so open can follow the newest manifest generation (with a safe scan fallback if the pointer is invalid).
+As of `0.3.0`, Typra publishes a minimal **MANIFEST** pointer by alternating superblocks, so open can follow the newest manifest generation (with a safe scan fallback if the pointer is invalid). As of **`0.4.0`**, **schema catalog** entries are persisted in **Schema** segments and replayed on open.
 
 ## Storage modes (disk, memory, hybrid/streaming)
 

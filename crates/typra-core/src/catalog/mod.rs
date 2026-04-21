@@ -1,0 +1,14 @@
+//! Persisted schema catalog: binary encoding and in-memory state.
+
+mod codec;
+mod state;
+
+pub use codec::{
+    decode_catalog_payload, encode_catalog_payload, CatalogDecodeError, CatalogRecordWire,
+    CATALOG_PAYLOAD_VERSION, ENTRY_KIND_CREATE_COLLECTION, ENTRY_KIND_NEW_SCHEMA_VERSION,
+    MAX_COLLECTION_NAME_BYTES, MAX_TYPE_NESTING_DEPTH,
+};
+pub use state::{Catalog, CollectionInfo};
+
+/// Alias for encoded catalog records on the wire.
+pub type CatalogRecord = CatalogRecordWire;

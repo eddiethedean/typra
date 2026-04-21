@@ -5,13 +5,13 @@
 
 Core engine crate for **Typra**, a typed embedded database.
 
-**Status (0.3.0):** minimal API surface for establishing semver and wiring crates together (e.g. `Database::open`, `DbError`). The storage engine is under development.
+**Status (0.4.0):** `Database::open`, persisted **schema catalog** (`register_collection` / `register_schema_version`), `DbError`. Record storage and queries are under development.
 
 ### Install
 
 ```toml
 [dependencies]
-typra-core = "0.3"
+typra-core = "0.4"
 ```
 
 ### Notes

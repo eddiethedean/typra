@@ -57,7 +57,7 @@ opened: example.typra
 ## Install (Python)
 
 ```bash
-pip install "typra>=0.3.0,<0.4"
+pip install "typra>=0.4.0,<0.5"
 ```
 
 ## Minimal Python example
@@ -65,6 +65,8 @@ pip install "typra>=0.3.0,<0.4"
 ```python
 import typra
 
+db = typra.Database.open("example.typra")
+db.register_collection("books", '[{"path": ["title"], "type": "string"}]')
 print(typra.__version__)
 ```
 
@@ -85,7 +87,7 @@ python -c "import typra; print(typra.__version__)"
 Output:
 
 ```text
-0.3.0
+0.4.0
 ```
 
 ## Development quickstart (repo contributors)

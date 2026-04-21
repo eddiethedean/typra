@@ -9,7 +9,7 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is always correct by design.
 
-**Status (v0.3.0):** Early semver releases. The Rust crates expose `Database::open` and a `DbModel` derive; the storage engine and higher-level Python APIs are still **under development**. The on-disk format now includes reserved superblocks + checksummed segment framing, plus minimal manifest publication (superblock A/B alternation). See [CHANGELOG.md](CHANGELOG.md).
+**Status (v0.4.0):** Early semver releases. The Rust crates expose `Database::open`, **`register_collection` / `register_schema_version`** (persisted schema catalog in `SegmentType::Schema` payloads), and a `DbModel` derive. Python exposes `Database.open`, **`register_collection`**, and **`collection_names`**. Record storage and validation are still **under development**. The on-disk format is **v0.4** (minor bump) with lazy upgrade from **v0.3** on first catalog write. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -53,7 +53,7 @@ Many items below are **goals**; check the changelog for what each release actual
 
 ## Python (preview)
 
-The `typra` package on PyPI exposes the native extension; **0.3.0** includes `__version__` only—higher-level APIs will land in later releases.
+The `typra` package on PyPI exposes the native extension. **0.4.0** adds `Database.open`, `register_collection(name, fields_json)`, and `collection_names()`. **`fields_json`** is a JSON array of field descriptors (see [`python/typra/README.md`](python/typra/README.md)).
 
 - **Python support**: **3.9+**
 - **Wheels**: **`cp39-abi3`** (one wheel per platform for CPython 3.9+)
@@ -61,11 +61,13 @@ The `typra` package on PyPI exposes the native extension; **0.3.0** includes `__
 ```python
 import typra
 
+db = typra.Database.open("app.typra")
+db.register_collection("books", '[{"path": ["title"], "type": "string"}]')
 print(typra.__version__)
 ```
 
 ```bash
-pip install "typra>=0.3.0,<0.4"
+pip install "typra>=0.4.0,<0.5"
 ```
 
 ---
@@ -78,40 +80,42 @@ Use the **`typra`** crate — it re-exports the engine and enables `#[derive(DbM
 
 ```toml
 [dependencies]
-typra = "0.3"
+typra = "0.4"
 ```
 
 Disable the default `derive` feature if you only need the engine:
 
 ```toml
-typra = { version = "0.3", default-features = false }
+typra = { version = "0.4", default-features = false }
 ```
 
 ### Lower-level crates
 
 For a minimal dependency tree or out-of-tree macros, depend on **`typra-core`** and **`typra-derive`** directly (same versions as the facade).
 
-### Example (compiles on 0.3.x)
+### Example (0.4.x)
 
 ```rust
+use std::borrow::Cow;
 use typra::prelude::*;
-use typra::DbModel;
-
-#[derive(DbModel)]
-struct Book {
-    title: String,
-}
+use typra::FieldDef;
+use typra::Type;
+use typra::schema::FieldPath;
 
 fn main() -> Result<(), DbError> {
-    let _db = Database::open("example.typra")?;
-    let _book = Book {
-        title: "Example".into(),
-    };
+    let mut db = Database::open("example.typra")?;
+    let _ = db.register_collection(
+        "books",
+        vec![FieldDef {
+            path: FieldPath::new([Cow::Borrowed("title")])?,
+            ty: Type::String,
+        }],
+    )?;
     Ok(())
 }
 ```
 
-Field attributes (`#[db(primary)]`, etc.) and enums are **not** implemented in 0.3.0; they remain design targets.
+Field attributes (`#[db(primary)]`, etc.) on `DbModel` are **not** implemented yet; they remain design targets.
 
 ---
 

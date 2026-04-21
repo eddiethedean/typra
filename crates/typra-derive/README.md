@@ -26,7 +26,7 @@ struct Book {
 }
 ```
 
-### Status (0.3.0)
+### Status (0.4.0)
 
 This derive currently provides a minimal `DbModel` impl. Field attributes and enums are not implemented yet.
 

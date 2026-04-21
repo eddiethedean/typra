@@ -5,7 +5,7 @@
 
 User-facing facade crate for **Typra**, a typed embedded database.
 
-**Status (0.3.0):** `Database::open` exists and `#[derive(DbModel)]` is available. Storage, queries, validation, and schema evolution are not implemented yet.
+**Status (0.4.0):** `Database::open`, **`register_collection`**, **`register_schema_version`**, and `#[derive(DbModel)]` are available. Record storage, queries, validation, and schema evolution beyond catalog registration are not implemented yet.
 
 ### Install
 

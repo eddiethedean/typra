@@ -61,3 +61,14 @@ pub fn scan_segments(store: &mut impl Store, start: u64) -> Result<Vec<SegmentMe
 
     Ok(out)
 }
+
+/// Read the payload bytes for a segment whose header was validated by [`scan_segments`].
+pub fn read_segment_payload(
+    store: &mut impl Store,
+    meta: &SegmentMeta,
+) -> Result<Vec<u8>, DbError> {
+    let mut payload = vec![0u8; meta.header.payload_len as usize];
+    let start = meta.offset + SEGMENT_HEADER_LEN as u64;
+    store.read_exact_at(start, &mut payload)?;
+    Ok(payload)
+}

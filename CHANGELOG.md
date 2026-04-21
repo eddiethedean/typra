@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-21
+
+### Added
+
+- **Schema catalog (Rust)**: binary encoding for catalog records in `SegmentType::Schema` segment payloads (`CreateCollection`, `NewSchemaVersion`), in-memory [`Catalog`](crates/typra-core/src/catalog/state.rs) with replay on `Database::open`, and public APIs [`Database::register_collection`](crates/typra-core/src/db.rs) / [`Database::register_schema_version`](crates/typra-core/src/db.rs).
+- **On-disk format**: file format minor **4**; new databases write **0.4** headers; **0.3** files are upgraded lazily to **0.4** on the first catalog write.
+- **Python**: [`Database`](python/typra/src/lib.rs) with `open`, `register_collection(fields_json)`, and `collection_names()`; JSON parsing for field definitions in [`fields_json.rs`](python/typra/src/fields_json.rs).
+- **Errors**: extended [`SchemaError`](crates/typra-core/src/error.rs) and [`FormatError::InvalidCatalogPayload`](crates/typra-core/src/error.rs).
+
+### Changed
+
+- **New database files** use format **0.4** (was 0.3) while retaining the same superblock + segment layout.
+
 ## [0.3.0] - 2026-04-21
 
 ### Added
@@ -45,3 +58,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.1.0]: https://github.com/eddiethedean/typra/releases/tag/v0.1.0
 [0.2.0]: https://github.com/eddiethedean/typra/releases/tag/v0.2.0
 [0.3.0]: https://github.com/eddiethedean/typra/releases/tag/v0.3.0
+[0.4.0]: https://github.com/eddiethedean/typra/releases/tag/v0.4.0

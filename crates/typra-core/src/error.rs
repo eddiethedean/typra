@@ -15,22 +15,49 @@ pub enum DbError {
 
 #[derive(Debug)]
 pub enum FormatError {
-    BadMagic { got: [u8; 4] },
-    TruncatedHeader { got: usize, expected: usize },
-    UnsupportedVersion { major: u16, minor: u16 },
-    TruncatedSuperblock { got: usize, expected: usize },
-    BadSuperblockMagic { got: [u8; 4] },
+    BadMagic {
+        got: [u8; 4],
+    },
+    TruncatedHeader {
+        got: usize,
+        expected: usize,
+    },
+    UnsupportedVersion {
+        major: u16,
+        minor: u16,
+    },
+    TruncatedSuperblock {
+        got: usize,
+        expected: usize,
+    },
+    BadSuperblockMagic {
+        got: [u8; 4],
+    },
     BadSuperblockChecksum,
-    TruncatedSegmentHeader { got: usize, expected: usize },
-    BadSegmentMagic { got: [u8; 4] },
+    TruncatedSegmentHeader {
+        got: usize,
+        expected: usize,
+    },
+    BadSegmentMagic {
+        got: [u8; 4],
+    },
     BadSegmentHeaderChecksum,
     BadSegmentPayloadChecksum,
     SegmentPayloadPastEof,
+    /// Invalid catalog segment payload (binary layout).
+    InvalidCatalogPayload {
+        message: String,
+    },
 }
 
 #[derive(Debug)]
 pub enum SchemaError {
     InvalidFieldPath,
+    DuplicateCollectionName { name: String },
+    UnknownCollection { id: u32 },
+    InvalidCollectionName,
+    InvalidSchemaVersion { expected: u32, got: u32 },
+    UnexpectedCollectionId { expected: u32, got: u32 },
 }
 
 impl fmt::Display for DbError {
@@ -90,6 +117,9 @@ impl fmt::Display for FormatError {
             FormatError::SegmentPayloadPastEof => {
                 write!(f, "segment payload extends past end of file")
             }
+            FormatError::InvalidCatalogPayload { message } => {
+                write!(f, "invalid catalog payload: {message}")
+            }
         }
     }
 }
@@ -98,6 +128,22 @@ impl fmt::Display for SchemaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SchemaError::InvalidFieldPath => write!(f, "invalid field path"),
+            SchemaError::DuplicateCollectionName { name } => {
+                write!(f, "duplicate collection name: {name:?}")
+            }
+            SchemaError::UnknownCollection { id } => {
+                write!(f, "unknown collection id {id}")
+            }
+            SchemaError::InvalidCollectionName => write!(f, "invalid collection name"),
+            SchemaError::InvalidSchemaVersion { expected, got } => {
+                write!(f, "invalid schema version: expected {expected}, got {got}")
+            }
+            SchemaError::UnexpectedCollectionId { expected, got } => {
+                write!(
+                    f,
+                    "unexpected collection id in catalog replay: expected {expected}, got {got}"
+                )
+            }
         }
     }
 }

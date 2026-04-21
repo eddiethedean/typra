@@ -37,3 +37,49 @@ def test_module_has_expected_attributes() -> None:
 @pytest.mark.parametrize("name", ("__version__", "__doc__"))
 def test_attributes_are_not_none(name: str) -> None:
     assert getattr(typra, name) is not None
+
+
+def test_register_collection_invalid_json_raises(tmp_path) -> None:
+    db = typra.Database.open(str(tmp_path / "badjson.typra"))
+    with pytest.raises(ValueError, match="."):
+        db.register_collection("x", "not json")
+
+
+def test_register_collection_not_array_raises(tmp_path) -> None:
+    db = typra.Database.open(str(tmp_path / "notarr.typra"))
+    with pytest.raises(ValueError, match="."):
+        db.register_collection("x", '{"path": ["a"], "type": "string"}')
+
+
+def test_register_collection_unknown_primitive_type_raises(tmp_path) -> None:
+    db = typra.Database.open(str(tmp_path / "badtype.typra"))
+    with pytest.raises(ValueError) as excinfo:
+        db.register_collection("x", '[{"path": ["a"], "type": "not_a_primitive"}]')
+    assert (
+        "not_a_primitive" in str(excinfo.value)
+        or "unknown" in str(excinfo.value).lower()
+    )
+
+
+def test_register_duplicate_collection_name_raises(tmp_path) -> None:
+    path = tmp_path / "dup.typra"
+    db = typra.Database.open(str(path))
+    fields = '[{"path": ["t"], "type": "string"}]'
+    db.register_collection("same", fields)
+    with pytest.raises(ValueError, match="."):
+        db.register_collection("same", fields)
+
+
+def test_database_register_collection_roundtrip(tmp_path) -> None:
+    path = tmp_path / "t.typra"
+    db = typra.Database.open(str(path))
+    assert path.exists()
+    fields = '[{"path": ["title"], "type": "string"}]'
+    cid, ver = db.register_collection("books", fields)
+    assert cid == 1
+    assert ver == 1
+    assert db.collection_names() == ["books"]
+    del db
+
+    db2 = typra.Database.open(str(path))
+    assert db2.collection_names() == ["books"]

@@ -1,21 +1,30 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::{DbError, FormatError};
+use crate::catalog::{
+    decode_catalog_payload, encode_catalog_payload, Catalog, CatalogRecordWire,
+    MAX_COLLECTION_NAME_BYTES,
+};
+use crate::error::{DbError, FormatError, SchemaError};
 use crate::file_format::{decode_header, FileHeader, FILE_HEADER_SIZE};
 use crate::manifest::decode_manifest_v0;
 use crate::publish::append_manifest_and_publish;
-use crate::segments::header::SegmentType;
-use crate::segments::reader::{read_segment_header_at, scan_segments};
+use crate::schema::{CollectionId, FieldDef, SchemaVersion};
+use crate::segments::header::{SegmentHeader, SegmentType};
+use crate::segments::reader::{read_segment_header_at, read_segment_payload, scan_segments};
+use crate::segments::writer::SegmentWriter;
 use crate::storage::{FileStore, Store};
 use crate::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
 
 /// Handle to an on-disk Typra database file.
-///
-/// Version 0.1 only ensures the backing file exists and is openable; the storage engine is still under development.
 pub struct Database {
     path: PathBuf,
-    _store: FileStore,
+    store: FileStore,
+    catalog: Catalog,
+    segment_start: u64,
+    /// Format minor read from the file header (updated when lazily bumping `3` → `4`).
+    format_minor: u16,
 }
+
 impl Database {
     /// Open or create a database at `path`.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, DbError> {
@@ -32,8 +41,11 @@ impl Database {
         let len = store.len()?;
         let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
 
+        let format_minor: u16;
+
         if len == 0 {
-            let header = FileHeader::new_v0_3();
+            let header = FileHeader::new_v0_4();
+            format_minor = header.format_minor;
             store.write_all_at(0, &header.encode())?;
             Self::init_superblocks(&mut store, segment_start)?;
             let _ = append_manifest_and_publish(&mut store, segment_start)?;
@@ -50,19 +62,19 @@ impl Database {
 
             if header.format_minor == 2 {
                 if len == FILE_HEADER_SIZE as u64 {
-                    // Safe, minimal in-place upgrade path: 0.2 header-only -> 0.3 layout.
                     let upgraded = FileHeader::new_v0_3();
                     store.write_all_at(0, &upgraded.encode())?;
                     Self::init_superblocks(&mut store, segment_start)?;
                     let _ = append_manifest_and_publish(&mut store, segment_start)?;
                     store.sync()?;
+                    format_minor = crate::file_format::FORMAT_MINOR_V3;
                 } else {
                     return Err(DbError::Format(FormatError::UnsupportedVersion {
                         major: header.format_major,
                         minor: header.format_minor,
                     }));
                 }
-            } else if header.format_minor == 3 {
+            } else if header.format_minor == 3 || header.format_minor == 4 {
                 if len < segment_start {
                     return Err(DbError::Format(FormatError::TruncatedSuperblock {
                         got: len as usize,
@@ -71,20 +83,32 @@ impl Database {
                 }
                 let selected = Self::read_and_select_superblock(&mut store)?;
                 if selected.manifest_offset != 0 {
-                    match Self::read_manifest(&mut store, &selected) {
-                        Ok(_) => {}
-                        Err(_) => {
-                            // Fall back to scanning segments if manifest pointer is corrupt.
-                            let _ = scan_segments(&mut store, segment_start)?;
-                        }
-                    }
+                    let _ = Self::read_manifest(&mut store, &selected);
                 }
+                if len > segment_start {
+                    let _ = scan_segments(&mut store, segment_start)?;
+                }
+                format_minor = header.format_minor;
+            } else {
+                return Err(DbError::Format(FormatError::UnsupportedVersion {
+                    major: header.format_major,
+                    minor: header.format_minor,
+                }));
             }
         }
 
+        let catalog = if len == 0 {
+            Catalog::default()
+        } else {
+            Self::load_catalog(&mut store, segment_start)?
+        };
+
         let db = Self {
             path,
-            _store: store,
+            store,
+            catalog,
+            segment_start,
+            format_minor,
         };
         Ok(db)
     }
@@ -94,8 +118,115 @@ impl Database {
         &self.path
     }
 
+    /// In-memory view of the persisted schema catalog.
+    pub fn catalog(&self) -> &Catalog {
+        &self.catalog
+    }
+
+    /// Registered collection names (sorted).
+    pub fn collection_names(&self) -> Vec<String> {
+        self.catalog.collection_names()
+    }
+
+    /// Register a new collection with schema version `1`.
+    pub fn register_collection(
+        &mut self,
+        name: &str,
+        fields: Vec<FieldDef>,
+    ) -> Result<(CollectionId, SchemaVersion), DbError> {
+        let name = Self::normalize_collection_name(name)?;
+        let id = self.catalog.next_collection_id().0;
+        let wire = CatalogRecordWire::CreateCollection {
+            collection_id: id,
+            name: name.clone(),
+            schema_version: 1,
+            fields,
+        };
+        let payload = encode_catalog_payload(&wire);
+        self.append_schema_segment_and_publish(&payload)?;
+        self.catalog.apply_record(wire)?;
+        Ok((CollectionId(id), SchemaVersion(1)))
+    }
+
+    /// Append a new schema version for an existing collection (`current + 1` required).
+    pub fn register_schema_version(
+        &mut self,
+        id: CollectionId,
+        fields: Vec<FieldDef>,
+    ) -> Result<SchemaVersion, DbError> {
+        let current = self
+            .catalog
+            .get(id)
+            .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
+        let next_v = current.current_version.0.saturating_add(1);
+        let wire = CatalogRecordWire::NewSchemaVersion {
+            collection_id: id.0,
+            schema_version: next_v,
+            fields,
+        };
+        let payload = encode_catalog_payload(&wire);
+        self.append_schema_segment_and_publish(&payload)?;
+        self.catalog.apply_record(wire)?;
+        Ok(SchemaVersion(next_v))
+    }
+
+    fn normalize_collection_name(name: &str) -> Result<String, DbError> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(DbError::Schema(SchemaError::InvalidCollectionName));
+        }
+        if name.len() > MAX_COLLECTION_NAME_BYTES {
+            return Err(DbError::Schema(SchemaError::InvalidCollectionName));
+        }
+        Ok(name.to_string())
+    }
+
+    fn append_schema_segment_and_publish(&mut self, payload: &[u8]) -> Result<(), DbError> {
+        self.ensure_header_v0_4()?;
+        let file_len = self.store.len()?;
+        let mut writer = SegmentWriter::new(&mut self.store, file_len.max(self.segment_start));
+        writer.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            payload,
+        )?;
+        let _ = append_manifest_and_publish(&mut self.store, self.segment_start)?;
+        self.store.sync()?;
+        Ok(())
+    }
+
+    fn ensure_header_v0_4(&mut self) -> Result<(), DbError> {
+        if self.format_minor >= crate::file_format::FORMAT_MINOR {
+            return Ok(());
+        }
+        let mut buf = [0u8; FILE_HEADER_SIZE];
+        self.store.read_exact_at(0, &mut buf)?;
+        let mut h = decode_header(&buf)?;
+        h.format_minor = crate::file_format::FORMAT_MINOR;
+        self.store.write_all_at(0, &h.encode())?;
+        self.format_minor = crate::file_format::FORMAT_MINOR;
+        self.store.sync()?;
+        Ok(())
+    }
+
+    fn load_catalog(store: &mut FileStore, segment_start: u64) -> Result<Catalog, DbError> {
+        let metas = scan_segments(store, segment_start)?;
+        let mut catalog = Catalog::default();
+        for meta in metas {
+            if meta.header.segment_type != SegmentType::Schema {
+                continue;
+            }
+            let payload = read_segment_payload(store, &meta)?;
+            let record = decode_catalog_payload(&payload)?;
+            catalog.apply_record(record)?;
+        }
+        Ok(catalog)
+    }
+
     fn init_superblocks(store: &mut impl Store, segment_start: u64) -> Result<(), DbError> {
-        // Ensure the file is at least large enough to contain the reserved superblock regions.
         store.write_all_at(segment_start - 1, &[0u8])?;
 
         let sb_a = Superblock {
@@ -151,11 +282,13 @@ mod tests {
     use super::Database;
     use crate::error::FormatError;
     use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
+    use crate::schema::{FieldDef, Type};
     use crate::segments::header::{SegmentHeader, SegmentType};
     use crate::segments::writer::SegmentWriter;
     use crate::storage::{FileStore, Store};
     use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
     use crate::DbError;
+    use std::borrow::Cow;
 
     fn new_store() -> FileStore {
         let f = tempfile::NamedTempFile::new().unwrap();
@@ -167,6 +300,13 @@ mod tests {
             .open(f.path())
             .unwrap();
         FileStore::new(file)
+    }
+
+    fn path_field(name: &str) -> FieldDef {
+        FieldDef {
+            path: crate::schema::FieldPath(vec![Cow::Owned(name.to_string())]),
+            ty: Type::String,
+        }
     }
 
     #[test]
@@ -217,7 +357,6 @@ mod tests {
             )
             .unwrap();
 
-        // Append a non-manifest segment and point the superblock at it.
         let mut w = SegmentWriter::new(&mut store, segment_start);
         let off = w
             .append(
@@ -268,5 +407,25 @@ mod tests {
 
         let selected = Database::read_and_select_superblock(&mut store).unwrap();
         assert_eq!(selected.generation, sb_a.generation);
+    }
+
+    #[test]
+    fn register_and_reopen_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        {
+            let mut db = Database::open(&path).unwrap();
+            assert!(db.catalog().is_empty());
+            let (id, v) = db
+                .register_collection("books", vec![path_field("title")])
+                .unwrap();
+            assert_eq!(id.0, 1);
+            assert_eq!(v.0, 1);
+        }
+        let db = Database::open(&path).unwrap();
+        assert_eq!(db.collection_names(), vec!["books".to_string()]);
+        let c = db.catalog().get(crate::schema::CollectionId(1)).unwrap();
+        assert_eq!(c.name, "books");
+        assert_eq!(c.fields.len(), 1);
     }
 }

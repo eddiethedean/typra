@@ -2,7 +2,7 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.3.0` (see [`CHANGELOG.md`](/Users/odosmatthews/Documents/coding/typra/CHANGELOG.md))
+- **Current release**: `0.4.0` (see [`CHANGELOG.md`](/Users/odosmatthews/Documents/coding/typra/CHANGELOG.md))
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -136,15 +136,21 @@ Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/
 
 **Goal**: persist schema definitions in the file and support registering collections.
 
+**Shipped in 0.4.0 (implemented):**
+
 - **Rust**
-  - Implement a persisted **schema catalog** segment type and catalog entry encoding.
-  - Add `Database::register_collection` or equivalent API shape.
-  - Maintain schema versions per collection; support “create collection” + “new schema version” entries.
-  - Introduce stable IDs for collections and schema versions.
-  - Add an **in-memory catalog** implementation that matches the persisted catalog semantics (enables memory-only databases to behave the same as disk-backed ones).
+  - Persisted **schema catalog** records in **`SegmentType::Schema`** payloads (v1 binary encoding: create collection + new schema version).
+  - **`Database::register_collection`** / **`Database::register_schema_version`**; **`Catalog`** replay on open; stable **`CollectionId`** / **`SchemaVersion(1)`** baseline; lazy **0.3 → 0.4** header bump on first catalog write.
 - **Python**
-  - Add a thin `Database` object that can **open** and **register** a model/schema (even if writes aren’t ready yet).
-  - Decide the first Python model story: Pydantic-based inference vs explicit schema objects vs a lightweight `Model` base.
+  - **`typra.Database`**: **`open`**, **`register_collection(name, fields_json)`**, **`collection_names()`**; **`fields_json`** documented in [`python/typra/README.md`](/Users/odosmatthews/Documents/coding/typra/python/typra/README.md).
+- **Tests / docs**
+  - Integration tests for duplicate names, unknown id, reopen, corrupt payload, lazy header bump; user guide note in models/collections doc.
+
+**Deferred / later**
+
+- Pydantic-based model inference (still an open question; explicit JSON remains the v1 Python story).
+- Full **`MemStore`** database mode ( **`Catalog`** semantics are shared; file-backed path is implemented).
+
 - **Definition of done**
   - Registering a collection persists the catalog entry and survives reopen.
   - Duplicate name handling and versioning behavior specified and tested.
