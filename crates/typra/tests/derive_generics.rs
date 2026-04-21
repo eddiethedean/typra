@@ -1,5 +1,4 @@
-use typra_core::prelude::*;
-use typra_derive::DbModel;
+use typra::DbModel;
 
 #[derive(DbModel)]
 struct WithLifetime<'a> {
@@ -18,3 +17,4 @@ fn derive_supports_lifetime_and_type_params() {
     assert_model::<WithLifetime<'static>>();
     assert_model::<WithTypeParam<u32>>();
 }
+

@@ -5,7 +5,7 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is always correct by design.
 
-**Status (v0.1.0):** First semver release. The Rust crates expose a real `Database::open` path and a `DbModel` derive; the storage engine and Python ORM-style APIs are still **under development**. See [CHANGELOG.md](CHANGELOG.md).
+**Status (v0.1.0):** First semver release. The Rust crates expose `Database::open` and a `DbModel` derive; the storage engine and higher-level Python APIs are still **under development**. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -50,6 +50,9 @@ Many items below are **goals**; check the changelog for what each release actual
 ## Python (preview)
 
 The `typra` package on PyPI exposes the native extension; **0.1.0** includes `__version__` only—higher-level APIs will land in later releases.
+
+- **Python support**: **3.9+**
+- **Wheels**: **`cp39-abi3`** (one wheel per platform for CPython 3.9+)
 
 ```python
 import typra
@@ -117,6 +120,14 @@ Field attributes (`#[db(primary)]`, etc.) and enums are **not** implemented in 0
 ## Development
 
 Rust crates live under `crates/` (`typra` facade, `typra-core`, `typra-derive`); PyPI packages under `python/` ([`python/README.md`](python/README.md)). See [docs/contributing.md](docs/contributing.md) for layout, build commands, and publishing.
+
+From the repo root, you can run the full local CI suite:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -U pip
+make check-full
+```
 
 Design specs live under [docs/](docs/).
 

@@ -1,5 +1,4 @@
-use typra_core::prelude::*;
-use typra_derive::DbModel;
+use typra::DbModel;
 
 #[derive(DbModel)]
 struct Smoke;
@@ -10,3 +9,4 @@ fn assert_model<T: DbModel>() {}
 fn derive_implies_db_model() {
     assert_model::<Smoke>();
 }
+

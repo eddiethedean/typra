@@ -2,9 +2,13 @@
 
 Python bindings for **Typra**. **0.1.0** exposes `typra.__version__`; higher-level APIs will ship in later releases.
 
+## Install
+
 ```bash
 pip install "typra>=0.1.0,<0.2"
 ```
+
+Supports **CPython 3.9+**. Wheels are published as **`cp39-abi3`** (one per platform for CPython 3.9+).
 
 ```python
 import typra

@@ -5,8 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 
 [dev-dependencies]
 tempfile = "3"
-typra-derive.workspace = true
