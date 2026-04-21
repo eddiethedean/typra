@@ -112,6 +112,24 @@ Design anchor: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/
   - Backwards compatibility behavior documented for `0.2.x` files.
   - Decoder hardening: malformed segments/headers never panic (and are fuzz-tested once the surface exists).
 
+**Implemented so far on `main` (0.3.0 WIP):**
+- **Format + open behavior**
+  - On-disk format minor bumped to **0.3** to reserve superblock space and enable segment framing.
+  - Safe **0.2 → 0.3** upgrade path for **header-only** `0.2` files; `0.2` files with extra bytes are rejected to avoid corrupting unknown layouts.
+- **Superblocks (scaffolding)**
+  - Reserve **Superblock A/B** (4 KiB each) after the file header.
+  - Select the newest valid generation on open; tolerate one corrupt superblock as long as the other is valid.
+- **Segments (scaffolding)**
+  - Add a minimal checksummed segment header + segment writer/reader and an internal `scan_segments` utility.
+- **Tests**
+  - Added roundtrip/corruption/upgrade/reopen selection tests and “nasty bytes” decoder hardening tests.
+- **Docs**
+  - Updated guides/READMEs/contributing notes to reflect superblocks + checksummed segments and the compatibility story.
+
+**Remaining for 0.3.0 (to finish the milestone):**
+- Minimal **manifest/checkpoint pointer publication** (write a manifest segment and publish via next superblock generation) beyond the current scaffolding.
+- Optional: formalize a small `MANIFEST` payload struct (even if the payload is still “opaque bytes” for other segment types).
+
 Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
 
 ### 0.4.0 — Persisted schema catalog + collection registration
