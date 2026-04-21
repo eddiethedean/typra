@@ -40,7 +40,9 @@ Typra should support explicit naming to avoid accidental renames:
 
 ## Registering models and schema compatibility
 
-Conceptually, the database will have a schema registry/catalog:
+**Today (0.4.x)**, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection`** (Python, with a **`fields_json`** descriptor—see [`python/typra/README.md`](/Users/odosmatthews/Documents/coding/typra/python/typra/README.md)).
+
+Longer term, the database should also support ergonomic registration from model types:
 
 - `db.register(User)` (Python-style)
 - `db.register_collection::<User>()` or similar (Rust-style)

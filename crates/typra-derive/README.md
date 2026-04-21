@@ -11,8 +11,8 @@ Most users should depend on `typra` (which enables this via the default `derive`
 
 ```toml
 [dependencies]
-typra-derive = "0.3"
-typra-core = "0.3"
+typra-derive = "0.4"
+typra-core = "0.4"
 ```
 
 ### Example

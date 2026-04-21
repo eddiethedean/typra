@@ -8,6 +8,10 @@ The Rust project layout should:
 - make testing isolated and practical
 - allow incremental engine growth
 
+## Implementation note (0.4.x)
+
+The **current** repository workspace is **`typra`**, **`typra-core`**, **`typra-derive`**, and **`typra-python`** (PyO3 package under `python/typra/`). The workspace tree below lists **planned** crate splits (`typra-storage`, `typra-query`, …) that are **not** separate published crates yet; storage and catalog logic today live largely inside **`typra-core`**.
+
 ## Workspace Layout
 
 ```text

@@ -6,7 +6,7 @@ This guide explains the planned **storage modes** and what they mean for perform
 
 ## Current status (important)
 
-Today, Typra’s implemented surface area is still early (file open/create + header validation, plus early on-disk format scaffolding like reserved superblocks and checksummed segments). The modes below are part of the roadmap; see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md) for timing.
+Today, the **on-disk** path supports open/create, superblocks, checksummed segments, manifest publication, and a **persisted schema catalog** (`register_collection` / `register_schema_version` on disk). **In-memory** and **hybrid/streaming** modes below are not implemented yet; see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md) for timing.
 
 ## Mode 1: On-disk (default)
 

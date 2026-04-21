@@ -9,7 +9,7 @@ A **database** is a single embedded unit you open in your application.
 - **On-disk**: a `.typra` file (single file, zero-admin deployment)
 - **In-memory** (planned): fast ephemeral mode with explicit snapshot save/load
 
-In current releases, `Database::open(path)` mainly ensures the file exists and has a recognized Typra header.
+In **0.4.x**, `Database::open(path)` creates or opens the file, validates the header, replays the **persisted schema catalog** from **Schema** segments, and exposes **`register_collection`** / **`register_schema_version`** for new catalog writes. Record data is not stored yet.
 
 ## Collections
 

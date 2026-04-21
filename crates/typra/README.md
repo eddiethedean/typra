@@ -11,14 +11,19 @@ User-facing facade crate for **Typra**, a typed embedded database.
 
 ```toml
 [dependencies]
-typra = "0.3"
+typra = "0.4"
 ```
 
 ### Example
 
 ```rust
+use std::borrow::Cow;
+
 use typra::prelude::*;
+use typra::schema::FieldPath;
 use typra::DbModel;
+use typra::FieldDef;
+use typra::Type;
 
 #[derive(DbModel)]
 struct Book {
@@ -26,7 +31,14 @@ struct Book {
 }
 
 fn main() -> Result<(), DbError> {
-    let _db = Database::open("example.typra")?;
+    let mut db = Database::open("example.typra")?;
+    let _ = db.register_collection(
+        "books",
+        vec![FieldDef {
+            path: FieldPath::new([Cow::Borrowed("title")])?,
+            ty: Type::String,
+        }],
+    )?;
     Ok(())
 }
 ```

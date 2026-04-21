@@ -131,15 +131,16 @@ maturin publish
 
 Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.toml`.
 
-## Next implementation steps
+## Next implementation steps (high level)
 
-1. Schema metadata types in `typra-core`.
-2. Append-only segment writer/reader.
-3. Validation engine.
-4. Collection registration and insert/get APIs.
-5. Wire Python module around core operations.
+1. Record encoding and insert/get APIs (`0.5.x` milestone).
+2. Validation engine and constraint errors (`0.6.x`).
+3. Secondary indexes and simple filters (`0.7.x`).
+4. Transactions and crash-safe checkpoints (`0.8.x`).
 
-### File format notes (0.3.x)
+See [`ROADMAP.md`](../ROADMAP.md) for the full release breakdown.
+
+### File format notes (0.3.x–0.4.x)
 
 Starting with the `0.3.x` on-disk format work, the database file layout includes reserved **Superblock A/B** regions (for crash-safe metadata publication later) and checksummed **append-only segments**. This scaffolding is still internal, but it changes on-disk compatibility behavior:
 
@@ -147,3 +148,5 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 - Other `0.2` layouts are rejected rather than guessed, to avoid corrupting unknown data.
 
 `0.3.0` also adds minimal **manifest publication**: a tiny MANIFEST payload is appended as a checksummed segment, then its pointer is published by alternating Superblock A/B with `generation+1`.
+
+**`0.4.0`** adds a persisted **schema catalog**: catalog events are written as **`SegmentType::Schema`** payloads and **replayed on open**. New databases write format **0.4** headers; existing **0.3** files are upgraded **lazily** to **0.4** on the first catalog write (see [`CHANGELOG.md`](../CHANGELOG.md)).

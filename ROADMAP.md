@@ -32,30 +32,18 @@ Primary design references:
 - [`docs/05_query_planner_and_execution_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/05_query_planner_and_execution_spec.md)
 - [`docs/typed_embedded_db_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/typed_embedded_db_spec.md)
 
-## Status snapshot (0.2.x)
+## Status snapshot (current: 0.4.x)
 
-Delivered in `0.2.0`:
-- **Rust**:
-  - `Database::open(path)` creates/opens a file and enforces a minimal Typra file header (`TDB0` + format version).
-  - Expanded `DbError` with format/schema error categories (enables “not a typra file” vs IO failures).
-  - Initial schema metadata scaffolding (`CollectionSchema`, `FieldPath`, basic `Type` enum).
-  - Minimal internal store boundary (`Store` + `FileStore`) to separate IO from higher-level logic.
-  - Runnable example: `cargo run -p typra --example open`.
-- **Docs**: user guides added under `docs/` (getting started, concepts, models/collections, storage modes).
-- **Python**: native extension module `typra` with `__version__` (API is intentionally minimal in `0.2.0`).
-- **CI / coverage**:
-  - CI runs Rust + Python jobs on Linux/macOS/Windows and publishes coverage reports as artifacts.
-  - Coverage is reported (and uploaded), but does not fail CI based on percentage.
+**Implemented today:**
+- **Rust**: `Database::open`; persisted **schema catalog** via **`register_collection`** / **`register_schema_version`** ( **`SegmentType::Schema`** payloads); `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format **0.4** with lazy **0.3 → 0.4** header bump on first catalog write.
+- **Python**: `Database.open`, **`register_collection`**, **`collection_names()`**; **`fields_json`** field descriptors ([`python/typra/README.md`](/Users/odosmatthews/Documents/coding/typra/python/typra/README.md)).
+- **CI / coverage**: multi-OS Rust and Python CI; coverage artifacts (no percentage gate).
 
-Non-goals already in place for `0.2.x`:
-- No persisted schema catalog, record storage, indexes, validation engine, query engine, or transactions yet.
+**Not yet:** record storage, indexes, validation-on-write, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
 
-Shipped in `0.3.0`:
-- **Rust / on-disk format**:
-  - Reserve **Superblock A/B** regions after the file header and select the newest valid generation on open.
-  - Add **checksummed append-only segments** with a minimal segment header and an internal segment scan utility.
-  - Support a safe **0.2 → 0.3** upgrade path for header-only `0.2` files.
-  - Append a tiny **MANIFEST** segment and **publish its pointer** by alternating superblocks (generation+1), with scan fallback when the manifest pointer is invalid.
+**Earlier releases** (details in [`CHANGELOG.md`](/Users/odosmatthews/Documents/coding/typra/CHANGELOG.md)):
+- **`0.3.0`**: Superblock A/B, append-only segments, manifest publication, safe **0.2 → 0.3** upgrade for header-only `0.2` files.
+- **`0.2.0`**: File header + format recognition, schema metadata scaffolding, `Store` / `FileStore`, runnable `open` example, Python `__version__`.
 
 ## Roadmap by release
 
@@ -113,7 +101,7 @@ Design anchor: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/
   - Backwards compatibility behavior documented for `0.2.x` files.
   - Decoder hardening: malformed segments/headers never panic (and are fuzz-tested once the surface exists).
 
-**Implemented so far on `main` (0.3.0 WIP):**
+**Shipped in 0.3.0 (implemented):**
 - **Format + open behavior**
   - On-disk format minor bumped to **0.3** to reserve superblock space and enable segment framing.
   - Safe **0.2 → 0.3** upgrade path for **header-only** `0.2` files; `0.2` files with extra bytes are rejected to avoid corrupting unknown layouts.

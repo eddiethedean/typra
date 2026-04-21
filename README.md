@@ -51,9 +51,9 @@ Many items below are **goals**; check the changelog for what each release actual
 
 ---
 
-## Python (preview)
+## Python
 
-The `typra` package on PyPI exposes the native extension. **0.4.0** adds `Database.open`, `register_collection(name, fields_json)`, and `collection_names()`. **`fields_json`** is a JSON array of field descriptors (see [`python/typra/README.md`](python/typra/README.md)).
+The `typra` package on PyPI exposes the native extension. **0.4.0** includes `Database.open`, `register_collection(name, fields_json)`, and `collection_names()`. **`fields_json`** is a JSON array of field descriptors (see [`python/typra/README.md`](python/typra/README.md)).
 
 - **Python support**: **3.9+**
 - **Wheels**: **`cp39-abi3`** (one wheel per platform for CPython 3.9+)

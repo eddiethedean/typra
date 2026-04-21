@@ -4,13 +4,11 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 ## Current status (important)
 
-As of **v0.3.x**, Typra is still shipping **foundational pieces**:
+As of **v0.4.x**, Typra ships a **persisted schema catalog** (append-only schema segments) alongside the earlier on-disk foundations:
 
-- **Rust**: `Database::open(path)` and `#[derive(DbModel)]` exist.
-- **Python**: the `typra` module currently exposes `__version__` only.
-- Storage, queries, validation, schema evolution, and rich APIs are under active development.
-
-For the evolving plan, see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md).
+- **Rust**: `Database::open`, **`register_collection`** / **`register_schema_version`**, and `#[derive(DbModel)]`.
+- **Python**: `typra.Database.open`, **`register_collection(name, fields_json)`**, **`collection_names()`**, and `__version__`.
+- **Not yet**: record insert/get, queries, validation-on-write, and indexes—see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md).
 
 ## Install (Rust)
 
@@ -18,16 +16,21 @@ In your application `Cargo.toml`:
 
 ```toml
 [dependencies]
-typra = "0.3"
+typra = "0.4"
 ```
 
 ## Minimal Rust example
 
-This compiles today, but does not yet write records (it only creates/opens a Typra file and validates the header).
+This opens (or creates) a database file and **registers a collection** in the persisted catalog. Record insert/get is not available yet.
 
 ```rust
+use std::borrow::Cow;
+
 use typra::prelude::*;
+use typra::schema::FieldPath;
 use typra::DbModel;
+use typra::FieldDef;
+use typra::Type;
 
 #[derive(DbModel)]
 struct Book {
@@ -35,7 +38,14 @@ struct Book {
 }
 
 fn main() -> Result<(), DbError> {
-    let _db = Database::open("example.typra")?;
+    let mut db = Database::open("example.typra")?;
+    let _ = db.register_collection(
+        "books",
+        vec![FieldDef {
+            path: FieldPath::new([Cow::Borrowed("title")])?,
+            ty: Type::String,
+        }],
+    )?;
     Ok(())
 }
 ```
@@ -48,10 +58,11 @@ Typra also includes a runnable example program in the workspace:
 cargo run -q -p typra --example open
 ```
 
-Output:
+Output (matches `cargo run -p typra --example open`):
 
 ```text
 opened: example.typra
+registered collection id=1 version=1
 ```
 
 ## Install (Python)
