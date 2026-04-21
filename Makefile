@@ -50,7 +50,7 @@ ruff-check:
 	$(RUFF) check python
 
 ty-check:
-	$(TY) check python
+	env -u VIRTUAL_ENV $(TY) check --python $(PYTHON) --python-version 3.12 python
 
 check-rust: rust-fmt-check rust-clippy rust-check rust-test
 

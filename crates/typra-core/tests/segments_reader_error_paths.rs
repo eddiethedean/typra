@@ -94,4 +94,3 @@ fn scan_segments_returns_error_when_read_fails_in_crc_loop() {
 
     assert!(scan_segments(&mut store, 128).is_err());
 }
-

@@ -140,4 +140,3 @@ fn publish_returns_error_when_sync_fails() {
     let res = append_manifest_and_publish(&mut store, 0);
     assert!(res.is_err());
 }
-
