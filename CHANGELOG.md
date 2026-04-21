@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`typra`**: Application-facing facade crate re-exporting `typra-core` and (by default) the `DbModel` derive via feature `derive`. Use `typra = "0.1"` in application `Cargo.toml`; depend on `typra-core` / `typra-derive` directly only when you need a slimmer dependency graph.
+
 ## [0.1.0] - 2026-04-21
 
 ### Added

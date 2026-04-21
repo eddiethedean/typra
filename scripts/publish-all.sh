@@ -60,6 +60,7 @@ cargo_publish_allow_duplicate() {
 echo "Publishing Rust crates to crates.io..."
 cargo_publish_allow_duplicate typra-core
 cargo_publish_allow_duplicate typra-derive
+cargo_publish_allow_duplicate typra
 cargo_publish_allow_duplicate typra-python
 
 echo "Publishing Python package to PyPI..."

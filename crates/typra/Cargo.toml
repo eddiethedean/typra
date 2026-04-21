@@ -1,0 +1,19 @@
+[package]
+name = "typra"
+description = "Typed embedded database for application data — user-facing facade over typra-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+
+[dependencies]
+typra-core.workspace = true
+typra-derive = { workspace = true, optional = true }
+
+[features]
+default = ["derive"]
+derive = ["dep:typra-derive"]
+
+[dev-dependencies]
+tempfile = "3"

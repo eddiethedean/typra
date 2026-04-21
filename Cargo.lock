@@ -367,6 +367,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "typra"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "typra-core",
+ "typra-derive",
+]
+
+[[package]]
 name = "typra-core"
 version = "0.1.0"
 dependencies = [

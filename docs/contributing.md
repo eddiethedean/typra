@@ -11,6 +11,7 @@ typra/
 ├── LICENSE
 ├── README.md
 ├── crates/             # Rust crates (crates.io)
+│   ├── typra/          # user-facing facade (`cargo add typra`)
 │   ├── typra-core/     # engine core and public API
 │   └── typra-derive/   # proc-macro helpers
 ├── python/             # Python packages (PyPI)
@@ -61,7 +62,7 @@ The tag **must** match `[workspace.package] version` in the root `Cargo.toml` (e
 
 ### crates.io (Rust)
 
-Only **`typra-core`** and **`typra-derive`** are ordinary Rust crates under `crates/`.
+Rust crates under `crates/` include **`typra`** (application facade), **`typra-core`**, and **`typra-derive`**. Publish **`typra-core`** and **`typra-derive`** before **`typra`**, since the facade depends on them.
 
 1. Log in: `cargo login` with an API token from [crates.io account settings](https://crates.io/settings/tokens).
 2. Optionally set `repository = "..."` under `[workspace.package]` in the root `Cargo.toml` (recommended).
@@ -73,6 +74,9 @@ cargo publish -p typra-core
 
 cargo publish -p typra-derive --dry-run
 cargo publish -p typra-derive
+
+cargo publish -p typra --dry-run
+cargo publish -p typra
 ```
 
 The **`typra-python`** Rust package (PyO3) is still a Cargo workspace member for versioning and `cargo check`, but it is **released to PyPI**, not treated as a primary “Rust crate” in the repo layout. To publish its sources to crates.io as well:

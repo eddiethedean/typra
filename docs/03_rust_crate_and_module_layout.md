@@ -331,6 +331,7 @@ For an MVP, you can start with fewer crates:
 ```text
 typra/
 ├── crates/
+│   ├── typra/          # application facade (depends on typra-core + typra-derive)
 │   ├── typra-core/
 │   └── typra-derive/
 └── python/

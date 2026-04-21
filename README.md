@@ -65,19 +65,30 @@ pip install "typra>=0.1.0,<0.2"
 
 ## Rust
 
-### Installation
+### Application crate (recommended)
+
+Use the **`typra`** crate — it re-exports the engine and enables `#[derive(DbModel)]` by default.
 
 ```toml
 [dependencies]
-typra-core = "0.1"
-typra-derive = "0.1"
+typra = "0.1"
 ```
+
+Disable the default `derive` feature if you only need the engine:
+
+```toml
+typra = { version = "0.1", default-features = false }
+```
+
+### Lower-level crates
+
+For a minimal dependency tree or out-of-tree macros, depend on **`typra-core`** and **`typra-derive`** directly (same versions as the facade).
 
 ### Example (compiles on 0.1.x)
 
 ```rust
-use typra_core::prelude::*;
-use typra_derive::DbModel;
+use typra::prelude::*;
+use typra::DbModel;
 
 #[derive(DbModel)]
 struct Book {
@@ -105,7 +116,7 @@ Field attributes (`#[db(primary)]`, etc.) and enums are **not** implemented in 0
 
 ## Development
 
-Rust crates live under `crates/`; PyPI packages under `python/` ([`python/README.md`](python/README.md)). See [docs/contributing.md](docs/contributing.md) for layout, build commands, and publishing.
+Rust crates live under `crates/` (`typra` facade, `typra-core`, `typra-derive`); PyPI packages under `python/` ([`python/README.md`](python/README.md)). See [docs/contributing.md](docs/contributing.md) for layout, build commands, and publishing.
 
 Design specs live under [docs/](docs/).
 

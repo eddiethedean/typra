@@ -2,11 +2,13 @@
 members = [
     "crates/typra-core",
     "crates/typra-derive",
+    "crates/typra",
     "python/typra",
 ]
 resolver = "2"
 
 [workspace.dependencies]
+typra = { path = "crates/typra", version = "0.1.0" }
 typra-core = { path = "crates/typra-core", version = "0.1.0" }
 typra-derive = { path = "crates/typra-derive", version = "0.1.0" }
 
