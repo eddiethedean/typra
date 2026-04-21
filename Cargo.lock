@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "typra"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tempfile",
  "typra-core",
@@ -377,14 +377,14 @@ dependencies = [
 
 [[package]]
 name = "typra-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "typra-derive"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "quote",
  "syn",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "typra-python"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pyo3",
 ]

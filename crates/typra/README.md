@@ -2,13 +2,13 @@
 
 User-facing facade crate for **Typra**, a typed embedded database.
 
-**Status (0.1.0):** `Database::open` exists and `#[derive(DbModel)]` is available. Storage, queries, validation, and schema evolution are not implemented yet.
+**Status (0.2.0):** `Database::open` exists and `#[derive(DbModel)]` is available. Storage, queries, validation, and schema evolution are not implemented yet.
 
 ### Install
 
 ```toml
 [dependencies]
-typra = "0.1"
+typra = "0.2"
 ```
 
 ### Example

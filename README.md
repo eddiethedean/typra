@@ -5,7 +5,7 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is always correct by design.
 
-**Status (v0.1.0):** First semver release. The Rust crates expose `Database::open` and a `DbModel` derive; the storage engine and higher-level Python APIs are still **under development**. See [CHANGELOG.md](CHANGELOG.md).
+**Status (v0.2.0):** Early semver releases. The Rust crates expose `Database::open` and a `DbModel` derive; the storage engine and higher-level Python APIs are still **under development**. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -49,7 +49,7 @@ Many items below are **goals**; check the changelog for what each release actual
 
 ## Python (preview)
 
-The `typra` package on PyPI exposes the native extension; **0.1.0** includes `__version__` only—higher-level APIs will land in later releases.
+The `typra` package on PyPI exposes the native extension; **0.2.0** includes `__version__` only—higher-level APIs will land in later releases.
 
 - **Python support**: **3.9+**
 - **Wheels**: **`cp39-abi3`** (one wheel per platform for CPython 3.9+)
@@ -61,7 +61,7 @@ print(typra.__version__)
 ```
 
 ```bash
-pip install "typra>=0.1.0,<0.2"
+pip install "typra>=0.2.0,<0.3"
 ```
 
 ---
@@ -74,20 +74,20 @@ Use the **`typra`** crate — it re-exports the engine and enables `#[derive(DbM
 
 ```toml
 [dependencies]
-typra = "0.1"
+typra = "0.2"
 ```
 
 Disable the default `derive` feature if you only need the engine:
 
 ```toml
-typra = { version = "0.1", default-features = false }
+typra = { version = "0.2", default-features = false }
 ```
 
 ### Lower-level crates
 
 For a minimal dependency tree or out-of-tree macros, depend on **`typra-core`** and **`typra-derive`** directly (same versions as the facade).
 
-### Example (compiles on 0.1.x)
+### Example (compiles on 0.2.x)
 
 ```rust
 use typra::prelude::*;
@@ -107,7 +107,7 @@ fn main() -> Result<(), DbError> {
 }
 ```
 
-Field attributes (`#[db(primary)]`, etc.) and enums are **not** implemented in 0.1.0; they remain design targets.
+Field attributes (`#[db(primary)]`, etc.) and enums are **not** implemented in 0.2.0; they remain design targets.
 
 ---
 

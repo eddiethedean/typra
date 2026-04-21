@@ -38,7 +38,7 @@ CI runs the same Rust and Python checks via [`.github/workflows/ci.yml`](../.git
 
 ## Versioning
 
-Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.1.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.2.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Publishing
 

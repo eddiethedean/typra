@@ -2,7 +2,7 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.1.0` (see [`CHANGELOG.md`](/Users/odosmatthews/Documents/coding/typra/CHANGELOG.md))
+- **Current release**: `0.2.0` (see [`CHANGELOG.md`](/Users/odosmatthews/Documents/coding/typra/CHANGELOG.md))
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -32,13 +32,19 @@ Primary design references:
 - [`docs/05_query_planner_and_execution_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/05_query_planner_and_execution_spec.md)
 - [`docs/typed_embedded_db_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/typed_embedded_db_spec.md)
 
-## Status snapshot (0.1.x)
+## Status snapshot (0.2.x)
 
-Delivered in `0.1.0`:
-- **Rust**: `Database::open(path)` creates/opens a file; `DbError`; `DbModel` marker trait; facade crate `typra`; derive `#[derive(DbModel)]`.
-- **Python**: native extension module `typra` with `__version__` (API is intentionally minimal in `0.1.0`).
+Delivered in `0.2.0`:
+- **Rust**:
+  - `Database::open(path)` creates/opens a file and enforces a minimal Typra file header (`TDB0` + format version).
+  - Expanded `DbError` with format/schema error categories (enables “not a typra file” vs IO failures).
+  - Initial schema metadata scaffolding (`CollectionSchema`, `FieldPath`, basic `Type` enum).
+  - Minimal internal store boundary (`Store` + `FileStore`) to separate IO from higher-level logic.
+  - Runnable example: `cargo run -p typra --example open`.
+- **Docs**: user guides added under `docs/` (getting started, concepts, models/collections, storage modes).
+- **Python**: native extension module `typra` with `__version__` (API is intentionally minimal in `0.2.0`).
 
-Non-goals already in place for `0.1.x`:
+Non-goals already in place for `0.2.x`:
 - No persisted schema catalog, record storage, indexes, validation engine, query engine, or transactions yet.
 
 ## Roadmap by release
@@ -48,7 +54,7 @@ Each milestone lists:
 - **Python**: what lands in `python/typra` (bindings and (later) pure-Python helpers)
 - **Definition of done**: tests, docs, and behavioral guarantees
 
-### 0.2.0 — On-disk foundation (header + minimal manifest) and schema metadata types
+### 0.2.0 — On-disk foundation (header + format recognition) and schema metadata types
 
 **Goal**: move from “file exists” to “file has a recognized format,” plus internal types to represent schemas.
 
@@ -65,6 +71,17 @@ Each milestone lists:
   - New/old file open behaviors are tested (new file creation writes header; existing file validates header).
   - Format versioning strategy documented (what changes imply major/minor bump).
   - Crash-safety story for the header/superblock approach is explicitly stated (even if not fully implemented yet).
+
+**Shipped in 0.2.0 (implemented):**
+- **File header + format recognition** (new file writes header; existing file validates; truncated/non-typra errors).
+- **Error taxonomy**: `DbError::Format` / `DbError::Schema`.
+- **Schema metadata scaffolding**: `CollectionSchema`, `FieldPath`, `Type`, etc.
+- **Internal storage boundary**: `Store` + `FileStore` used by `Database::open`.
+- **Tests** covering header creation/validation/corruption, decode errors, and schema path edge cases.
+- **Docs**: `ROADMAP.md` + user guides under `docs/`.
+
+**Deferred from 0.2.x scope (still planned):**
+- “Minimal manifest / superblocks / checkpoints” durability machinery (lands with later storage milestones).
 
 Design anchor: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
 
@@ -170,6 +187,7 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](/Users
   - Introduce a first query builder API (non-SQL) aligned to the spec (`where(...)`, `limit(...)`, `all()`).
   - Ensure nested-path querying feels natural in Python.
   - Add a Python-facing story for subset models (e.g. defining a model with fewer fields than the registered collection) so large/nested collections are less cumbersome to work with.
+  - Define the **DB-API / SQLAlchemy compatibility strategy** (design + scope), even if implementation lands later.
 - **Definition of done**
   - Index correctness tests (unique constraint enforcement, index lookup matches scan).
   - Performance sanity checks/benchmarks for `get` and indexed equality.
@@ -187,9 +205,11 @@ Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec
   - Implement checkpointing / manifest updates using a crash-safe approach (A/B superblock strategy).
   - Recovery on open: choose last valid checkpoint; replay or validate trailing segments.
   - Introduce a real **buffer pool / pager** for the file-backed database so data can be pulled into RAM on demand and written back when dirty (hybrid buffered execution groundwork).
+  - Add an **async-capable storage path** (initially internal/optional): make the IO boundary and buffer pool design compatible with true async IO and background flush tasks.
 - **Python**
   - Expose `with db.transaction(): ...` (or similar) for batching writes.
   - Ensure exceptions correctly abort/rollback the in-progress transaction.
+  - Start a Python **DB-API 2.0** compatibility layer (PEP 249) behind an explicit opt-in module (e.g. `typra.dbapi`) once transaction boundaries exist.
 - **Definition of done**
   - Crash-simulation tests (kill mid-write / partial segment) with recovery correctness.
   - Document transaction semantics and concurrency expectations for v1.
@@ -233,11 +253,17 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](/Users/o
     - in-memory (ephemeral) vs in-memory-with-snapshot (explicit save/load)
     - on-disk (durable)
     - hybrid/streaming (what is guaranteed to work beyond RAM, and what may still require memory)
+  - Decide and document **true async support**:
+    - Whether the public API is **sync-only**, **async-only**, or **dual** (sync core + async wrappers).
+    - If async is supported, define the runtime policy (e.g. `tokio` behind a feature, runtime-agnostic traits, etc.).
 - **Python**
   - Stabilize the Python API surface and type hints/stubs.
   - Guarantee compatibility policy for the Python package vs the underlying file format.
   - Provide “good defaults” for local app usage patterns.
   - Document streaming/hybrid behavior and trade-offs (performance, temporary disk usage, determinism).
+  - Provide a documented, tested **DB-API 2.0 (PEP 249)** compatibility module suitable for SQLAlchemy-style usage.
+    - Note: this does not imply “full SQL support”; it defines a connection/cursor interface and parameter binding semantics.
+    - If SQLAlchemy support is desired, evaluate an official integration path (e.g. a SQLAlchemy dialect or shim) once query capabilities are sufficient.
 - **Definition of done**
   - End-to-end story works: register schema → insert → get/query → reopen → migrate → compact.
   - Documentation: “Getting Started”, “Schema”, “Queries”, “Migrations”, “Operational tooling”, “Failure modes”.
@@ -256,6 +282,9 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](/Users/o
 - **DX**
   - Make errors structured and actionable (field paths, expected/actual, hints).
   - Keep Rust and Python behavior consistent wherever possible.
+- **Async**
+  - Keep storage IO and execution internals structured so async can be added without a rewrite (background flush, streaming reads).
+  - Prefer an **optional** async story initially (feature-gated) until the core sync semantics are stable.
 
 ## Non-goals (for 1.0 unless explicitly revisited)
 
