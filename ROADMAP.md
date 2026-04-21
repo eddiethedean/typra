@@ -43,6 +43,9 @@ Delivered in `0.2.0`:
   - Runnable example: `cargo run -p typra --example open`.
 - **Docs**: user guides added under `docs/` (getting started, concepts, models/collections, storage modes).
 - **Python**: native extension module `typra` with `__version__` (API is intentionally minimal in `0.2.0`).
+- **CI / coverage**:
+  - CI runs Rust + Python jobs on Linux/macOS/Windows and publishes coverage reports as artifacts.
+  - Coverage is reported (and uploaded), but does not fail CI based on percentage.
 
 Non-goals already in place for `0.2.x`:
 - No persisted schema catalog, record storage, indexes, validation engine, query engine, or transactions yet.
@@ -61,7 +64,6 @@ Each milestone lists:
 - **Rust**
   - Define the **file header** (magic/version/feature flags) and validate it on open.
   - Introduce core schema metadata structures (collection IDs, field paths/types, version IDs).
-  - Add an internal “catalog record” model (even if not yet fully persisted).
   - Expand error taxonomy beyond `Io` / `NotImplemented` as needed for format/schema issues.
   - Introduce an internal storage abstraction boundary (e.g. a “backing store” interface) so future **in-memory vs on-disk** can share the same logical engine code.
 - **Python**
@@ -79,6 +81,7 @@ Each milestone lists:
 - **Internal storage boundary**: `Store` + `FileStore` used by `Database::open`.
 - **Tests** covering header creation/validation/corruption, decode errors, and schema path edge cases.
 - **Docs**: `ROADMAP.md` + user guides under `docs/`.
+- **CI / coverage**: multi-OS Rust+Python CI plus a coverage job that uploads artifacts (no percentage gate).
 
 **Deferred from 0.2.x scope (still planned):**
 - “Minimal manifest / superblocks / checkpoints” durability machinery (lands with later storage milestones).
