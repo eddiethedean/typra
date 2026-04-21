@@ -295,6 +295,18 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](/Users/o
 - **Async**
   - Keep storage IO and execution internals structured so async can be added without a rewrite (background flush, streaming reads).
   - Prefer an **optional** async story initially (feature-gated) until the core sync semantics are stable.
+- **Multi-language SDKs**
+  - Goal: make Typra accessible from other application languages while sharing the Rust core.
+  - Primary targets:
+    - **TypeScript/Node** (Electron/Tauri apps, CLIs)
+    - **C#/.NET** (desktop apps, services)
+    - **Java/JVM** (desktop apps, backend services)
+  - Binding strategy (preferred): generate language bindings from a stable Rust FFI surface (e.g. via UniFFI), and keep API parity tests so behavior matches Rust/Python.
+  - Packaging and DX:
+    - TypeScript: npm package with prebuilt binaries per platform + types
+    - .NET: NuGet package with native binaries + idiomatic API
+    - Java: Maven/Gradle artifact with JNI/JNA layer + idiomatic API
+  - Non-goal for early releases: full SQL compatibility; the SDKs should primarily expose the model-first API and (optionally) DB-API/SQLAlchemy-style shims where appropriate.
 
 ## Non-goals (for 1.0 unless explicitly revisited)
 
