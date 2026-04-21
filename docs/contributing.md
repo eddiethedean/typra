@@ -61,12 +61,12 @@ In **Cursor**, add these under workspace or user settings so the terminal and ag
 
 ### GitHub Actions
 
-On push of a tag matching `v*.*.*` (e.g. `v0.1.0`), [`.github/workflows/publish.yml`](../.github/workflows/publish.yml) runs `./scripts/publish-all.sh`. Configure repository **Secrets**:
+On push of a tag matching `v*.*.*` (e.g. `v0.1.0`), [`.github/workflows/publish.yml`](../.github/workflows/publish.yml) asserts the tag matches `[workspace.package] version`, runs `./scripts/publish-crates.sh`, then builds and uploads **sdist + wheels** with [maturin-action](https://github.com/PyO3/maturin-action). Python wheels use **PyO3’s stable ABI** (`abi3`, `cp39-abi3`): **one wheel per platform** (manylinux x86_64/aarch64, musllinux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64/arm64), compatible with **CPython 3.9+**. Each upload uses **`twine upload --skip-existing`**. Configure repository **Secrets**:
 
 | Secret | Purpose |
 |--------|---------|
 | `CARGO_REGISTRY_TOKEN` | crates.io API token |
-| `PYPI_API_TOKEN` | PyPI API token (mapped to `MATURIN_PYPI_TOKEN` in the workflow) |
+| `PYPI_API_TOKEN` | PyPI API token (used as `TWINE_PASSWORD` with `TWINE_USERNAME=__token__`) |
 
 The tag **must** match `[workspace.package] version` in the root `Cargo.toml` (e.g. tag `v0.1.0` and `version = "0.1.0"`).
 

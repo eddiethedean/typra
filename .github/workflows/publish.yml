@@ -1,24 +1,24 @@
+# Tag-driven release: crates.io then PyPI. Wheels use PyO3 abi3 (cp39-abi3): one wheel per platform
+# for CPython 3.9+, built with a single minimum interpreter per target (see maturin/PyO3 limited API).
 name: Publish
 
 on:
   push:
     tags:
-      # e.g. v0.1.0 — must match [workspace.package] version in Cargo.toml
       - "v[0-9]*.[0-9]*.[0-9]*"
 
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+permissions:
+  contents: read
 
+jobs:
+  assert-tag:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Assert tag matches workspace version
         run: |
@@ -31,23 +31,222 @@ jobs:
           fi
           echo "Publishing version $TAG_VER"
 
+  publish-crates:
+    runs-on: ubuntu-latest
+    needs: [assert-tag]
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install system deps (PyO3 / maturin)
-        run: sudo apt-get update && sudo apt-get install -y python3-dev pkg-config
-
-      - name: Install maturin
-        run: pip install "maturin>=1.5,<2"
-
-      - name: Publish to crates.io and PyPI
+      - name: Publish crates to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-          MATURIN_NON_INTERACTIVE: "true"
-        run: ./scripts/publish-all.sh
+        run: ./scripts/publish-crates.sh
+
+  # sdist + manylinux x86_64 (one cp39-abi3 wheel).
+  publish-pypi-manylinux-x86_64:
+    name: PyPI manylinux x86_64 + sdist
+    runs-on: ubuntu-latest
+    needs: [publish-crates]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels and sdist (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python/typra
+          target: x86_64-unknown-linux-gnu
+          command: build
+          args: >-
+            --release --sdist --compatibility pypi -o ../../dist
+            -i python3.9
+          manylinux: "2_17"
+
+      - name: Publish to PyPI (twine)
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          python -m twine upload --skip-existing dist/typra-*.whl dist/typra-*.tar.gz
+
+  publish-pypi-manylinux-aarch64:
+    name: PyPI manylinux aarch64
+    runs-on: ubuntu-24.04-arm
+    needs: [publish-crates]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python/typra
+          target: aarch64-unknown-linux-gnu
+          command: build
+          args: >-
+            --release --compatibility pypi -o ../../dist
+            -i python3.9
+          manylinux: "2_28"
+
+      - name: Publish to PyPI (twine)
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          python -m twine upload --skip-existing dist/typra-*.whl
+
+  publish-pypi-mac:
+    name: PyPI macOS ${{ matrix.target }}
+    runs-on: macos-latest
+    needs: [publish-crates]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python/typra
+          target: ${{ matrix.target }}
+          command: build
+          args: >-
+            --release --compatibility pypi
+            -i 3.9 -o ../../dist
+
+      - name: Publish to PyPI (twine)
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          python -m twine upload --skip-existing dist/typra-*.whl
+
+  publish-pypi-musllinux-x86_64:
+    name: PyPI musllinux x86_64
+    runs-on: ubuntu-latest
+    needs: [publish-crates]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python/typra
+          target: x86_64-unknown-linux-musl
+          command: build
+          args: >-
+            --release --zig --compatibility musllinux_1_2 -o ../../dist
+            -i python3.9
+
+      - name: Publish to PyPI (twine)
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          python -m twine upload --skip-existing dist/typra-*.whl
+
+  publish-pypi-musllinux-aarch64:
+    name: PyPI musllinux aarch64
+    runs-on: ubuntu-24.04-arm
+    needs: [publish-crates]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python/typra
+          target: aarch64-unknown-linux-musl
+          command: build
+          args: >-
+            --release --zig --compatibility musllinux_1_2 -o ../../dist
+            -i python3.9
+
+      - name: Publish to PyPI (twine)
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          python -m twine upload --skip-existing dist/typra-*.whl
+
+  publish-pypi-windows-x86_64:
+    name: PyPI Windows x86_64
+    runs-on: windows-latest
+    needs: [publish-crates]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python/typra
+          target: x86_64-pc-windows-msvc
+          command: build
+          args: --release --compatibility pypi -o ../../dist
+
+      - name: Publish to PyPI (twine)
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          python -m twine upload --skip-existing dist/typra-*.whl
+
+  # GHA does not ship CPython 3.9 for Windows ARM64; abi3 wheel still supports 3.9+ on that platform.
+  publish-pypi-windows-arm64:
+    name: PyPI Windows aarch64
+    runs-on: windows-11-arm
+    needs: [publish-crates]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: python/typra
+          target: aarch64-pc-windows-msvc
+          command: build
+          args: --release --compatibility pypi -o ../../dist
+
+      - name: Publish to PyPI (twine)
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          python -m twine upload --skip-existing dist/typra-*.whl

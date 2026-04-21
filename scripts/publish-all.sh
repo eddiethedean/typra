@@ -7,19 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# --- crates.io -----------------------------------------------------------
-# Cargo only reads CARGO_REGISTRY_TOKEN (see `cargo login` / crates.io API tokens).
-if [[ -z "${CARGO_REGISTRY_TOKEN:-}" && -n "${CRATES_IO_TOKEN:-}" ]]; then
-  export CARGO_REGISTRY_TOKEN="$CRATES_IO_TOKEN"
-fi
-if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
-  echo "error: set CARGO_REGISTRY_TOKEN (or CRATES_IO_TOKEN) for crates.io" >&2
-  exit 1
-fi
-
 # --- PyPI (maturin) ------------------------------------------------------
-# Prefer MATURIN_PYPI_TOKEN. If you use twine-style API tokens:
-#   TWINE_USERNAME=__token__  TWINE_PASSWORD=pypi-...
 if [[ -z "${MATURIN_PYPI_TOKEN:-}" ]]; then
   if [[ "${TWINE_USERNAME:-}" == "__token__" && -n "${TWINE_PASSWORD:-}" ]]; then
     export MATURIN_PYPI_TOKEN="$TWINE_PASSWORD"
@@ -34,36 +22,11 @@ if [[ -z "${MATURIN_PYPI_TOKEN:-}" ]]; then
   exit 1
 fi
 
-# Maturin expects "true" or "false", not 1/0.
 export MATURIN_NON_INTERACTIVE="${MATURIN_NON_INTERACTIVE:-true}"
 
-# Idempotent re-runs (e.g. re-pushed tag): crates.io rejects duplicate versions.
-cargo_publish_allow_duplicate() {
-  local pkg=$1
-  local out ec
-  set +e
-  out=$(cargo publish -p "$pkg" 2>&1)
-  ec=$?
-  set -e
-  if [[ "$ec" -eq 0 ]]; then
-    printf '%s\n' "$out"
-    return 0
-  fi
-  if printf '%s\n' "$out" | grep -q 'already exists'; then
-    echo "Note: $pkg is already on crates.io; skipping." >&2
-    return 0
-  fi
-  printf '%s\n' "$out" >&2
-  return "$ec"
-}
+"$ROOT/scripts/publish-crates.sh"
 
-echo "Publishing Rust crates to crates.io..."
-cargo_publish_allow_duplicate typra-core
-cargo_publish_allow_duplicate typra-derive
-cargo_publish_allow_duplicate typra
-cargo_publish_allow_duplicate typra-python
-
-echo "Publishing Python package to PyPI..."
+echo "Publishing Python package to PyPI (current platform)..."
 (cd "$ROOT/python/typra" && maturin publish --skip-existing)
 
 echo "Done."
