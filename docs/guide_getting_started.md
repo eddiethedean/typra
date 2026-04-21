@@ -4,7 +4,7 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 ## Current status (important)
 
-As of **v0.2.x**, Typra is still shipping **foundational pieces**:
+As of **v0.3.x**, Typra is still shipping **foundational pieces**:
 
 - **Rust**: `Database::open(path)` and `#[derive(DbModel)]` exist.
 - **Python**: the `typra` module currently exposes `__version__` only.
@@ -18,7 +18,7 @@ In your application `Cargo.toml`:
 
 ```toml
 [dependencies]
-typra = "0.2"
+typra = "0.3"
 ```
 
 ## Minimal Rust example
@@ -57,7 +57,7 @@ opened: example.typra
 ## Install (Python)
 
 ```bash
-pip install "typra>=0.2.0,<0.3"
+pip install "typra>=0.3.0,<0.4"
 ```
 
 ## Minimal Python example
@@ -85,7 +85,7 @@ python -c "import typra; print(typra.__version__)"
 Output:
 
 ```text
-0.2.0
+0.3.0
 ```
 
 ## Development quickstart (repo contributors)

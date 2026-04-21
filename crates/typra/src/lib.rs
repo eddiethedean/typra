@@ -5,7 +5,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! typra = "0.2"
+//! typra = "0.3"
 //! ```
 //!
 //! For lower-level control, depend on [`typra-core`] and [`typra-derive`] directly.

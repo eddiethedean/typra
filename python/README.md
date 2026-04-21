@@ -18,9 +18,11 @@ Pure Python modules (e.g. helpers, type stubs) can be added under `typra/` as th
 From the repo root, use a virtualenv, build/install the extension in editable mode, then run **pytest** (tests live under `typra/tests/`):
 
 ```bash
-python -m venv .venv
+uv venv .venv --python 3.12
 source .venv/bin/activate
-pip install maturin pytest
+python -m ensurepip --upgrade
+python -m pip install -U pip
+python -m pip install maturin pytest
 cd python/typra
 maturin develop --release
 pytest -v
