@@ -145,3 +145,5 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 
 - A header-only `0.2` file can be upgraded in-place to the `0.3` layout.
 - Other `0.2` layouts are rejected rather than guessed, to avoid corrupting unknown data.
+
+`0.3.0` also adds minimal **manifest publication**: a tiny MANIFEST payload is appended as a checksummed segment, then its pointer is published by alternating Superblock A/B with `generation+1`.

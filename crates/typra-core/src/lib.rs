@@ -3,6 +3,8 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod file_format;
+pub mod manifest;
+pub mod publish;
 pub mod schema;
 pub mod segments;
 pub mod storage;

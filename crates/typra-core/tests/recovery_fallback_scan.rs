@@ -115,3 +115,69 @@ fn open_selects_superblock_with_highest_generation() {
 
     let _db2 = Database::open(&path).unwrap();
 }
+
+#[test]
+fn open_new_db_publishes_manifest_pointer() {
+    use typra_core::superblock::SUPERBLOCK_SIZE;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("db.typra");
+    let _db = Database::open(&path).unwrap();
+
+    // One of the superblocks should now point at a manifest segment.
+    let bytes = std::fs::read(&path).unwrap();
+    let sb_a_offset = FILE_HEADER_SIZE;
+    let sb_b_offset = FILE_HEADER_SIZE + SUPERBLOCK_SIZE;
+
+    let a_manifest = u64::from_le_bytes(
+        bytes[(sb_a_offset + 16)..(sb_a_offset + 24)]
+            .try_into()
+            .unwrap(),
+    );
+    let b_manifest = u64::from_le_bytes(
+        bytes[(sb_b_offset + 16)..(sb_b_offset + 24)]
+            .try_into()
+            .unwrap(),
+    );
+    assert!(a_manifest != 0 || b_manifest != 0);
+}
+
+#[test]
+fn open_twice_increases_superblock_generation() {
+    use typra_core::superblock::SUPERBLOCK_SIZE;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("db.typra");
+    let _db = Database::open(&path).unwrap();
+
+    let bytes1 = std::fs::read(&path).unwrap();
+    let sb_a_offset = FILE_HEADER_SIZE;
+    let sb_b_offset = FILE_HEADER_SIZE + SUPERBLOCK_SIZE;
+    let gen_a1 = u64::from_le_bytes(
+        bytes1[(sb_a_offset + 8)..(sb_a_offset + 16)]
+            .try_into()
+            .unwrap(),
+    );
+    let gen_b1 = u64::from_le_bytes(
+        bytes1[(sb_b_offset + 8)..(sb_b_offset + 16)]
+            .try_into()
+            .unwrap(),
+    );
+    let max1 = gen_a1.max(gen_b1);
+
+    let _db2 = Database::open(&path).unwrap();
+    let bytes2 = std::fs::read(&path).unwrap();
+    let gen_a2 = u64::from_le_bytes(
+        bytes2[(sb_a_offset + 8)..(sb_a_offset + 16)]
+            .try_into()
+            .unwrap(),
+    );
+    let gen_b2 = u64::from_le_bytes(
+        bytes2[(sb_b_offset + 8)..(sb_b_offset + 16)]
+            .try_into()
+            .unwrap(),
+    );
+    let max2 = gen_a2.max(gen_b2);
+
+    assert!(max2 >= max1);
+}

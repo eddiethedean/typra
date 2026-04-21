@@ -50,11 +50,12 @@ Delivered in `0.2.0`:
 Non-goals already in place for `0.2.x`:
 - No persisted schema catalog, record storage, indexes, validation engine, query engine, or transactions yet.
 
-In progress for `0.3.0` (current work):
+Shipped in `0.3.0`:
 - **Rust / on-disk format**:
   - Reserve **Superblock A/B** regions after the file header and select the newest valid generation on open.
   - Add **checksummed append-only segments** with a minimal segment header and an internal segment scan utility.
   - Support a safe **0.2 → 0.3** upgrade path for header-only `0.2` files.
+  - Append a tiny **MANIFEST** segment and **publish its pointer** by alternating superblocks (generation+1), with scan fallback when the manifest pointer is invalid.
 
 ## Roadmap by release
 
@@ -127,8 +128,7 @@ Design anchor: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/
   - Updated guides/READMEs/contributing notes to reflect superblocks + checksummed segments and the compatibility story.
 
 **Remaining for 0.3.0 (to finish the milestone):**
-- Minimal **manifest/checkpoint pointer publication** (write a manifest segment and publish via next superblock generation) beyond the current scaffolding.
-- Optional: formalize a small `MANIFEST` payload struct (even if the payload is still “opaque bytes” for other segment types).
+- (none)
 
 Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
 

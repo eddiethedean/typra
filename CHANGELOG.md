@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **On-disk format scaffolding**: reserve dual superblocks (A/B) after the file header, plus checksummed append-only segments with a minimal segment header and an internal segment scan utility.
+- **Manifest publication**: append a tiny MANIFEST segment and publish its pointer by alternating superblocks (generation+1), with safe scan fallback when the manifest pointer is invalid.
 - **Compatibility**: safe `0.2` → `0.3` upgrade path for header-only `0.2` files.
 
 ## [0.2.0] - 2026-04-21
