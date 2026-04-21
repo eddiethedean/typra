@@ -1,0 +1,27 @@
+# Rust
+/target
+**/target
+**/*.rs.bk
+**/*.pdb
+
+# Cargo: keep lockfiles for apps/workspaces you ship; uncomment to ignore
+# Cargo.lock
+
+# Python / maturin
+/dist
+**/.venv
+**/.venv-*
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.eggs
+**/*.whl
+
+# macOS
+.DS_Store
+
+# Editors / tooling
+.idea/
+*.swp
+*.swo
+*~

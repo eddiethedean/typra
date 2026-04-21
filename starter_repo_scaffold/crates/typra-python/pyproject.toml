@@ -1,0 +1,21 @@
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "typra"
+dynamic = ["version"]
+description = "Python bindings for Typra, a typed embedded database."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "typra"

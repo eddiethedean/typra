@@ -1,0 +1,21 @@
+[package]
+name = "typra-python"
+description = "Python bindings (PyO3) for Typra, a typed embedded database."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+include = [
+    "Cargo.toml",
+    "README.md",
+    "pyproject.toml",
+    "build.rs",
+    "src/**/*",
+]
+
+[lib]
+name = "typra"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }

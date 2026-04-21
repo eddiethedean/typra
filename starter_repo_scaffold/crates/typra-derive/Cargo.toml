@@ -1,0 +1,10 @@
+[package]
+name = "typra-derive"
+description = "Proc-macro derives for Typra database models."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "../../README.md"
+
+[lib]
+proc-macro = true
