@@ -119,6 +119,7 @@ This runs:
 ## Where to go next
 
 - **Concepts**: [`docs/guide_concepts.md`](/Users/odosmatthews/Documents/coding/typra/docs/guide_concepts.md)
+- **Python** (`Database`, `fields_json`, errors): [`docs/guide_python.md`](/Users/odosmatthews/Documents/coding/typra/docs/guide_python.md)
 - **Models & collections** (naming + subset models): [`docs/guide_models_and_collections.md`](/Users/odosmatthews/Documents/coding/typra/docs/guide_models_and_collections.md)
 - **Storage modes** (disk vs in-memory vs hybrid/streaming): [`docs/guide_storage_modes.md`](/Users/odosmatthews/Documents/coding/typra/docs/guide_storage_modes.md)
 

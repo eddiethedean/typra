@@ -5,6 +5,8 @@
 
 Python bindings for **Typra**. **0.4.0** exposes `typra.__version__`, `Database.open`, `register_collection`, and `collection_names`. Record APIs will ship in later releases.
 
+**User guide:** [`docs/guide_python.md`](../../docs/guide_python.md) (installation, `fields_json` reference, errors, development).
+
 ## Install
 
 ```bash

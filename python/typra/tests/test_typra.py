@@ -13,6 +13,8 @@ def test_module_docstring() -> None:
     assert isinstance(typra.__doc__, str)
     assert len(typra.__doc__) > 0
     assert "Typra" in typra.__doc__
+    assert "Database" in typra.__doc__
+    assert "register_collection" in typra.__doc__
 
 
 def test_version_is_semver() -> None:

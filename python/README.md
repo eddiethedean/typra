@@ -6,7 +6,7 @@ PyPI distributions and Python-facing code live here, **separate from Rust crates
 |------|------|
 | **`typra/`** | The **`typra`** package on PyPI: maturin + PyO3 native extension (`import typra`). |
 
-As of **0.4.0**, the extension exposes **`typra.Database`**: **`open`**, **`register_collection(name, fields_json)`**, and **`collection_names()`** (see [`typra/README.md`](typra/README.md)). Record APIs are planned for later releases.
+As of **0.4.0**, the extension exposes **`typra.Database`**: **`open`**, **`register_collection(name, fields_json)`**, and **`collection_names()`** (see [`typra/README.md`](typra/README.md)). For a full API and `fields_json` reference, see **[`docs/guide_python.md`](../docs/guide_python.md)**. Record APIs are planned for later releases.
 
 Pure Python modules (e.g. helpers, type stubs) can be added under `typra/` as the project grows (see [maturin mixed projects](https://www.maturin.rs/project_layout.html)).
 

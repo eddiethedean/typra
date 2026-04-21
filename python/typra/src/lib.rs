@@ -49,7 +49,10 @@ impl Database {
 
 #[pymodule]
 fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__doc__", "Python bindings for Typra (preview).")?;
+    m.add(
+        "__doc__",
+        "Python bindings for Typra: typed embedded database (Database.open, register_collection, collection_names).",
+    )?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<Database>()?;
     Ok(())
