@@ -10,5 +10,4 @@ resolver = "2"
 version = "0.0.0"
 edition = "2021"
 license = "MIT"
-# Optional: set on [workspace.package] before publishing (silences crates.io metadata warnings):
-# repository = "https://github.com/your-org/typra"
+repository = "https://github.com/eddiethedean/typra"

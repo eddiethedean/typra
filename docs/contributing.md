@@ -31,6 +31,21 @@ Workspace crates and the PyPI distribution are aligned at **0.0.0** (pre-release
 
 ## Publishing
 
+Automated sequence (from repo root, with credentials in the environment):
+
+```bash
+./scripts/publish-all.sh
+```
+
+**Environment variables** (the agent/CI shell must actually export these; they are not always inherited from your login shell):
+
+| Purpose | Variables |
+|--------|-----------|
+| crates.io | **`CARGO_REGISTRY_TOKEN`** (API token). Alias: `CRATES_IO_TOKEN` is copied to `CARGO_REGISTRY_TOKEN` by the script. |
+| PyPI | **`MATURIN_PYPI_TOKEN`** (preferred). Alternatives read by the script: **`PYPI_TOKEN`**, or **`TWINE_USERNAME=__token__`** with **`TWINE_PASSWORD`** (PyPI API token value). |
+
+In **Cursor**, add these under workspace or user settings so the terminal and agent inherit them, or run `./scripts/publish-all.sh` from a local terminal where you have already `export`’d them.
+
 ### crates.io (Rust)
 
 Only **`typra-core`** and **`typra-derive`** are ordinary Rust crates under `crates/`.

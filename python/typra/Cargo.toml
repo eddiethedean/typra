@@ -4,6 +4,7 @@ description = "Python bindings (PyO3) for Typra, a typed embedded database."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 readme = "README.md"
 include = [
     "Cargo.toml",
