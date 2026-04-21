@@ -37,6 +37,8 @@ Automated sequence (from repo root, with credentials in the environment):
 ./scripts/publish-all.sh
 ```
 
+`publish-all.sh` treats **“already exists”** from `cargo publish` as success (for re-pushed tags) and passes **`--skip-existing`** to maturin so duplicate wheels on PyPI do not fail the job.
+
 **Environment variables** (the agent/CI shell must actually export these; they are not always inherited from your login shell):
 
 | Purpose | Variables |

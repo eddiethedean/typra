@@ -37,12 +37,32 @@ fi
 # Maturin expects "true" or "false", not 1/0.
 export MATURIN_NON_INTERACTIVE="${MATURIN_NON_INTERACTIVE:-true}"
 
+# Idempotent re-runs (e.g. re-pushed tag): crates.io rejects duplicate versions.
+cargo_publish_allow_duplicate() {
+  local pkg=$1
+  local out ec
+  set +e
+  out=$(cargo publish -p "$pkg" 2>&1)
+  ec=$?
+  set -e
+  if [[ "$ec" -eq 0 ]]; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  if printf '%s\n' "$out" | grep -q 'already exists'; then
+    echo "Note: $pkg is already on crates.io; skipping." >&2
+    return 0
+  fi
+  printf '%s\n' "$out" >&2
+  return "$ec"
+}
+
 echo "Publishing Rust crates to crates.io..."
-cargo publish -p typra-core
-cargo publish -p typra-derive
-cargo publish -p typra-python
+cargo_publish_allow_duplicate typra-core
+cargo_publish_allow_duplicate typra-derive
+cargo_publish_allow_duplicate typra-python
 
 echo "Publishing Python package to PyPI..."
-(cd "$ROOT/python/typra" && maturin publish)
+(cd "$ROOT/python/typra" && maturin publish --skip-existing)
 
 echo "Done."
