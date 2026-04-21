@@ -95,8 +95,12 @@ jobs:
         shell: bash
         run: |
           python -m venv .venv
-          source .venv/bin/activate
-          pip install -U pip "maturin>=1.5,<2" "pytest>=8"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            VENV_PY=".venv/Scripts/python"
+          else
+            VENV_PY=".venv/bin/python"
+          fi
+          "$VENV_PY" -m pip install -U pip "maturin>=1.5,<2" "pytest>=8"
           cd python/typra
-          maturin develop --release
-          pytest -v
+          "$VENV_PY" -m maturin develop --release
+          "$VENV_PY" -m pytest -v
