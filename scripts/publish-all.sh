@@ -25,10 +25,12 @@ if [[ -z "${MATURIN_PYPI_TOKEN:-}" ]]; then
     export MATURIN_PYPI_TOKEN="$TWINE_PASSWORD"
   elif [[ -n "${PYPI_TOKEN:-}" ]]; then
     export MATURIN_PYPI_TOKEN="$PYPI_TOKEN"
+  elif [[ -n "${PYPI_API_TOKEN:-}" ]]; then
+    export MATURIN_PYPI_TOKEN="$PYPI_API_TOKEN"
   fi
 fi
 if [[ -z "${MATURIN_PYPI_TOKEN:-}" ]]; then
-  echo "error: set MATURIN_PYPI_TOKEN, or PYPI_TOKEN, or TWINE_USERNAME=__token__ with TWINE_PASSWORD" >&2
+  echo "error: set MATURIN_PYPI_TOKEN, PYPI_API_TOKEN, PYPI_TOKEN, or TWINE_USERNAME=__token__ with TWINE_PASSWORD" >&2
   exit 1
 fi
 

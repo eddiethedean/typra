@@ -46,6 +46,17 @@ Automated sequence (from repo root, with credentials in the environment):
 
 In **Cursor**, add these under workspace or user settings so the terminal and agent inherit them, or run `./scripts/publish-all.sh` from a local terminal where you have already `export`’d them.
 
+### GitHub Actions
+
+On push of a tag matching `v*.*.*` (e.g. `v0.1.0`), [`.github/workflows/publish.yml`](../.github/workflows/publish.yml) runs `./scripts/publish-all.sh`. Configure repository **Secrets**:
+
+| Secret | Purpose |
+|--------|---------|
+| `CARGO_REGISTRY_TOKEN` | crates.io API token |
+| `PYPI_API_TOKEN` | PyPI API token (mapped to `MATURIN_PYPI_TOKEN` in the workflow) |
+
+The tag **must** match `[workspace.package] version` in the root `Cargo.toml` (e.g. tag `v0.1.0` and `version = "0.1.0"`).
+
 ### crates.io (Rust)
 
 Only **`typra-core`** and **`typra-derive`** are ordinary Rust crates under `crates/`.
