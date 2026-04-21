@@ -27,7 +27,7 @@ cargo test
 
 ## Versioning
 
-Workspace crates and the PyPI distribution are aligned at **0.0.0** (pre-release / name reservation). Bump `[workspace.package] version` in the root `Cargo.toml` when you cut releases.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.1.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Publishing
 

@@ -5,137 +5,99 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is always correct by design.
 
+**Status (v0.1.0):** First semver release. The Rust crates expose a real `Database::open` path and a `DbModel` derive; the storage engine and Python ORM-style APIs are still **under development**. See [CHANGELOG.md](CHANGELOG.md).
+
 ---
 
-## ✨ Why Typra?
+## Why Typra?
 
 Modern applications already define their data using:
+
 - Rust structs
 - Pydantic models
 - TypeScript schemas
 
 But most databases ignore that structure and accept loosely typed data.
 
-**Typra fixes that.**
-
-With Typra:
-- Your models *are* your database schema
-- Invalid data is rejected at write time
-- Nested objects and lists are first-class
-- Everything lives in a single local file
+**Typra** is meant to fix that: models as schema, validation on write, nested data as first-class, single-file deployment.
 
 ---
 
-## 🚀 Features
+## Features (roadmap)
 
-- **🧠 Type-first design**  
-  Define your data once using native language types.
+Many items below are **goals**; check the changelog for what each release actually ships.
 
-- **✅ Validation on write**  
-  Bad data never enters your database.
-
-- **🧩 Nested data support**  
-  Objects and lists are fully typed and queryable.
-
-- **⚡ Embedded & zero-config**  
-  No server. No setup. Just a file.
-
-- **🔄 Safe schema evolution**  
-  Migrations are guided and predictable.
-
-- **🔍 Typed queries**  
-  Query using field-safe, autocompletable APIs.
+- Type-first design
+- Validation on write
+- Nested objects and lists
+- Embedded, zero-config, single file
+- Safe schema evolution
+- Typed queries
 
 ---
 
-## 🆚 Typra vs SQLite
+## Typra vs SQLite (vision)
 
-| Feature              | SQLite        | Typra                     |
-|---------------------|--------------|---------------------------|
-| Typing              | Weak         | Strong                    |
-| Validation          | Minimal      | Built-in                  |
-| Nested data         | JSON hacks   | Native                    |
-| Schema evolution    | Manual       | Guided                    |
-| API                 | SQL          | Model-first               |
-| Setup               | Easy         | Easy                      |
+| Feature           | SQLite | Typra (target) |
+|-------------------|--------|----------------|
+| Typing            | Weak   | Strong         |
+| Validation        | Minimal| Built-in       |
+| Nested data       | JSON   | Native         |
+| API               | SQL    | Model-first    |
 
 ---
 
-## 🐍 Python Example
+## Python (preview)
+
+The `typra` package on PyPI exposes the native extension; **0.1.0** includes `__version__` only—higher-level APIs will land in later releases.
 
 ```python
 import typra
-from pydantic import BaseModel, EmailStr
-from typing import Literal
 
-class Profile(BaseModel):
-    display_name: str
-    timezone: str
+print(typra.__version__)
+```
 
-class User(BaseModel):
-    id: str
-    email: EmailStr
-    role: Literal["admin", "member"]
-    profile: Profile
-
-db = typra.Database("app.db")
-db.register(User)
-
-db.users.insert(User(
-    id="1",
-    email="user@example.com",
-    role="member",
-    profile={"display_name": "Odos", "timezone": "UTC"}
-))
+```bash
+pip install "typra>=0.1.0,<0.2"
 ```
 
 ---
 
-## 🦀 Rust Example
+## Rust
+
+### Installation
+
+```toml
+[dependencies]
+typra-core = "0.1"
+typra-derive = "0.1"
+```
+
+### Example (compiles on 0.1.x)
 
 ```rust
-use typra::prelude::*;
-use uuid::Uuid;
+use typra_core::prelude::*;
+use typra_derive::DbModel;
 
 #[derive(DbModel)]
-struct Profile {
-    display_name: String,
-    timezone: String,
+struct Book {
+    title: String,
 }
 
-#[derive(DbModel)]
-struct User {
-    #[db(primary)]
-    id: Uuid,
-
-    #[db(unique, validate = "email")]
-    email: String,
-
-    role: Role,
-    profile: Profile,
-}
-
-#[derive(DbEnum)]
-enum Role {
-    Admin,
-    Member,
+fn main() -> Result<(), DbError> {
+    let _db = Database::open("example.typra")?;
+    let _book = Book {
+        title: "Example".into(),
+    };
+    Ok(())
 }
 ```
 
----
-
-## 📦 Installation
-
-### Python (coming soon)
-pip install typra
-
-### Rust (coming soon)
-[dependencies]
-typra = "0.1"
+Field attributes (`#[db(primary)]`, etc.) and enums are **not** implemented in 0.1.0; they remain design targets.
 
 ---
 
-## 🎯 Philosophy
+## Philosophy
 
 > **Your data should be correct by construction.**
 

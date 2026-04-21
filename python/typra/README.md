@@ -1,13 +1,13 @@
 # typra (Python)
 
-Python bindings for **Typra**, a typed embedded database. This package is an early placeholder (0.0.0); APIs are not stable yet.
-
-Install from PyPI once published:
+Python bindings for **Typra**. **0.1.0** exposes `typra.__version__`; higher-level APIs will ship in later releases.
 
 ```bash
-pip install typra
+pip install "typra>=0.1.0,<0.2"
 ```
 
 ```python
 import typra
+
+print(typra.__version__)
 ```
