@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo test
+        run: cargo test --workspace --all-features
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps (PyO3)
+        run: sudo apt-get update && sudo apt-get install -y python3-dev pkg-config
+
+      - name: Create venv and run pytest
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -U pip "maturin>=1.5,<2" "pytest>=8"
+          cd python/typra
+          maturin develop --release
+          pytest -v

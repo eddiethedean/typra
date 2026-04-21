@@ -1,0 +1,26 @@
+use std::error::Error;
+
+use typra_core::DbError;
+
+#[test]
+fn not_implemented_display_and_source() {
+    let e = DbError::NotImplemented;
+    assert_eq!(e.to_string(), "not implemented");
+    assert!(e.source().is_none());
+}
+
+#[test]
+fn io_error_display_includes_message() {
+    let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
+    let e = DbError::Io(inner);
+    assert!(e.to_string().contains("i/o error"));
+    assert!(e.to_string().contains("missing"));
+    assert!(e.source().is_some());
+}
+
+#[test]
+fn from_io_error() {
+    let inner = std::io::Error::from_raw_os_error(2);
+    let e: DbError = inner.into();
+    assert!(matches!(e, DbError::Io(_)));
+}

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`typra`**: Application-facing facade crate re-exporting `typra-core` and (by default) the `DbModel` derive via feature `derive`. Use `typra = "0.1"` in application `Cargo.toml`; depend on `typra-core` / `typra-derive` directly only when you need a slimmer dependency graph.
+- **Tests:** Expanded Rust integration tests (`DbError` display/source, `Database` path edge cases, generic `DbModel` derive). **pytest** suite under `python/typra/tests/` for the extension module. **CI** workflow (`.github/workflows/ci.yml`) runs `cargo test --workspace` and Python tests via `maturin develop` + `pytest`.
 
 ## [0.1.0] - 2026-04-21
 
