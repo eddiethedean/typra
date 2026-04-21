@@ -84,24 +84,30 @@ The tag **must** match `[workspace.package] version` in the root `Cargo.toml` (e
 
 ### crates.io (Rust)
 
-Rust crates under `crates/` include **`typra`** (application facade), **`typra-core`**, and **`typra-derive`**. Publish **`typra-core`** and **`typra-derive`** before **`typra`**, since the facade depends on them.
+Rust crates under `crates/` include **`typra`** (application facade), **`typra-core`**, and **`typra-derive`**. Publish **`typra-core`** first, then **`typra-derive`**, then **`typra`**, then **`typra-python`** (see [`scripts/publish-crates.sh`](../scripts/publish-crates.sh)), because published crates resolve dependencies from **crates.io**, not path deps.
+
+**Before you tag or publish**, from the repo root:
+
+```bash
+make check-full
+```
 
 1. Log in: `cargo login` with an API token from [crates.io account settings](https://crates.io/settings/tokens).
 2. Optionally set `repository = "..."` under `[workspace.package]` in the root `Cargo.toml` (recommended).
-3. Dry-run then publish:
+3. Publish in order (each step may **`cargo publish -p … --dry-run`** first, but **`--dry-run` only succeeds when crates.io already has the dependencies** for that crate—so the first package’s dry-run is the one you can verify before any upload):
 
 ```bash
-cargo publish -p typra-core --dry-run
+cargo publish -p typra-core --dry-run   # OK before anything is on crates.io
 cargo publish -p typra-core
 
-cargo publish -p typra-derive --dry-run
+cargo publish -p typra-derive --dry-run # OK after typra-core 0.x is published
 cargo publish -p typra-derive
 
-cargo publish -p typra --dry-run
+cargo publish -p typra --dry-run        # OK after typra-core + typra-derive are published
 cargo publish -p typra
 ```
 
-The **`typra-python`** Rust package (PyO3) is still a Cargo workspace member for versioning and `cargo check`, but it is **released to PyPI**, not treated as a primary “Rust crate” in the repo layout. To publish its sources to crates.io as well:
+The **`typra-python`** Rust package (PyO3) is still a Cargo workspace member for versioning and `cargo check`, but it is **released to PyPI**, not treated as a primary “Rust crate” in the repo layout. To publish its sources to crates.io as well (after **`typra-core`** is on crates.io):
 
 ```bash
 cargo publish -p typra-python --dry-run
