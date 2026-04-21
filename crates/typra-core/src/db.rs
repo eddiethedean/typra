@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::catalog::{
@@ -8,43 +9,37 @@ use crate::error::{DbError, FormatError, SchemaError};
 use crate::file_format::{decode_header, FileHeader, FILE_HEADER_SIZE};
 use crate::manifest::decode_manifest_v0;
 use crate::publish::append_manifest_and_publish;
+use crate::record::{decode_record_payload_v1, encode_record_payload_v1, ScalarValue};
 use crate::schema::{CollectionId, FieldDef, SchemaVersion};
 use crate::segments::header::{SegmentHeader, SegmentType};
 use crate::segments::reader::{read_segment_header_at, read_segment_payload, scan_segments};
 use crate::segments::writer::SegmentWriter;
-use crate::storage::{FileStore, Store};
+use crate::storage::{FileStore, Store, VecStore};
 use crate::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
 
-/// Handle to an on-disk Typra database file.
-pub struct Database {
+type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, ScalarValue>>;
+
+/// Typra database handle backed by a [`Store`](crate::storage::Store) (file or in-memory).
+pub struct Database<S: Store = FileStore> {
     path: PathBuf,
-    store: FileStore,
+    store: S,
     catalog: Catalog,
     segment_start: u64,
-    /// Format minor read from the file header (updated when lazily bumping `3` → `4`).
+    /// Format minor read from the file header (lazy bumps `3` → `4` → `5`).
     format_minor: u16,
+    /// Latest row per `(collection_id, canonical_pk_bytes)` (replay order / last wins).
+    latest: LatestMap,
 }
 
-impl Database {
-    /// Open or create a database at `path`.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, DbError> {
-        let path = path.as_ref().to_path_buf();
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)?;
-
-        let mut store = FileStore::new(file);
-
+impl<S: Store> Database<S> {
+    fn open_with_store(path: PathBuf, mut store: S) -> Result<Self, DbError> {
         let len = store.len()?;
         let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
 
         let format_minor: u16;
 
         if len == 0 {
-            let header = FileHeader::new_v0_4();
+            let header = FileHeader::new_v0_5();
             format_minor = header.format_minor;
             store.write_all_at(0, &header.encode())?;
             Self::init_superblocks(&mut store, segment_start)?;
@@ -74,7 +69,10 @@ impl Database {
                         minor: header.format_minor,
                     }));
                 }
-            } else if header.format_minor == 3 || header.format_minor == 4 {
+            } else if header.format_minor == 3
+                || header.format_minor == 4
+                || header.format_minor == 5
+            {
                 if len < segment_start {
                     return Err(DbError::Format(FormatError::TruncatedSuperblock {
                         got: len as usize,
@@ -103,17 +101,24 @@ impl Database {
             Self::load_catalog(&mut store, segment_start)?
         };
 
+        let latest = if len == 0 {
+            HashMap::new()
+        } else {
+            Self::load_latest_rows(&mut store, segment_start, &catalog)?
+        };
+
         let db = Self {
             path,
             store,
             catalog,
             segment_start,
             format_minor,
+            latest,
         };
         Ok(db)
     }
 
-    /// Path passed to [`Database::open`](Self::open).
+    /// Path passed to [`Database::open`](Database::<FileStore>::open) or `":memory:"` for in-memory stores.
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -128,19 +133,39 @@ impl Database {
         self.catalog.collection_names()
     }
 
-    /// Register a new collection with schema version `1`.
+    /// Resolve a registered collection id by name (trimmed).
+    pub fn collection_id_named(&self, name: &str) -> Result<CollectionId, DbError> {
+        self.catalog
+            .lookup_name(name)
+            .ok_or(DbError::Schema(SchemaError::UnknownCollectionName {
+                name: name.trim().to_string(),
+            }))
+    }
+
+    /// Register a new collection with schema version `1` and a **top-level** primary key field name.
     pub fn register_collection(
         &mut self,
         name: &str,
         fields: Vec<FieldDef>,
+        primary_field: &str,
     ) -> Result<(CollectionId, SchemaVersion), DbError> {
         let name = Self::normalize_collection_name(name)?;
+        let pk = primary_field.trim();
+        if pk.is_empty() {
+            return Err(DbError::Schema(SchemaError::InvalidCollectionName));
+        }
+        if !Catalog::has_top_level_field(&fields, pk) {
+            return Err(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+                name: pk.to_string(),
+            }));
+        }
         let id = self.catalog.next_collection_id().0;
         let wire = CatalogRecordWire::CreateCollection {
             collection_id: id,
             name: name.clone(),
             schema_version: 1,
             fields,
+            primary_field: Some(pk.to_string()),
         };
         let payload = encode_catalog_payload(&wire);
         self.append_schema_segment_and_publish(&payload)?;
@@ -181,6 +206,119 @@ impl Database {
         Ok(name.to_string())
     }
 
+    /// Insert or replace the latest row for `collection_id` (same primary key).
+    pub fn insert(
+        &mut self,
+        collection_id: CollectionId,
+        mut row: BTreeMap<String, ScalarValue>,
+    ) -> Result<(), DbError> {
+        self.ensure_header_v0_5()?;
+        let (payload, full) = {
+            let col = self.catalog.get(collection_id).ok_or(DbError::Schema(
+                SchemaError::UnknownCollection {
+                    id: collection_id.0,
+                },
+            ))?;
+            for f in &col.fields {
+                if f.path.0.len() != 1 {
+                    return Err(DbError::NotImplemented);
+                }
+            }
+            let pk_name =
+                col.primary_field
+                    .as_deref()
+                    .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                        collection_id: collection_id.0,
+                    }))?;
+            let pk_def = col
+                .fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
+                .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+                    name: pk_name.to_string(),
+                }))?;
+            let pk_ty = &pk_def.ty;
+            let pk_val =
+                row.remove(pk_name)
+                    .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
+                        name: pk_name.to_string(),
+                    }))?;
+            if !pk_val.ty_matches(pk_ty) {
+                return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+            }
+            let mut non_pk: Vec<(FieldDef, ScalarValue)> = Vec::new();
+            for def in &col.fields {
+                let seg = def.path.0[0].as_ref();
+                if seg == pk_name {
+                    continue;
+                }
+                let v = row
+                    .remove(seg)
+                    .ok_or(DbError::Schema(SchemaError::RowMissingField {
+                        name: seg.to_string(),
+                    }))?;
+                if !v.ty_matches(&def.ty) {
+                    return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+                }
+                non_pk.push((def.clone(), v));
+            }
+            if !row.is_empty() {
+                let name = row.keys().next().unwrap().clone();
+                return Err(DbError::Schema(SchemaError::RowUnknownField { name }));
+            }
+
+            let payload = encode_record_payload_v1(
+                collection_id.0,
+                col.current_version.0,
+                &pk_val,
+                pk_ty,
+                &non_pk,
+            )?;
+            let mut full: BTreeMap<String, ScalarValue> = BTreeMap::new();
+            full.insert(pk_name.to_string(), pk_val.clone());
+            for (def, v) in non_pk {
+                full.insert(def.path.0[0].to_string(), v);
+            }
+            let pk_key = pk_val.canonical_key_bytes();
+            (payload, (pk_key, full))
+        };
+        self.append_record_segment_and_publish(&payload)?;
+        self.latest.insert((collection_id.0, full.0), full.1);
+        Ok(())
+    }
+
+    /// Get the latest row by primary key, or `None` if missing.
+    pub fn get(
+        &self,
+        collection_id: CollectionId,
+        pk: &ScalarValue,
+    ) -> Result<Option<BTreeMap<String, ScalarValue>>, DbError> {
+        let col = self.catalog.get(collection_id).ok_or(DbError::Schema(
+            SchemaError::UnknownCollection {
+                id: collection_id.0,
+            },
+        ))?;
+        let pk_name =
+            col.primary_field
+                .as_deref()
+                .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                    collection_id: collection_id.0,
+                }))?;
+        let pk_ty = col
+            .fields
+            .iter()
+            .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
+            .map(|f| &f.ty)
+            .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+                name: pk_name.to_string(),
+            }))?;
+        if !pk.ty_matches(pk_ty) {
+            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+        }
+        let key = (collection_id.0, pk.canonical_key_bytes());
+        Ok(self.latest.get(&key).cloned())
+    }
+
     fn append_schema_segment_and_publish(&mut self, payload: &[u8]) -> Result<(), DbError> {
         self.ensure_header_v0_4()?;
         let file_len = self.store.len()?;
@@ -198,7 +336,38 @@ impl Database {
         Ok(())
     }
 
+    fn append_record_segment_and_publish(&mut self, payload: &[u8]) -> Result<(), DbError> {
+        self.ensure_header_v0_5()?;
+        let file_len = self.store.len()?;
+        let mut writer = SegmentWriter::new(&mut self.store, file_len.max(self.segment_start));
+        writer.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            payload,
+        )?;
+        let _ = append_manifest_and_publish(&mut self.store, self.segment_start)?;
+        self.store.sync()?;
+        Ok(())
+    }
+
     fn ensure_header_v0_4(&mut self) -> Result<(), DbError> {
+        if self.format_minor >= crate::file_format::FORMAT_MINOR_V4 {
+            return Ok(());
+        }
+        let mut buf = [0u8; FILE_HEADER_SIZE];
+        self.store.read_exact_at(0, &mut buf)?;
+        let mut h = decode_header(&buf)?;
+        h.format_minor = crate::file_format::FORMAT_MINOR_V4;
+        self.store.write_all_at(0, &h.encode())?;
+        self.format_minor = crate::file_format::FORMAT_MINOR_V4;
+        self.store.sync()?;
+        Ok(())
+    }
+
+    fn ensure_header_v0_5(&mut self) -> Result<(), DbError> {
         if self.format_minor >= crate::file_format::FORMAT_MINOR {
             return Ok(());
         }
@@ -212,7 +381,7 @@ impl Database {
         Ok(())
     }
 
-    fn load_catalog(store: &mut FileStore, segment_start: u64) -> Result<Catalog, DbError> {
+    fn load_catalog(store: &mut S, segment_start: u64) -> Result<Catalog, DbError> {
         let metas = scan_segments(store, segment_start)?;
         let mut catalog = Catalog::default();
         for meta in metas {
@@ -224,6 +393,62 @@ impl Database {
             catalog.apply_record(record)?;
         }
         Ok(catalog)
+    }
+
+    fn load_latest_rows(
+        store: &mut S,
+        segment_start: u64,
+        catalog: &Catalog,
+    ) -> Result<LatestMap, DbError> {
+        let metas = scan_segments(store, segment_start)?;
+        let mut latest = HashMap::new();
+        for meta in metas {
+            if meta.header.segment_type != SegmentType::Record {
+                continue;
+            }
+            let payload = read_segment_payload(store, &meta)?;
+            if payload.len() < 6 {
+                return Err(DbError::Format(FormatError::TruncatedRecordPayload));
+            }
+            let collection_id =
+                u32::from_le_bytes([payload[2], payload[3], payload[4], payload[5]]);
+            let col = catalog
+                .get(CollectionId(collection_id))
+                .ok_or(DbError::Schema(SchemaError::UnknownCollection {
+                    id: collection_id,
+                }))?;
+            let pk_name = match &col.primary_field {
+                Some(s) => s.as_str(),
+                None => continue,
+            };
+            for f in &col.fields {
+                if f.path.0.len() != 1 {
+                    return Err(DbError::NotImplemented);
+                }
+            }
+            let pk_ty = col
+                .fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
+                .map(|f| &f.ty)
+                .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+                    name: pk_name.to_string(),
+                }))?;
+            let decoded = decode_record_payload_v1(&payload, pk_name, pk_ty, &col.fields)?;
+            if decoded.schema_version != col.current_version.0 {
+                return Err(DbError::Schema(SchemaError::InvalidSchemaVersion {
+                    expected: col.current_version.0,
+                    got: decoded.schema_version,
+                }));
+            }
+            let mut full: BTreeMap<String, ScalarValue> = BTreeMap::new();
+            full.insert(pk_name.to_string(), decoded.pk.clone());
+            for (k, v) in decoded.fields {
+                full.insert(k, v);
+            }
+            latest.insert((collection_id, decoded.pk.canonical_key_bytes()), full);
+        }
+        Ok(latest)
     }
 
     fn init_superblocks(store: &mut impl Store, segment_start: u64) -> Result<(), DbError> {
@@ -277,6 +502,43 @@ impl Database {
     }
 }
 
+impl Database<FileStore> {
+    /// Open or create a database at `path`.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, DbError> {
+        let path = path.as_ref().to_path_buf();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)?;
+        let store = FileStore::new(file);
+        Self::open_with_store(path, store)
+    }
+}
+
+impl Database<VecStore> {
+    /// Empty in-memory database (same layout as a new file, held in a [`VecStore`](crate::storage::VecStore)).
+    pub fn open_in_memory() -> Result<Self, DbError> {
+        Self::open_with_store(PathBuf::from(":memory:"), VecStore::new())
+    }
+
+    /// Open from snapshot bytes produced by [`into_snapshot_bytes`](Self::into_snapshot_bytes).
+    pub fn from_snapshot_bytes(bytes: Vec<u8>) -> Result<Self, DbError> {
+        Self::open_with_store(PathBuf::from(":memory:"), VecStore::from_vec(bytes))
+    }
+
+    /// Consume the database and return the raw file image.
+    pub fn into_snapshot_bytes(self) -> Vec<u8> {
+        self.store.into_inner()
+    }
+
+    /// Copy of the full on-disk image (same bytes as [`into_snapshot_bytes`](Self::into_snapshot_bytes)).
+    pub fn snapshot_bytes(&self) -> Vec<u8> {
+        self.store.as_slice().to_vec()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Database;
@@ -327,7 +589,7 @@ mod tests {
             .write_all_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &b)
             .unwrap();
 
-        let res = Database::read_and_select_superblock(&mut store);
+        let res = Database::<FileStore>::read_and_select_superblock(&mut store);
         assert!(matches!(
             res,
             Err(DbError::Format(FormatError::BadSuperblockChecksum))
@@ -374,7 +636,7 @@ mod tests {
             manifest_len: 2,
             ..sb_a
         };
-        let res = Database::read_manifest(&mut store, &sb);
+        let res = Database::<FileStore>::read_manifest(&mut store, &sb);
         assert!(matches!(
             res,
             Err(DbError::Format(FormatError::UnsupportedVersion { .. }))
@@ -405,7 +667,7 @@ mod tests {
             .write_all_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &sb_b.encode())
             .unwrap();
 
-        let selected = Database::read_and_select_superblock(&mut store).unwrap();
+        let selected = Database::<FileStore>::read_and_select_superblock(&mut store).unwrap();
         assert_eq!(selected.generation, sb_a.generation);
     }
 
@@ -417,7 +679,7 @@ mod tests {
             let mut db = Database::open(&path).unwrap();
             assert!(db.catalog().is_empty());
             let (id, v) = db
-                .register_collection("books", vec![path_field("title")])
+                .register_collection("books", vec![path_field("title")], "title")
                 .unwrap();
             assert_eq!(id.0, 1);
             assert_eq!(v.0, 1);

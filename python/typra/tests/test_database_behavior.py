@@ -32,49 +32,49 @@ def test_open_without_parent_directory_raises_oserror(tmp_path) -> None:
 def test_register_trims_whitespace_around_collection_name(tmp_path) -> None:
     db = typra.Database.open(str(tmp_path / "trim.typra"))
     fields = '[{"path": ["x"], "type": "string"}]'
-    db.register_collection("  books  ", fields)
+    db.register_collection("  books  ", fields, "x")
     assert db.collection_names() == ["books"]
 
 
 def test_collection_names_are_sorted_alphabetically(tmp_path) -> None:
     db = typra.Database.open(str(tmp_path / "sort.typra"))
     f = '[{"path": ["a"], "type": "string"}]'
-    db.register_collection("zebra", f)
-    db.register_collection("apple", f)
-    db.register_collection("mango", f)
+    db.register_collection("zebra", f, "a")
+    db.register_collection("apple", f, "a")
+    db.register_collection("mango", f, "a")
     assert db.collection_names() == ["apple", "mango", "zebra"]
 
 
 def test_multiple_collections_stable_ids(tmp_path) -> None:
     db = typra.Database.open(str(tmp_path / "ids.typra"))
     f = '[{"path": ["a"], "type": "string"}]'
-    assert db.register_collection("a", f) == (1, 1)
-    assert db.register_collection("b", f) == (2, 1)
-    assert db.register_collection("c", f) == (3, 1)
+    assert db.register_collection("a", f, "a") == (1, 1)
+    assert db.register_collection("b", f, "a") == (2, 1)
+    assert db.register_collection("c", f, "a") == (3, 1)
 
 
 def test_register_empty_name_after_trim_raises(tmp_path) -> None:
     db = typra.Database.open(str(tmp_path / "emptyname.typra"))
     with pytest.raises(ValueError, match="."):
-        db.register_collection("", '[{"path": ["a"], "type": "string"}]')
+        db.register_collection("", '[{"path": ["a"], "type": "string"}]', "a")
 
 
 def test_register_whitespace_only_name_raises(tmp_path) -> None:
     db = typra.Database.open(str(tmp_path / "wsname.typra"))
     with pytest.raises(ValueError, match="."):
-        db.register_collection("   ", '[{"path": ["a"], "type": "string"}]')
+        db.register_collection("   ", '[{"path": ["a"], "type": "string"}]', "a")
 
 
 def test_reopen_preserves_multiple_collections(tmp_path) -> None:
     path = tmp_path / "multi.typra"
     f = '[{"path": ["k"], "type": "int64"}]'
     db = typra.Database.open(str(path))
-    db.register_collection("first", f)
-    db.register_collection("second", f)
+    db.register_collection("first", f, "k")
+    db.register_collection("second", f, "k")
     del db
 
     db2 = typra.Database.open(str(path))
     assert db2.collection_names() == ["first", "second"]
-    cid, ver = db2.register_collection("third", f)
+    cid, ver = db2.register_collection("third", f, "k")
     assert cid == 3
     assert ver == 1

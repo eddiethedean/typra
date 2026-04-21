@@ -130,14 +130,14 @@ Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/
   - Persisted **schema catalog** records in **`SegmentType::Schema`** payloads (v1 binary encoding: create collection + new schema version).
   - **`Database::register_collection`** / **`Database::register_schema_version`**; **`Catalog`** replay on open; stable **`CollectionId`** / **`SchemaVersion(1)`** baseline; lazy **0.3 → 0.4** header bump on first catalog write.
 - **Python**
-  - **`typra.Database`**: **`open`**, **`register_collection(name, fields_json)`**, **`collection_names()`**; **`fields_json`** documented in [`python/typra/README.md`](/Users/odosmatthews/Documents/coding/typra/python/typra/README.md).
+  - **`typra.Database`**: **`open`**, **`register_collection(name, fields_json, primary_field)`**, **`collection_names()`**; **`fields_json`** documented in [`python/typra/README.md`](python/typra/README.md).
 - **Tests / docs**
   - Integration tests for duplicate names, unknown id, reopen, corrupt payload, lazy header bump; user guide note in models/collections doc.
 
 **Deferred / later**
 
 - Pydantic-based model inference (still an open question; explicit JSON remains the v1 Python story).
-- Full **`MemStore`** database mode ( **`Catalog`** semantics are shared; file-backed path is implemented).
+- **Delivered in 0.5.0:** `VecStore` / `Database::open_in_memory`, snapshot import/export, record insert/get (see [CHANGELOG](CHANGELOG.md)).
 
 - **Definition of done**
   - Registering a collection persists the catalog entry and survives reopen.
@@ -146,6 +146,8 @@ Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/
 Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/01_full_architecture_spec.md)
 
 ### 0.5.0 — Record encoding v1 + insert/get by primary key
+
+**Status:** **Delivered** in v0.5.0 (encoding in [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md), migration notes in [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md)).
 
 **Goal**: store records and retrieve them; establish the first durable record encoding.
 

@@ -21,8 +21,9 @@ fn duplicate_collection_name_errors() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("d.typra");
     let mut db = Database::open(&path).unwrap();
-    db.register_collection("x", vec![title_field()]).unwrap();
-    let err = db.register_collection("x", vec![]);
+    db.register_collection("x", vec![title_field()], "title")
+        .unwrap();
+    let err = db.register_collection("x", vec![title_field()], "title");
     assert!(matches!(
         err,
         Err(DbError::Schema(SchemaError::DuplicateCollectionName { .. }))
@@ -34,7 +35,8 @@ fn unknown_collection_id_errors() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("u.typra");
     let mut db = Database::open(&path).unwrap();
-    db.register_collection("c", vec![title_field()]).unwrap();
+    db.register_collection("c", vec![title_field()], "title")
+        .unwrap();
     let err = db.register_schema_version(typra_core::schema::CollectionId(99), vec![]);
     assert!(matches!(
         err,
@@ -48,8 +50,17 @@ fn replay_create_a_create_b_then_version_bump_a() {
     let path = dir.path().join("order.typra");
     {
         let mut db = Database::open(&path).unwrap();
-        db.register_collection("a", vec![title_field()]).unwrap();
-        db.register_collection("b", vec![]).unwrap();
+        db.register_collection("a", vec![title_field()], "title")
+            .unwrap();
+        db.register_collection(
+            "b",
+            vec![FieldDef {
+                path: typra_core::schema::FieldPath(vec![Cow::Owned("id".to_string())]),
+                ty: Type::Int64,
+            }],
+            "id",
+        )
+        .unwrap();
         assert_eq!(db.catalog().next_collection_id().0, 3);
         db.register_schema_version(typra_core::schema::CollectionId(1), vec![title_field()])
             .unwrap();
@@ -79,9 +90,10 @@ fn register_schema_version_v2_then_reopen() {
     let path = dir.path().join("v2.typra");
     {
         let mut db = Database::open(&path).unwrap();
-        db.register_collection("c", vec![title_field()]).unwrap();
+        db.register_collection("c", vec![title_field()], "title")
+            .unwrap();
         let v = db
-            .register_schema_version(typra_core::schema::CollectionId(1), vec![])
+            .register_schema_version(typra_core::schema::CollectionId(1), vec![title_field()])
             .unwrap();
         assert_eq!(v.0, 2);
     }
@@ -111,7 +123,7 @@ fn lazy_header_bump_from_v0_3_to_v0_4_on_register() {
     let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
     assert_eq!(h.format_minor, 3);
 
-    db.register_collection("books", vec![title_field()])
+    db.register_collection("books", vec![title_field()], "title")
         .unwrap();
     let bytes = fs::read(&path).unwrap();
     let h2 = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();

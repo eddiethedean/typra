@@ -8,12 +8,12 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-typra = { path = "crates/typra", version = "0.4.0" }
-typra-core = { path = "crates/typra-core", version = "0.4.0" }
-typra-derive = { path = "crates/typra-derive", version = "0.4.0" }
+typra = { path = "crates/typra", version = "0.5.0" }
+typra-core = { path = "crates/typra-core", version = "0.5.0" }
+typra-derive = { path = "crates/typra-derive", version = "0.5.0" }
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/eddiethedean/typra"

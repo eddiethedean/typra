@@ -13,6 +13,8 @@ pub struct CollectionInfo {
     pub name: String,
     pub current_version: SchemaVersion,
     pub fields: Vec<FieldDef>,
+    /// Single top-level field name for the primary key (`None` for legacy catalog v1 segments).
+    pub primary_field: Option<String>,
 }
 
 /// Logical catalog: collection names, ids, and current schema version per collection.
@@ -52,6 +54,11 @@ impl Catalog {
         self.by_id.get(&id.0)
     }
 
+    /// Resolve a registered collection by name (trimmed, matching [`Database::register_collection`](crate::db::Database::register_collection)).
+    pub fn lookup_name(&self, name: &str) -> Option<CollectionId> {
+        self.by_name.get(name.trim()).copied()
+    }
+
     pub fn collection_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self.by_name.keys().cloned().collect();
         names.sort();
@@ -64,6 +71,13 @@ impl Catalog {
         v
     }
 
+    /// `true` if `name` is a single-segment path on a top-level field.
+    pub fn has_top_level_field(fields: &[FieldDef], name: &str) -> bool {
+        fields
+            .iter()
+            .any(|f| f.path.0.len() == 1 && f.path.0[0] == name)
+    }
+
     /// Apply one catalog record (from replay or after a local append).
     pub fn apply_record(&mut self, record: CatalogRecordWire) -> Result<(), DbError> {
         match record {
@@ -72,7 +86,8 @@ impl Catalog {
                 name,
                 schema_version,
                 fields,
-            } => self.apply_create(collection_id, name, schema_version, fields),
+                primary_field,
+            } => self.apply_create(collection_id, name, schema_version, fields, primary_field),
             CatalogRecordWire::NewSchemaVersion {
                 collection_id,
                 schema_version,
@@ -97,6 +112,7 @@ impl Catalog {
         name: String,
         schema_version: u32,
         fields: Vec<FieldDef>,
+        primary_field: Option<String>,
     ) -> Result<(), DbError> {
         Self::validate_name(&name)?;
         if schema_version != 1 {
@@ -116,12 +132,20 @@ impl Catalog {
                 name: name.clone(),
             }));
         }
+        if let Some(ref pk) = primary_field {
+            if !Catalog::has_top_level_field(&fields, pk) {
+                return Err(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+                    name: pk.clone(),
+                }));
+            }
+        }
         let id = CollectionId(collection_id);
         let info = CollectionInfo {
             id,
             name: name.clone(),
             current_version: SchemaVersion(1),
             fields,
+            primary_field,
         };
         self.by_id.insert(collection_id, info);
         self.by_name.insert(name, id);
@@ -145,6 +169,13 @@ impl Catalog {
                 got: schema_version,
             }));
         }
+        if let Some(ref pk) = col.primary_field {
+            if !Catalog::has_top_level_field(&fields, pk) {
+                return Err(DbError::Schema(SchemaError::PrimaryFieldMissingInSchema {
+                    name: pk.clone(),
+                }));
+            }
+        }
         col.current_version = SchemaVersion(schema_version);
         col.fields = fields;
         Ok(())
@@ -155,6 +186,7 @@ impl Catalog {
 mod tests {
     use super::*;
     use crate::catalog::codec::encode_catalog_payload;
+    use crate::catalog::MAX_COLLECTION_NAME_BYTES;
     use crate::schema::{FieldPath, Type};
     use std::borrow::Cow;
 
@@ -170,6 +202,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            primary_field: None,
         };
         c.apply_record(w).unwrap();
         assert_eq!(c.next_collection_id(), CollectionId(2));
@@ -196,6 +229,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            primary_field: None,
         })
         .unwrap();
         let err = c.apply_record(CatalogRecordWire::CreateCollection {
@@ -203,6 +237,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            primary_field: None,
         });
         assert!(matches!(
             err,
@@ -218,6 +253,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            primary_field: None,
         })
         .unwrap();
         let err = c.apply_record(CatalogRecordWire::NewSchemaVersion {
@@ -241,11 +277,148 @@ mod tests {
             name: "b".to_string(),
             schema_version: 1,
             fields: vec![],
+            primary_field: None,
         };
         let bytes = encode_catalog_payload(&w);
         let mut c = Catalog::default();
         c.apply_record(crate::catalog::codec::decode_catalog_payload(&bytes).unwrap())
             .unwrap();
         assert_eq!(c.collection_names(), vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn len_and_collections_helpers_track_entries() {
+        let mut c = Catalog::default();
+        assert_eq!(c.len(), 0);
+        assert!(c.collections().is_empty());
+        c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "z".to_string(),
+            schema_version: 1,
+            fields: vec![],
+            primary_field: None,
+        })
+        .unwrap();
+        assert_eq!(c.len(), 1);
+        let list = c.collections();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, CollectionId(1));
+    }
+
+    #[test]
+    fn apply_create_rejects_empty_name() {
+        let mut c = Catalog::default();
+        let err = c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "".to_string(),
+            schema_version: 1,
+            fields: vec![],
+            primary_field: None,
+        });
+        assert!(matches!(
+            err,
+            Err(DbError::Schema(SchemaError::InvalidCollectionName))
+        ));
+    }
+
+    #[test]
+    fn apply_create_rejects_name_longer_than_max() {
+        let mut c = Catalog::default();
+        let name = "x".repeat(MAX_COLLECTION_NAME_BYTES + 1);
+        let err = c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name,
+            schema_version: 1,
+            fields: vec![],
+            primary_field: None,
+        });
+        assert!(matches!(
+            err,
+            Err(DbError::Schema(SchemaError::InvalidCollectionName))
+        ));
+    }
+
+    #[test]
+    fn apply_create_rejects_initial_schema_version_not_one() {
+        let mut c = Catalog::default();
+        let err = c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "a".to_string(),
+            schema_version: 2,
+            fields: vec![],
+            primary_field: None,
+        });
+        assert!(matches!(
+            err,
+            Err(DbError::Schema(SchemaError::InvalidSchemaVersion {
+                expected: 1,
+                got: 2
+            }))
+        ));
+    }
+
+    #[test]
+    fn apply_create_rejects_non_sequential_collection_id() {
+        let mut c = Catalog::default();
+        let err = c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 7,
+            name: "a".to_string(),
+            schema_version: 1,
+            fields: vec![],
+            primary_field: None,
+        });
+        assert!(matches!(
+            err,
+            Err(DbError::Schema(SchemaError::UnexpectedCollectionId {
+                expected: 1,
+                got: 7
+            }))
+        ));
+    }
+
+    #[test]
+    fn apply_create_rejects_primary_field_not_in_schema() {
+        let mut c = Catalog::default();
+        let err = c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "a".to_string(),
+            schema_version: 1,
+            fields: vec![FieldDef {
+                path: path(&["x"]),
+                ty: Type::Int64,
+            }],
+            primary_field: Some("missing".to_string()),
+        });
+        assert!(matches!(
+            err,
+            Err(DbError::Schema(SchemaError::PrimaryFieldNotFound { .. }))
+        ));
+    }
+
+    #[test]
+    fn apply_new_version_rejects_when_primary_dropped_from_fields() {
+        let mut c = Catalog::default();
+        c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "a".to_string(),
+            schema_version: 1,
+            fields: vec![FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+            }],
+            primary_field: Some("id".to_string()),
+        })
+        .unwrap();
+        let err = c.apply_record(CatalogRecordWire::NewSchemaVersion {
+            collection_id: 1,
+            schema_version: 2,
+            fields: vec![],
+        });
+        assert!(matches!(
+            err,
+            Err(DbError::Schema(
+                SchemaError::PrimaryFieldMissingInSchema { .. }
+            ))
+        ));
     }
 }

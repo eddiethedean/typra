@@ -5,13 +5,13 @@
 
 User-facing facade crate for **Typra**, a typed embedded database.
 
-**Status (0.4.0):** `Database::open`, **`register_collection`**, **`register_schema_version`**, and `#[derive(DbModel)]` are available. Record storage, queries, validation, and schema evolution beyond catalog registration are not implemented yet.
+**Status (0.5.0):** `Database::open`, **`register_collection`** (with primary key field), **`insert` / `get`**, **`Database::open_in_memory`** / snapshots, **`register_schema_version`**, and `#[derive(DbModel)]` are available. Queries, rich validation, and secondary indexes are not implemented yet.
 
 ### Install
 
 ```toml
 [dependencies]
-typra = "0.4"
+typra = "0.5"
 ```
 
 ### Example
@@ -38,6 +38,7 @@ fn main() -> Result<(), DbError> {
             path: FieldPath::new([Cow::Borrowed("title")])?,
             ty: Type::String,
         }],
+        "title",
     )?;
     Ok(())
 }

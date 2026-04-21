@@ -19,7 +19,7 @@ def test_register_all_primitive_types_in_one_collection(tmp_path) -> None:
         '{"path": ["g"], "type": "uuid"},'
         '{"path": ["h"], "type": "timestamp"}]'
     )
-    db.register_collection("t", payload)
+    db.register_collection("t", payload, "a")
     assert db.collection_names() == ["t"]
 
 
@@ -33,17 +33,17 @@ def test_register_optional_list_object_enum(tmp_path) -> None:
       ]}},
       {"path": ["state"], "type": {"enum": ["on", "off"]}}
     ]"""
-    db.register_collection("complex", fields)
+    db.register_collection("complex", fields, "opt")
     path = tmp_path / "nest.typra"
     del db
     db2 = typra.Database.open(str(path))
     assert db2.collection_names() == ["complex"]
 
 
-def test_empty_fields_array_allowed(tmp_path) -> None:
+def test_empty_fields_array_rejected_for_primary(tmp_path) -> None:
     db = typra.Database.open(str(tmp_path / "emptyfields.typra"))
-    db.register_collection("empty_schema", "[]")
-    assert db.collection_names() == ["empty_schema"]
+    with pytest.raises(ValueError, match="."):
+        db.register_collection("empty_schema", "[]", "id")
 
 
 @pytest.mark.parametrize(
@@ -64,12 +64,12 @@ def test_empty_fields_array_allowed(tmp_path) -> None:
 def test_fields_json_validation_errors(tmp_path, bad_json: str, needle: str) -> None:
     db = typra.Database.open(str(tmp_path / "val.typra"))
     with pytest.raises(ValueError) as exc:
-        db.register_collection("x", bad_json)
+        db.register_collection("x", bad_json, "a")
     assert needle.lower() in str(exc.value).lower()
 
 
-def test_nested_path_segments(tmp_path) -> None:
+def test_nested_path_segments_rejected_as_primary(tmp_path) -> None:
     db = typra.Database.open(str(tmp_path / "deep.typra"))
     fields = '[{"path": ["profile", "addr", "zip"], "type": "string"}]'
-    db.register_collection("users", fields)
-    assert db.collection_names() == ["users"]
+    with pytest.raises(ValueError, match="."):
+        db.register_collection("users", fields, "profile")

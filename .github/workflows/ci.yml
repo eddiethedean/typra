@@ -39,15 +39,16 @@ jobs:
         with:
           tool: cargo-llvm-cov
 
-      - name: Rust coverage (lcov + summary)
+      - name: Rust coverage (lcov + typra-core line gate)
+        env:
+          COVERAGE_TYPRA_CORE_LINES: "97"
         run: |
           mkdir -p target/coverage
-          cargo llvm-cov --workspace --all-features \
+          CI=1 cargo llvm-cov --workspace --all-features \
             --ignore-filename-regex 'python/typra/src/.*' \
             --lcov --output-path target/coverage/rust.lcov
-          cargo llvm-cov --workspace --all-features \
-            --ignore-filename-regex 'python/typra/src/.*' \
-            --summary-only
+          CI=1 cargo llvm-cov -p typra-core --all-features \
+            --fail-under-lines "$COVERAGE_TYPRA_CORE_LINES" --summary-only
 
       - name: Install Python
         uses: actions/setup-python@v5

@@ -74,14 +74,16 @@ test: python-develop
 
 coverage: coverage-rust coverage-python
 
+# Minimum line coverage for `typra-core` (practical gate; raise as tests improve).
+COVERAGE_TYPRA_CORE_LINES ?= 97
+
 coverage-rust:
 	@mkdir -p target/coverage
-	@cargo llvm-cov --workspace --all-features \
+	@CI=1 cargo llvm-cov --workspace --all-features \
 		--ignore-filename-regex 'python/typra/src/.*' \
 		--lcov --output-path target/coverage/rust.lcov
-	@cargo llvm-cov --workspace --all-features \
-		--ignore-filename-regex 'python/typra/src/.*' \
-		--summary-only
+	@CI=1 cargo llvm-cov -p typra-core --all-features \
+		--fail-under-lines $(COVERAGE_TYPRA_CORE_LINES) --summary-only
 
 coverage-python: python-develop
 	@mkdir -p target/coverage

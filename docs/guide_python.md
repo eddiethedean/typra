@@ -9,7 +9,7 @@ For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
 
 ```bash
-pip install "typra>=0.4.0,<0.5"
+pip install "typra>=0.5.0,<0.6"
 ```
 
 Pin the minor range you test against; pre-1.0 minors may include API or format changes.
@@ -23,6 +23,7 @@ db = typra.Database.open("app.typra")
 cid, ver = db.register_collection(
     "books",
     '[{"path": ["title"], "type": "string"}]',
+    "title",
 )
 assert db.path().endswith("app.typra")
 assert db.collection_names() == ["books"]
@@ -42,11 +43,25 @@ Opening a **directory** path (or another non-file that cannot be used as a datab
 
 Returns the path string used to open the database (normalized by the OS path handling underlying the Rust core).
 
-### `register_collection(name: str, fields_json: str) -> tuple[int, int]`
+### `register_collection(name: str, fields_json: str, primary_field: str) -> tuple[int, int]`
 
 Registers a **new** collection named `name` with schema version **1**. Collection names are **trimmed** of leading/trailing whitespace; empty names after trimming raise **`ValueError`**.
 
-`fields_json` must be a JSON **array** of field objects (see below). If parsing or typing fails, **`ValueError`** is raised with a message describing the problem. If the name is already registered, **`ValueError`** is raised.
+`fields_json` must be a JSON **array** of field objects (see below). **`primary_field`** must name a **single-segment** top-level field present in that array (record encoding v1).
+
+If parsing or typing fails, **`ValueError`** is raised with a message describing the problem. If the name is already registered, **`ValueError`** is raised.
+
+### `insert(collection_name: str, row: dict) -> None`
+
+Inserts or replaces the latest row for that collection. **`row`** must include every schema field, including the primary key.
+
+### `get(collection_name: str, pk: object) -> dict | None`
+
+Returns the latest row as a **`dict`** of JSON-like values, or **`None`** if no row exists for that primary key.
+
+### `Database.open_in_memory() -> Database` / `Database.open_snapshot_bytes(data: bytes) -> Database` / `snapshot_bytes() -> bytes`
+
+In-memory databases use the same logical format as files. **`snapshot_bytes`** copies the full image (only for in-memory / snapshot-opened databases).
 
 ### `collection_names() -> list[str]`
 
@@ -108,7 +123,7 @@ fields = """[
   {"path": ["year"], "type": "int64"},
   {"path": ["tags"], "type": {"list": "string"}}
 ]"""
-db.register_collection("books", fields)
+db.register_collection("books", fields, "title")
 ```
 
 ## Persistence
@@ -121,13 +136,13 @@ Registrations are **durable**: after you close the process and open the same pat
 |-----------|-------------------|
 | Invalid JSON, wrong JSON shape, unknown type, duplicate collection name, invalid collection name | **`ValueError`** |
 | I/O problems opening the file (missing parent dir, permission, is a directory, etc.) | **`OSError`** |
-| Engine reports “not implemented” (should not occur for supported 0.4.x calls) | **`RuntimeError`** |
+| Engine reports “not implemented” (should not occur for supported 0.5.x calls) | **`RuntimeError`** |
 
-Always catch **`ValueError`** and **`OSError`** around `open` and `register_collection` in production code.
+Always catch **`ValueError`** and **`OSError`** around `open`, `register_collection`, and **`insert`** in production code.
 
-## What is not in 0.4.x yet
+## What is not in 0.5.x yet
 
-- Record **insert** / **get** / queries
+- SQL / rich **queries**
 - **`register_schema_version`** from Python (Rust only for now)
 - Pydantic model inference (you pass explicit `fields_json`)
 

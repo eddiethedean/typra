@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "typra"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "tempfile",
  "typra-core",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "typra-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "crc32c",
  "tempfile",
@@ -403,7 +403,7 @@ dependencies = [
 
 [[package]]
 name = "typra-derive"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "quote",
  "syn",
@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "typra-python"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "pyo3",
  "serde_json",

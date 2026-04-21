@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-21
+
+### Added
+
+- **Record encoding v1**: `SegmentType::Record` payloads with typed primary key + body fields; see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md).
+- **Catalog**: wire v2 with optional `primary_field` on create; [`Catalog::lookup_name`](crates/typra-core/src/catalog/state.rs) for name → id.
+- **Database (Rust)**: generic [`Database<S: Store>`](crates/typra-core/src/db.rs) with default `Database` = on-disk [`FileStore`](crates/typra-core/src/storage.rs); [`Database::open_in_memory`](crates/typra-core/src/db.rs), [`from_snapshot_bytes`](crates/typra-core/src/db.rs), [`snapshot_bytes`](crates/typra-core/src/db.rs); [`insert`](crates/typra-core/src/db.rs) / [`get`](crates/typra-core/src/db.rs); [`register_collection(..., primary_field)`](crates/typra-core/src/db.rs).
+- **Format**: new databases use file format minor **5**; first record write lazily bumps **4 → 5**; schema-only writes bump **3 → 4** as in 0.4.0.
+- **Python**: `register_collection(..., primary_field)`, `insert`, `get`, `open_in_memory`, `open_snapshot_bytes`, `snapshot_bytes`.
+
+### Changed
+
+- **Breaking**: `register_collection` now requires a **primary field** name (top-level field in the schema). See [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md).
+
 ## [0.4.0] - 2026-04-21
 
 ### Added

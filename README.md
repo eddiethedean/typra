@@ -9,7 +9,7 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is always correct by design.
 
-**Status (v0.4.0):** Early semver releases. The Rust crates expose `Database::open`, **`register_collection` / `register_schema_version`** (persisted schema catalog in `SegmentType::Schema` payloads), and a `DbModel` derive. Python exposes `Database.open`, **`register_collection`**, and **`collection_names`**. Record storage and validation are still **under development**. The on-disk format is **v0.4** (minor bump) with lazy upgrade from **v0.3** on first catalog write. See [CHANGELOG.md](CHANGELOG.md).
+**Status (v0.5.0):** The Rust crates expose `Database::open`, **`register_collection` / `register_schema_version`**, **`insert` / `get`**, **`Database::open_in_memory`** and snapshot helpers, and `DbModel` derive. Python exposes **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory and snapshot constructors, and **`collection_names`**. Rich validation and queries are still **under development**. New databases use format minor **5** (lazy bumps from **4** on first record write, **3 → 4** on first catalog write). See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -53,7 +53,7 @@ Many items below are **goals**; check the changelog for what each release actual
 
 ## Python
 
-The `typra` package on PyPI exposes the native extension. **0.4.0** includes `Database.open`, `register_collection(name, fields_json)`, and `collection_names()`. **`fields_json`** is a JSON array of field descriptors (see [`python/typra/README.md`](python/typra/README.md) and the longer **[Python user guide](docs/guide_python.md)**).
+The `typra` package on PyPI exposes the native extension. **0.5.0** adds **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, and in-memory / snapshot helpers. **`fields_json`** is a JSON array of field descriptors (see [`python/typra/README.md`](python/typra/README.md) and **[docs/guide_python.md](docs/guide_python.md)**).
 
 - **Python support**: **3.9+**
 - **Wheels**: **`cp39-abi3`** (one wheel per platform for CPython 3.9+)
@@ -62,12 +62,12 @@ The `typra` package on PyPI exposes the native extension. **0.4.0** includes `Da
 import typra
 
 db = typra.Database.open("app.typra")
-db.register_collection("books", '[{"path": ["title"], "type": "string"}]')
+db.register_collection("books", '[{"path": ["title"], "type": "string"}]', "title")
 print(typra.__version__)
 ```
 
 ```bash
-pip install "typra>=0.4.0,<0.5"
+pip install "typra>=0.5.0,<0.6"
 ```
 
 ---
@@ -80,20 +80,20 @@ Use the **`typra`** crate — it re-exports the engine and enables `#[derive(DbM
 
 ```toml
 [dependencies]
-typra = "0.4"
+typra = "0.5"
 ```
 
 Disable the default `derive` feature if you only need the engine:
 
 ```toml
-typra = { version = "0.4", default-features = false }
+typra = { version = "0.5", default-features = false }
 ```
 
 ### Lower-level crates
 
 For a minimal dependency tree or out-of-tree macros, depend on **`typra-core`** and **`typra-derive`** directly (same versions as the facade).
 
-### Example (0.4.x)
+### Example (0.5.x)
 
 ```rust
 use std::borrow::Cow;
@@ -110,6 +110,7 @@ fn main() -> Result<(), DbError> {
             path: FieldPath::new([Cow::Borrowed("title")])?,
             ty: Type::String,
         }],
+        "title",
     )?;
     Ok(())
 }

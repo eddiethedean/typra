@@ -5,7 +5,7 @@
 
 **Typra** is a typed, embedded database with a Rust core. This package is the official **CPython** bindings (PyO3, native extension).
 
-**In 0.4.x** you get a durable **schema catalog** in a single `.typra` file: open a database, **register collections** with a JSON field schema (`fields_json`), and list names. **Record insert/get and queries** are not available yet; they are planned for later releases ([roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md)).
+**In 0.5.x** you get a durable **schema catalog** and **record insert/get** (v1 encoding) in a single `.typra` file, plus **in-memory** databases and **snapshot** bytes. **SQL / rich queries** are still planned ([roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md)).
 
 | | |
 |--|--|
@@ -21,7 +21,7 @@
 ## Install
 
 ```bash
-pip install "typra>=0.4.0,<0.5"
+pip install "typra>=0.5.0,<0.6"
 ```
 
 Pin the minor range you test against; pre-1.0 releases may still change APIs or the on-disk format between minors.
@@ -35,9 +35,12 @@ db = typra.Database.open("app.typra")
 cid, ver = db.register_collection(
     "books",
     '[{"path": ["title"], "type": "string"}]',
+    "title",
 )
 assert cid == 1 and ver == 1
 assert db.collection_names() == ["books"]
+db.insert("books", {"title": "Typra"})
+assert db.get("books", "Typra")["title"] == "Typra"
 ```
 
 Registrations are **persisted**: reopening the same path shows the same catalog.
@@ -49,7 +52,10 @@ Registrations are **persisted**: reopening the same path shows the same catalog.
 | `typra.__version__` | Package version (matches the Rust workspace release). |
 | `Database.open(path: str)` | Create or open a database file. Raises `OSError` if the path cannot be opened (e.g. missing parent directory, path is a directory). |
 | `db.path() -> str` | Path used to open the database. |
-| `db.register_collection(name, fields_json) -> tuple[int, int]` | Register a **new** collection (schema version **1**). Returns **`(collection_id, schema_version)`**. Names are trimmed; duplicates or bad `fields_json` raise `ValueError`. |
+| `db.register_collection(name, fields_json, primary_field) -> tuple[int, int]` | Register a **new** collection (schema version **1**). **`primary_field`** is the top-level field name for the PK. Returns **`(collection_id, schema_version)`**. Names are trimmed; duplicates or bad `fields_json` raise `ValueError`. |
+| `db.insert(collection_name, row: dict) -> None` | Insert or replace the latest row (all fields required). |
+| `db.get(collection_name, pk) -> dict \| None` | Latest row or missing. |
+| `Database.open_in_memory()` / `Database.open_snapshot_bytes(data)` / `db.snapshot_bytes()` | In-memory DB and byte snapshots. |
 | `db.collection_names() -> list[str]` | All registered names, **sorted** alphabetically. |
 
 For behavior details (errors, edge cases, development), see the **[Python user guide](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md)**.
@@ -76,6 +82,7 @@ For behavior details (errors, edge cases, development), see the **[Python user g
 db.register_collection(
     "items",
     '[{"path": ["x"], "type": {"optional": "int64"}}]',
+    "x",
 )
 ```
 
@@ -87,14 +94,14 @@ schema = """[
   {"path": ["year"], "type": "int64"},
   {"path": ["tags"], "type": {"list": "string"}}
 ]"""
-db.register_collection("books", schema)
+db.register_collection("books", schema, "title")
 ```
 
 ## Exceptions
 
 - **`ValueError`**: invalid JSON, wrong shape, unknown type, invalid collection name, duplicate collection name, or format/schema errors from the engine when registering.
 - **`OSError`**: I/O failures when opening the database file.
-- **`RuntimeError`**: reserved for engine “not implemented” paths (unexpected for supported 0.4.x calls).
+- **`RuntimeError`**: reserved for engine “not implemented” paths (unexpected for supported 0.5.x calls).
 
 ## Building from source
 

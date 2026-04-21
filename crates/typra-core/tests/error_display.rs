@@ -69,6 +69,101 @@ fn format_error_display_variants() {
 
     let e = DbError::Format(FormatError::SegmentPayloadPastEof);
     assert!(e.to_string().contains("past end of file"));
+
+    let e = DbError::Format(FormatError::InvalidCatalogPayload {
+        message: "x".into(),
+    });
+    assert!(e.to_string().contains("invalid catalog payload"));
+
+    let e = DbError::Format(FormatError::TruncatedRecordPayload);
+    assert!(e.to_string().contains("truncated record payload"));
+
+    let e = DbError::Format(FormatError::RecordPayloadTypeMismatch);
+    assert!(e.to_string().contains("record payload type"));
+
+    let e = DbError::Format(FormatError::InvalidRecordUtf8);
+    assert!(e.to_string().contains("UTF-8"));
+
+    let e = DbError::Format(FormatError::RecordPayloadUnsupportedType);
+    assert!(e.to_string().contains("unsupported type"));
+
+    let e = DbError::Format(FormatError::UnknownRecordPayloadVersion { got: 9 });
+    assert!(e.to_string().contains("unknown record payload version"));
+
+    let e = DbError::Format(FormatError::TrailingRecordPayload);
+    assert!(e.to_string().contains("trailing"));
+}
+
+#[test]
+fn schema_error_display_all_variants() {
+    let cases: &[(SchemaError, &[&str])] = &[
+        (SchemaError::InvalidFieldPath, &["invalid field path"]),
+        (
+            SchemaError::DuplicateCollectionName { name: "a".into() },
+            &["duplicate", "a"],
+        ),
+        (
+            SchemaError::UnknownCollection { id: 3 },
+            &["unknown collection id", "3"],
+        ),
+        (
+            SchemaError::UnknownCollectionName { name: "z".into() },
+            &["unknown collection name", "z"],
+        ),
+        (
+            SchemaError::InvalidCollectionName,
+            &["invalid collection name"],
+        ),
+        (
+            SchemaError::InvalidSchemaVersion {
+                expected: 1,
+                got: 2,
+            },
+            &["invalid schema version", "1", "2"],
+        ),
+        (
+            SchemaError::UnexpectedCollectionId {
+                expected: 1,
+                got: 2,
+            },
+            &["unexpected collection id", "1", "2"],
+        ),
+        (
+            SchemaError::NoPrimaryKey { collection_id: 7 },
+            &["no primary key", "7"],
+        ),
+        (
+            SchemaError::PrimaryFieldNotFound { name: "pk".into() },
+            &["primary field", "pk"],
+        ),
+        (
+            SchemaError::PrimaryFieldMissingInSchema { name: "pk".into() },
+            &["schema update", "pk"],
+        ),
+        (
+            SchemaError::RowMissingPrimary { name: "id".into() },
+            &["missing primary", "id"],
+        ),
+        (
+            SchemaError::RowUnknownField { name: "bad".into() },
+            &["unknown field", "bad"],
+        ),
+        (
+            SchemaError::RowMissingField {
+                name: "need".into(),
+            },
+            &["missing field", "need"],
+        ),
+    ];
+    for (err, needles) in cases {
+        let s = DbError::Schema(err.clone()).to_string();
+        for n in *needles {
+            assert!(
+                s.contains(n),
+                "expected {s:?} to contain {n:?} (error {err:?})"
+            );
+        }
+    }
 }
 
 #[test]

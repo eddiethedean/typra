@@ -48,4 +48,69 @@ impl Store for FileStore {
     }
 }
 
+/// In-memory growable byte store (same [`Store`] contract as [`FileStore`]).
+#[derive(Debug, Default)]
+pub struct VecStore {
+    buf: Vec<u8>,
+}
+
+impl VecStore {
+    pub fn new() -> Self {
+        Self { buf: Vec::new() }
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.buf
+    }
+
+    pub fn from_vec(buf: Vec<u8>) -> Self {
+        Self { buf }
+    }
+
+    /// Full buffer (read-only image of the logical file).
+    pub fn as_slice(&self) -> &[u8] {
+        &self.buf
+    }
+
+    fn ensure_len(&mut self, end: u64) {
+        let need = end as usize;
+        if self.buf.len() < need {
+            self.buf.resize(need, 0);
+        }
+    }
+}
+
+impl Store for VecStore {
+    fn len(&self) -> Result<u64, DbError> {
+        Ok(self.buf.len() as u64)
+    }
+
+    fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+        let start = offset as usize;
+        let end = start.saturating_add(buf.len());
+        if end > self.buf.len() {
+            return Err(DbError::Io(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "read past end of VecStore",
+            )));
+        }
+        buf.copy_from_slice(&self.buf[start..end]);
+        Ok(())
+    }
+
+    fn write_all_at(&mut self, offset: u64, data: &[u8]) -> Result<(), DbError> {
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "overflow"))?;
+        self.ensure_len(end);
+        let start = offset as usize;
+        self.buf[start..start + data.len()].copy_from_slice(data);
+        Ok(())
+    }
+
+    fn sync(&mut self) -> Result<(), DbError> {
+        Ok(())
+    }
+}
+
 pub struct StorageEngine;

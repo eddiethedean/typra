@@ -16,6 +16,7 @@ fn main() -> Result<(), DbError> {
             path: FieldPath::new([Cow::Borrowed("title")])?,
             ty: Type::String,
         }],
+        "title",
     )?;
     println!("registered collection id={} version={}", id.0, ver.0);
     Ok(())

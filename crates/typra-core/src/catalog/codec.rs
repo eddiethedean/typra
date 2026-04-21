@@ -8,8 +8,10 @@ use crate::schema::{FieldDef, FieldPath, Type};
 /// Maximum UTF-8 length for a collection name (exclusive upper bound is 1024 bytes).
 pub const MAX_COLLECTION_NAME_BYTES: usize = 1023;
 
-/// Catalog payload format version written after `catalog_payload_version` in the wire format.
-pub const CATALOG_PAYLOAD_VERSION: u16 = 1;
+/// Legacy catalog payload (no primary key on create).
+pub const CATALOG_PAYLOAD_VERSION_V1: u16 = 1;
+/// Current catalog payload version (optional `primary_field` on create).
+pub const CATALOG_PAYLOAD_VERSION: u16 = 2;
 
 pub const ENTRY_KIND_CREATE_COLLECTION: u16 = 1;
 pub const ENTRY_KIND_NEW_SCHEMA_VERSION: u16 = 2;
@@ -38,7 +40,7 @@ impl From<CatalogDecodeError> for DbError {
     }
 }
 
-/// Encode a catalog record as segment payload bytes (v1).
+/// Encode a catalog record as segment payload bytes (current [`CATALOG_PAYLOAD_VERSION`]).
 pub fn encode_catalog_payload(record: &CatalogRecordWire) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&CATALOG_PAYLOAD_VERSION.to_le_bytes());
@@ -48,12 +50,14 @@ pub fn encode_catalog_payload(record: &CatalogRecordWire) -> Vec<u8> {
             name,
             schema_version,
             fields,
+            primary_field,
         } => {
             out.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
             out.extend_from_slice(&collection_id.to_le_bytes());
             encode_name(&mut out, name);
             out.extend_from_slice(&schema_version.to_le_bytes());
             encode_fields(&mut out, fields);
+            encode_optional_primary_name(&mut out, primary_field.as_deref());
         }
         CatalogRecordWire::NewSchemaVersion {
             collection_id,
@@ -77,6 +81,8 @@ pub enum CatalogRecordWire {
         name: String,
         schema_version: u32,
         fields: Vec<FieldDef>,
+        /// Top-level segment name for the primary key (`None` for legacy v1 catalog segments).
+        primary_field: Option<String>,
     },
     NewSchemaVersion {
         collection_id: u32,
@@ -88,7 +94,7 @@ pub enum CatalogRecordWire {
 pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError> {
     let mut cur = Cursor::new(bytes);
     let ver = cur.take_u16()?;
-    if ver != CATALOG_PAYLOAD_VERSION {
+    if ver != CATALOG_PAYLOAD_VERSION && ver != CATALOG_PAYLOAD_VERSION_V1 {
         return Err(CatalogDecodeError::UnknownCatalogPayloadVersion { got: ver }.into());
     }
     let kind = cur.take_u16()?;
@@ -98,6 +104,11 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
             let name = decode_name(&mut cur)?;
             let schema_version = cur.take_u32()?;
             let fields = decode_fields(&mut cur)?;
+            let primary_field = if ver == CATALOG_PAYLOAD_VERSION {
+                decode_optional_primary_name(&mut cur)?
+            } else {
+                None
+            };
             if cur.remaining() != 0 {
                 return Err(CatalogDecodeError::TrailingBytes.into());
             }
@@ -106,6 +117,7 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
                 name,
                 schema_version,
                 fields,
+                primary_field,
             })
         }
         ENTRY_KIND_NEW_SCHEMA_VERSION => {
@@ -123,6 +135,33 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
         }
         _ => Err(CatalogDecodeError::UnknownEntryKind { got: kind }.into()),
     }
+}
+
+fn encode_optional_primary_name(out: &mut Vec<u8>, primary: Option<&str>) {
+    match primary {
+        None => out.extend_from_slice(&0u32.to_le_bytes()),
+        Some(s) => {
+            let b = s.as_bytes();
+            out.extend_from_slice(&(b.len() as u32).to_le_bytes());
+            out.extend_from_slice(b);
+        }
+    }
+}
+
+fn decode_optional_primary_name(cur: &mut Cursor<'_>) -> Result<Option<String>, DbError> {
+    let n = cur.take_u32()? as usize;
+    if n == 0 {
+        return Ok(None);
+    }
+    if n > MAX_COLLECTION_NAME_BYTES {
+        return Err(CatalogDecodeError::CollectionNameTooLong { got: n }.into());
+    }
+    let bytes = cur.take_bytes(n)?;
+    let s = String::from_utf8(bytes).map_err(|_| CatalogDecodeError::InvalidUtf8)?;
+    if s.is_empty() {
+        return Err(CatalogDecodeError::EmptyCollectionName.into());
+    }
+    Ok(Some(s))
 }
 
 fn encode_name(out: &mut Vec<u8>, name: &str) {
@@ -365,6 +404,7 @@ mod tests {
                 path: path(&["title"]),
                 ty: Type::String,
             }],
+            primary_field: Some("title".to_string()),
         };
         let bytes = encode_catalog_payload(&rec);
         let got = decode_catalog_payload(&bytes).unwrap();

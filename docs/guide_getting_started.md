@@ -4,11 +4,11 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 ## Current status (important)
 
-As of **v0.4.x**, Typra ships a **persisted schema catalog** (append-only schema segments) alongside the earlier on-disk foundations:
+As of **v0.5.x**, Typra ships a **persisted schema catalog** plus **record insert/get** (v1 encoding), **in-memory** databases and snapshots, alongside earlier on-disk foundations:
 
-- **Rust**: `Database::open`, **`register_collection`** / **`register_schema_version`**, and `#[derive(DbModel)]`.
-- **Python**: `typra.Database.open`, **`register_collection(name, fields_json)`**, **`collection_names()`**, and `__version__`.
-- **Not yet**: record insert/get, queries, validation-on-write, and indexes—see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md).
+- **Rust**: `Database::open`, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get`**, **`Database::open_in_memory`**, and `#[derive(DbModel)]`.
+- **Python**: `typra.Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`collection_names()`**, and `__version__`.
+- **Not yet**: SQL / rich queries, full validation-on-write, secondary indexes—see [`ROADMAP.md`](../ROADMAP.md).
 
 ## Install (Rust)
 
@@ -16,12 +16,12 @@ In your application `Cargo.toml`:
 
 ```toml
 [dependencies]
-typra = "0.4"
+typra = "0.5"
 ```
 
 ## Minimal Rust example
 
-This opens (or creates) a database file and **registers a collection** in the persisted catalog. Record insert/get is not available yet.
+This opens (or creates) a database file and **registers a collection** in the persisted catalog (with a **primary key** field name).
 
 ```rust
 use std::borrow::Cow;
@@ -45,6 +45,7 @@ fn main() -> Result<(), DbError> {
             path: FieldPath::new([Cow::Borrowed("title")])?,
             ty: Type::String,
         }],
+        "title",
     )?;
     Ok(())
 }
@@ -68,7 +69,7 @@ registered collection id=1 version=1
 ## Install (Python)
 
 ```bash
-pip install "typra>=0.4.0,<0.5"
+pip install "typra>=0.5.0,<0.6"
 ```
 
 ## Minimal Python example
@@ -77,7 +78,7 @@ pip install "typra>=0.4.0,<0.5"
 import typra
 
 db = typra.Database.open("example.typra")
-db.register_collection("books", '[{"path": ["title"], "type": "string"}]')
+db.register_collection("books", '[{"path": ["title"], "type": "string"}]', "title")
 print(typra.__version__)
 ```
 
@@ -98,7 +99,7 @@ python -c "import typra; print(typra.__version__)"
 Output:
 
 ```text
-0.4.0
+0.5.0
 ```
 
 ## Development quickstart (repo contributors)

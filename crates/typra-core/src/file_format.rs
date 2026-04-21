@@ -7,8 +7,10 @@ pub const FILE_MAGIC: [u8; 4] = *b"TDB0";
 /// This is intentionally small and conservative in 0.2.0:
 /// it exists primarily so `Database::open` can recognize Typra files.
 pub const FORMAT_MAJOR: u16 = 0;
-/// Current on-disk minor version for newly created databases (`0.4` catalog).
-pub const FORMAT_MINOR: u16 = 4;
+/// Format minor for catalog-only databases (0.4.x).
+pub const FORMAT_MINOR_V4: u16 = 4;
+/// Current on-disk minor for newly created databases (records + catalog).
+pub const FORMAT_MINOR: u16 = 5;
 /// Legacy `0.3` format (superblocks + segments; catalog may be empty until upgraded).
 pub const FORMAT_MINOR_V3: u16 = 3;
 
@@ -33,6 +35,15 @@ impl FileHeader {
     }
 
     pub fn new_v0_4() -> Self {
+        Self {
+            format_major: FORMAT_MAJOR,
+            format_minor: FORMAT_MINOR_V4,
+            header_size: FILE_HEADER_SIZE as u32,
+            flags: 0,
+        }
+    }
+
+    pub fn new_v0_5() -> Self {
         Self {
             format_major: FORMAT_MAJOR,
             format_minor: FORMAT_MINOR,
@@ -68,7 +79,7 @@ pub fn decode_header(bytes: &[u8]) -> Result<FileHeader, DbError> {
 
     let format_major = u16::from_le_bytes([bytes[4], bytes[5]]);
     let format_minor = u16::from_le_bytes([bytes[6], bytes[7]]);
-    if format_major != FORMAT_MAJOR || !(2..=4).contains(&format_minor) {
+    if format_major != FORMAT_MAJOR || !(2..=5).contains(&format_minor) {
         return Err(DbError::Format(FormatError::UnsupportedVersion {
             major: format_major,
             minor: format_minor,

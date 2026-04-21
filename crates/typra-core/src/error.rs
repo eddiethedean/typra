@@ -48,16 +48,68 @@ pub enum FormatError {
     InvalidCatalogPayload {
         message: String,
     },
+    /// Record segment payload truncated or malformed.
+    TruncatedRecordPayload,
+    /// Record payload type tag did not match schema.
+    RecordPayloadTypeMismatch,
+    /// UTF-8 in a record string field was invalid.
+    InvalidRecordUtf8,
+    /// Record payload used a composite type not supported in v1 row encoding.
+    RecordPayloadUnsupportedType,
+    /// Record payload version not supported.
+    UnknownRecordPayloadVersion {
+        got: u16,
+    },
+    /// Extra bytes after a decoded record payload.
+    TrailingRecordPayload,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SchemaError {
     InvalidFieldPath,
-    DuplicateCollectionName { name: String },
-    UnknownCollection { id: u32 },
+    DuplicateCollectionName {
+        name: String,
+    },
+    UnknownCollection {
+        id: u32,
+    },
+    /// No collection registered under this name.
+    UnknownCollectionName {
+        name: String,
+    },
     InvalidCollectionName,
-    InvalidSchemaVersion { expected: u32, got: u32 },
-    UnexpectedCollectionId { expected: u32, got: u32 },
+    InvalidSchemaVersion {
+        expected: u32,
+        got: u32,
+    },
+    UnexpectedCollectionId {
+        expected: u32,
+        got: u32,
+    },
+    /// Collection was created without a primary key (catalog v1); inserts are not supported.
+    NoPrimaryKey {
+        collection_id: u32,
+    },
+    /// Declared primary field is not a single top-level segment or not present in fields.
+    PrimaryFieldNotFound {
+        name: String,
+    },
+    /// New schema version drops or renames the primary-key field.
+    PrimaryFieldMissingInSchema {
+        name: String,
+    },
+    /// Insert row did not include the primary key field.
+    RowMissingPrimary {
+        name: String,
+    },
+    /// Insert row referenced an unknown field name.
+    RowUnknownField {
+        name: String,
+    },
+    /// Insert row omitted a non-primary field.
+    RowMissingField {
+        name: String,
+    },
 }
 
 impl fmt::Display for DbError {
@@ -120,6 +172,18 @@ impl fmt::Display for FormatError {
             FormatError::InvalidCatalogPayload { message } => {
                 write!(f, "invalid catalog payload: {message}")
             }
+            FormatError::TruncatedRecordPayload => write!(f, "truncated record payload"),
+            FormatError::RecordPayloadTypeMismatch => {
+                write!(f, "record payload type does not match schema")
+            }
+            FormatError::InvalidRecordUtf8 => write!(f, "invalid UTF-8 in record string"),
+            FormatError::RecordPayloadUnsupportedType => {
+                write!(f, "unsupported type in record payload v1")
+            }
+            FormatError::UnknownRecordPayloadVersion { got } => {
+                write!(f, "unknown record payload version {got}")
+            }
+            FormatError::TrailingRecordPayload => write!(f, "trailing bytes in record payload"),
         }
     }
 }
@@ -134,6 +198,9 @@ impl fmt::Display for SchemaError {
             SchemaError::UnknownCollection { id } => {
                 write!(f, "unknown collection id {id}")
             }
+            SchemaError::UnknownCollectionName { name } => {
+                write!(f, "unknown collection name {name:?}")
+            }
             SchemaError::InvalidCollectionName => write!(f, "invalid collection name"),
             SchemaError::InvalidSchemaVersion { expected, got } => {
                 write!(f, "invalid schema version: expected {expected}, got {got}")
@@ -143,6 +210,30 @@ impl fmt::Display for SchemaError {
                     f,
                     "unexpected collection id in catalog replay: expected {expected}, got {got}"
                 )
+            }
+            SchemaError::NoPrimaryKey { collection_id } => {
+                write!(
+                    f,
+                    "collection {collection_id} has no primary key (upgrade catalog or re-register)"
+                )
+            }
+            SchemaError::PrimaryFieldNotFound { name } => {
+                write!(f, "primary field {name:?} not found as a top-level field")
+            }
+            SchemaError::PrimaryFieldMissingInSchema { name } => {
+                write!(
+                    f,
+                    "schema update must retain top-level primary field {name:?}"
+                )
+            }
+            SchemaError::RowMissingPrimary { name } => {
+                write!(f, "insert row missing primary key field {name:?}")
+            }
+            SchemaError::RowUnknownField { name } => {
+                write!(f, "insert row has unknown field {name:?}")
+            }
+            SchemaError::RowMissingField { name } => {
+                write!(f, "insert row missing field {name:?}")
             }
         }
     }
