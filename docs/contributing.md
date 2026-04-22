@@ -92,6 +92,8 @@ Rust crates under `crates/` include **`typra`** (application facade), **`typra-c
 make check-full
 ```
 
+That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guide_getting_started.md`**, and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and the embedded Python snippets (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
+
 1. Log in: `cargo login` with an API token from [crates.io account settings](https://crates.io/settings/tokens).
 2. Optionally set `repository = "..."` under `[workspace.package]` in the root `Cargo.toml` (recommended).
 3. Publish in order (each step may **`cargo publish -p … --dry-run`** first, but **`--dry-run` only succeeds when crates.io already has the dependencies** for that crate—so the first package’s dry-run is the one you can verify before any upload):

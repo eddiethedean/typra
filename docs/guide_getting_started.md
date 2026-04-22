@@ -131,6 +131,7 @@ This runs:
 - Rust format/clippy/tests
 - Python ruff/ty checks
 - Python tests (via `maturin develop --release` + `pytest`)
+- **`make verify-doc-examples`**: asserts stdout from `cargo run -p typra --example open` and the Python snippets above matches the documented output blocks on this page and in the READMEs
 
 ## Where to go next
 

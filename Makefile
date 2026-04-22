@@ -11,7 +11,7 @@ RUFF ?= $(PYTHON) -m ruff
 TY ?= $(PYTHON) -m ty
 MATURIN ?= $(PYTHON) -m maturin
 
-.PHONY: help venv install-tools python-develop test check-full check-python check-rust
+.PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples
 .PHONY: coverage coverage-rust coverage-python
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-test
@@ -25,12 +25,13 @@ help:
 	@echo "  python-develop  Build/install native extension (maturin develop --release)"
 	@echo ""
 	@echo "Checks:"
-	@echo "  check-full      Python checks + Rust checks + Python tests"
+	@echo "  check-full      Python checks + Rust checks + Python tests + doc example outputs"
 	@echo "  check-python    ruff format/check + ty check (python/)"
 	@echo "  check-rust      cargo fmt/clippy/check/test (workspace)"
 	@echo ""
 	@echo "Tests:"
 	@echo "  test            maturin develop --release + pytest (python/typra)"
+	@echo "  verify-doc-examples  Assert README/guide command output matches snippets"
 
 venv:
 	@test -x .venv/bin/python || python3 -m venv .venv
@@ -39,7 +40,7 @@ venv:
 install-tools: venv
 	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5" >/dev/null
 
-check-full: check-python check-rust test
+check-full: check-python check-rust test verify-doc-examples
 
 check-python: install-tools ruff-format-check ruff-check ty-check
 
@@ -71,6 +72,9 @@ python-develop: install-tools
 
 test: python-develop
 	cd python/typra && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q
+
+verify-doc-examples: python-develop
+	bash ./scripts/verify-doc-examples.sh
 
 coverage: coverage-rust coverage-python
 
