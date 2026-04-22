@@ -2,7 +2,7 @@
 
 This guide covers the **`typra`** PyPI package: installation, the **`Database`** API, the **`fields_json`** schema format, error behavior, and local development.
 
-For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust-first usage, see [`guide_getting_started.md`](guide_getting_started.md).
+For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust-first usage, see [`guide_getting_started.md`](guide_getting_started.md). For how the engine is organized in Rust, see [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
 
 ## Install
 

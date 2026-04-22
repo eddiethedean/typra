@@ -13,7 +13,7 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
-| **User guides** | [Getting started](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guide_concepts.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+| **User guides** | [Getting started](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guide_concepts.md) · [Rust module layout](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
 
 ## Install
 

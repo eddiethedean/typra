@@ -1,6 +1,6 @@
 # Typra User Guide: Concepts
 
-This guide explains Typra’s core concepts at a user level. For deeper design details, see the specs under `docs/` and the project [`ROADMAP.md`](../ROADMAP.md).
+This guide explains Typra’s core concepts at a user level. For deeper design details, see the specs under `docs/` and the project [`ROADMAP.md`](../ROADMAP.md). For Rust crate and `typra-core` module layout (including `db/` and storage), see [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
 
 ## Database
 

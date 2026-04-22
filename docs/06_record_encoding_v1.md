@@ -1,4 +1,4 @@
-# Record encoding v1 (0.5.0)
+# Record encoding v1 (0.5.x)
 
 This document specifies **record payloads** in `SegmentType::Record` segments and how they interact with the **schema catalog** and **file format minor 5**.
 
@@ -38,4 +38,4 @@ Pre-1.0: record payload version and catalog v2 may evolve; minor bumps should pr
 ## See also
 
 - [02_on_disk_file_format.md](02_on_disk_file_format.md) — segment framing
-- [ROADMAP.md](../ROADMAP.md) — milestone 0.5.0
+- [ROADMAP.md](../ROADMAP.md) — milestone 0.5.0 (delivered); follow-ups in 0.6+

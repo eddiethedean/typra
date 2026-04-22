@@ -10,6 +10,7 @@ Use this doc when you work **in or under `python/`**. End users installing from 
 |----------|------|
 | **Full Python guide** | [`docs/guide_python.md`](../docs/guide_python.md) |
 | **Getting started** | [`docs/guide_getting_started.md`](../docs/guide_getting_started.md) |
+| **Rust module layout** | [`docs/03_rust_crate_and_module_layout.md`](../docs/03_rust_crate_and_module_layout.md) |
 | **Changelog** | [`CHANGELOG.md`](../CHANGELOG.md) |
 | **Roadmap** | [`ROADMAP.md`](../ROADMAP.md) |
 | **Contributing / publish** | [`docs/contributing.md`](../docs/contributing.md) |

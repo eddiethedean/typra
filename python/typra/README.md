@@ -16,6 +16,7 @@ You get a durable **schema catalog** and **record insert/get** (v1 encoding) in 
 | **Full Python guide** | [docs/guide_python.md](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md) |
 | **Getting started** | [docs/guide_getting_started.md](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) |
 | **Migrating 0.4 → 0.5** | [docs/migration_0.4_to_0.5.md](https://github.com/eddiethedean/typra/blob/main/docs/migration_0.4_to_0.5.md) |
+| **Rust module layout** | [docs/03_rust_crate_and_module_layout.md](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
 
 ## Requirements

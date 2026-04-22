@@ -159,3 +159,5 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 **`0.4.0`** adds a persisted **schema catalog**: catalog events are written as **`SegmentType::Schema`** payloads and **replayed on open**. New databases write format **0.4** headers; existing **0.3** files are upgraded **lazily** to **0.4** on the first catalog write (see [`CHANGELOG.md`](../CHANGELOG.md)).
 
 **`0.5.0`** adds **record** segments (**`SegmentType::Record`**, payload v1), **primary key** on catalog create (catalog wire v2), **`insert` / `get`**, and in-memory **`VecStore`** + snapshot bytes. New databases use format minor **5**; existing **0.4** files are upgraded **lazily** to **0.5** on the first **record** write. See [`06_record_encoding_v1.md`](06_record_encoding_v1.md) and [`migration_0.4_to_0.5.md`](migration_0.4_to_0.5.md).
+
+**`0.5.1`** is an internal **Rust-only** refactor: the `Database` implementation lives under **`crates/typra-core/src/db/`** (`open`, `replay`, `write`, `helpers`); the public **`Database`** API and on-disk format are unchanged (see [`CHANGELOG.md`](../CHANGELOG.md)).

@@ -3,6 +3,7 @@
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
 - **Current release**: `0.5.1` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules and removed unused internal placeholders; the public API is unchanged ([`CHANGELOG.md`](CHANGELOG.md)).
 - **Next milestone**: `0.6.0` — validation engine (types + constraints) and better errors (not started; see **0.6.0** under [Roadmap by release](#roadmap-by-release)).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
@@ -35,16 +36,30 @@ Primary design references:
 - [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md) (record payload v1, 0.5.0+)
 - [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
 
+## Near-term focus
+
+The next three milestones, in order: **`0.6.0`** validation and errors, then **`0.7.0`** secondary indexes and simple filters, then **`0.8.0`** transactions and crash-safe checkpoints. Full scope for each is in [Roadmap by release](#roadmap-by-release).
+
+```mermaid
+flowchart LR
+  v060["0.6.0 validation"]
+  v070["0.7.0 indexes"]
+  v080["0.8.0 transactions"]
+  v060 --> v070 --> v080
+```
+
 ## Status snapshot (current: 0.5.x)
 
 **Implemented today:**
 - **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1** (`SegmentType::Record`); last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Rust workspace policy**: root [`Cargo.toml`](Cargo.toml) sets **`unsafe_code = forbid`** via **`[workspace.lints.rust]`** (no `unsafe` in workspace crates).
 - **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors ([`python/typra/README.md`](python/typra/README.md)).
-- **CI / coverage**: multi-OS Rust and Python CI; **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from the minimal Rust example and Python README snippets matches the documented output blocks (same text as the fenced **`text`** sections in those docs).
+- **CI / coverage**: multi-OS Rust and Python CI; **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from the minimal Rust example and Python README snippets matches the documented output blocks (same text as the fenced **`text`** sections in those docs).
 
 **Not yet:** rich validation-on-write (composites/constraints), secondary indexes, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
 
 **Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
+- **`0.5.1`**: Internal `Database` split into `db/` submodules; removed unused **`StorageEngine`** placeholder; public API unchanged.
 - **`0.5.0`**: Record payload v1, **primary_field** on catalog create, **`insert` / `get`**, **`VecStore`** / snapshots, format minor **5** (see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)).
 - **`0.4.0`**: Persisted **schema catalog** in **Schema** segments, **`register_collection` / `register_schema_version`**, format minor **4** (lazy **0.3 → 0.4** on first catalog write).
 - **`0.3.0`**: Superblock A/B, append-only segments, manifest publication, safe **0.2 → 0.3** upgrade for header-only `0.2` files.
@@ -318,11 +333,12 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 - **Security**
   - Threat model document (local attacker, malicious/corrupt file, untrusted input).
   - Fuzz the file-format decode surface (header/segments/record decode) and treat crashes/panics as bugs.
-  - Prefer memory-safe implementations; isolate any `unsafe` with explicit invariants and fuzz coverage.
+  - The workspace forbids **`unsafe`** (root [`Cargo.toml`](Cargo.toml) **`[workspace.lints.rust]`**); keep fuzzing and property tests on decoding/index invariants as those surfaces expand.
   - Security disclosure process (private reporting channel + coordinated release notes).
 - **Tooling**
   - “Inspect”/debug dump of file structures (header, superblocks, segments).
   - Benchmarks and profiling harness for `get(pk)` and indexed equality queries.
+  - **Rustdoc quality gate**: **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, CI) so broken or missing docs fail checks.
   - **Doc drift checks**: `scripts/verify-doc-examples.sh` keeps README / getting-started command output aligned with **`cargo run -p typra --example open`** and the embedded Python snippets (see **`Makefile`** **`verify-doc-examples`**).
 - **Docs**
   - Keep design specs aligned with actual implementation as versions ship.
@@ -362,6 +378,7 @@ From the architecture spec’s v1 non-goals:
 - **Python model story**: Pydantic-first vs lightweight models vs engine-first validation.
 - **Index physical layout**: embedded in record log vs separate index segments and rebuild strategies.
 - **Encryption / secrets**: whether to support optional at-rest encryption (and key management) for on-disk databases.
+- **Deferred hardening (not scheduled)**: optional **`cargo-deny`**, file-format **fuzz** targets, **property tests** for decode/index invariants, and stricter **clippy** tiers — revisit as APIs and persistence paths grow (no dedicated fuzz harness in-tree today).
 
 ## In-memory, hybrid, and streaming execution (refined plan)
 

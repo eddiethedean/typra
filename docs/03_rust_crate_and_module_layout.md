@@ -3,47 +3,39 @@
 ## Goals
 The Rust project layout should:
 - separate storage internals from public API
-- keep unsafe code minimal or zero if possible
+- forbid `unsafe` at the workspace level (root [`Cargo.toml`](../Cargo.toml) **`[workspace.lints.rust]`**)
 - support future Python bindings cleanly
 - make testing isolated and practical
 - allow incremental engine growth
 
 ## Implementation note (0.5.x)
 
-The **current** repository workspace is **`typra`**, **`typra-core`**, **`typra-derive`**, and **`typra-python`** (PyO3 package under `python/typra/`). The workspace tree below lists **planned** crate splits (`typra-storage`, `typra-query`, …) that are **not** separate published crates yet; storage, catalog, and record encoding today live largely inside **`typra-core`**.
+The **current** Cargo workspace members are **`typra`**, **`typra-core`**, **`typra-derive`**, and **`typra-python`** (PyO3 package under `python/typra/`). Names like **`typra-storage`**, **`typra-query`**, and **`typra-migrate`** describe **planned** crate splits that are **not** separate directories or published crates yet; file I/O, segments, catalog, and record encoding live inside **`typra-core`** today.
 
-## Workspace Layout
+## Workspace layout (0.5.x)
 
 ```text
 typra/
-├── Cargo.toml
+├── Cargo.toml                 # [workspace.package] version; workspace.lints: unsafe_code = forbid
 ├── crates/
-│   ├── typra-core/
-│   ├── typra-storage/
-│   ├── typra-schema/
-│   ├── typra-query/
-│   ├── typra-migrate/
-│   ├── typra-derive/
-│   ├── typra-cli/
-│   └── typra-bench/
+│   ├── typra-core/            # engine (Database, Store, segments, catalog, records)
+│   ├── typra-derive/          # #[derive(DbModel)]
+│   └── typra/                 # facade: re-exports typra-core + optional derive
 ├── python/
-│   └── typra/          # PyPI package (maturin + PyO3); kept out of crates/
-├── examples/
+│   └── typra/                 # PyPI package (Cargo package name: typra-python)
 ├── docs/
-└── scripts/
+├── scripts/
+└── ...
 ```
+
+### Future crate splits (planned, not in this tree yet)
+
+Design docs may refer to **`typra-storage`**, **`typra-schema`**, **`typra-query`**, **`typra-migrate`**, **`typra-cli`**, and **`typra-bench`** as eventual extracted crates. Until then, treat them as **logical boundaries** inside **`typra-core`** (or as future work), not as workspace members.
 
 ## Crate Responsibilities
 
 ### `typra-core`
-Public engine façade and shared primitives.
-Contains:
-- `Database`
-- `Transaction`
-- engine configuration
-- error types
-- collection handles
-- trait glue across subsystems
+Public engine façade and shared primitives for **0.5.x**: **`Database<S: Store>`**, persisted **catalog**, **record** payload v1, **segment** I/O, **superblock** / **manifest** publication, and **error** types. Configuration and validation modules exist largely as **stubs** ahead of [`ROADMAP.md`](../ROADMAP.md) milestones.
 
 ### `typra-storage`
 Low-level storage engine.
@@ -117,30 +109,56 @@ Contains:
 - dataset generators
 - performance comparison scripts
 
-## Internal Modules
+## Internal modules
 
-### `typra-core`
+### `typra-core` (current `src/` layout)
+
+The engine is organized around **`db/`** (open, replay, append writes), **`catalog/`**, **`record/`**, **`segments/`**, plus shared **`storage`**, **`file_format`**, **`superblock`**, **`manifest`**, and **`publish`**.
+
 ```text
 src/
 ├── lib.rs
-├── db.rs
-├── config.rs
+├── db/
+│   ├── mod.rs          # Database<S: Store>, public API
+│   ├── open.rs
+│   ├── replay.rs
+│   ├── write.rs
+│   └── helpers.rs
+├── catalog/
+│   ├── mod.rs
+│   ├── codec.rs
+│   └── state.rs
+├── record/
+│   ├── mod.rs
+│   ├── payload_v1.rs
+│   └── scalar.rs
+├── segments/
+│   ├── mod.rs
+│   ├── header.rs
+│   ├── reader.rs
+│   └── writer.rs
+├── storage.rs          # Store trait, FileStore, VecStore
+├── schema.rs           # CollectionSchema, FieldDef, DbModel marker, …
 ├── error.rs
-├── collection.rs
-├── transaction.rs
-├── snapshot.rs
-├── value.rs
-└── stats.rs
+├── file_format.rs
+├── superblock.rs
+├── manifest.rs
+├── publish.rs
+├── checksum.rs
+├── config.rs           # stub / reserved
+└── validation.rs       # stub / reserved
 ```
 
-#### Key Types
-- `Database`
-- `DatabaseBuilder`
-- `CollectionHandle<T>`
-- `UntypedCollectionHandle`
-- `Transaction`
-- `Snapshot`
-- `DbError`
+#### Key types (shipped in 0.5.x)
+
+- **`Database<S: Store>`** — default `Database` = on-disk **`FileStore`**; **`open_in_memory`** uses **`VecStore`**
+- **`Store`**, **`FileStore`**, **`VecStore`**
+- **`Catalog`**, **`CollectionInfo`**, catalog replay records
+- **`DbError`**, **`SchemaError`**, format/manifest/superblock errors as in **`error.rs`**
+- **`ScalarValue`**, **`CollectionSchema`**, **`FieldDef`**, **`Type`**, **`SchemaVersion`**, **`CollectionId`**
+- **`DbModel`** marker trait (derive lives in **`typra-derive`**)
+
+Not yet in the public API: **`Transaction`**, typed **`CollectionHandle<T>`**, SQL/query builders (see [`ROADMAP.md`](../ROADMAP.md)).
 
 ### `typra-storage`
 ```text
@@ -258,17 +276,11 @@ pub enum DbError {
 }
 ```
 
-## Public API Structure
-The public API should mainly re-export:
-- `Database`
-- `DatabaseBuilder`
-- `DbModel`
-- `Transaction`
-- `Query`
-- `MigrationPlan`
-- `DbError`
+## Public API structure (today)
 
-Keep storage internals private unless explicitly needed for tooling.
+**`typra-core`** re-exports **`Database`**, schema/catalog/record types, and **`prelude`** (see `lib.rs`). **`typra`** re-exports **`typra_core`** and, with the default **`derive`** feature, **`#[derive(DbModel)]`**.
+
+Longer term, queries, migrations, and richer handles may join the stable surface; keep storage segments and checksum details private unless tooling requires them.
 
 ## Testing Strategy
 Each crate should have:
@@ -287,12 +299,9 @@ Each crate should have:
 6. compaction correctness tests
 7. migration classification tests
 
-## Unsafe Code Policy
-Prefer safe Rust.
-If unsafe is required:
-- isolate in one module
-- document invariants
-- fuzz aggressively
+## Unsafe code policy
+
+The workspace sets **`unsafe_code = forbid`** in the root **`Cargo.toml`**. Any future exception would require lifting that lint explicitly and documenting invariants and test coverage.
 
 ## Feature Flags
 Potential cargo features:

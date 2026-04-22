@@ -13,7 +13,7 @@ Core engine for **Typra**: typed, embedded storage with a persisted schema catal
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
-| **Design / format** | [On-disk format](https://github.com/eddiethedean/typra/blob/main/docs/02_on_disk_file_format.md) · [Record encoding v1](https://github.com/eddiethedean/typra/blob/main/docs/06_record_encoding_v1.md) |
+| **Design / format** | [On-disk format](https://github.com/eddiethedean/typra/blob/main/docs/02_on_disk_file_format.md) · [Record encoding v1](https://github.com/eddiethedean/typra/blob/main/docs/06_record_encoding_v1.md) · [Rust module layout](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md) |
 
 ## Install
 

@@ -4,7 +4,7 @@ This guide explains how application models map to collections, how collection na
 
 ## Current status (important)
 
-As of **`0.5.0`**, Typra persists a **schema catalog** (append-only schema segments) and **records** (v1 encoding): you can **`register_collection`** / **`register_schema_version`** from Rust, and **`Database.register_collection(..., primary_field)`** with **`insert`** / **`get`** from Python using a **`fields_json`** descriptor (see [`python/typra/README.md`](../python/typra/README.md) and [`guide_python.md`](guide_python.md)). **Subset models**, **queries**, and **rich validation** are still planned—see [`ROADMAP.md`](../ROADMAP.md). This guide also describes **intended** longer-term behavior (subset models, naming defaults, etc.).
+As of **`0.5.x`**, Typra persists a **schema catalog** (append-only schema segments) and **records** (v1 encoding): you can **`register_collection`** / **`register_schema_version`** from Rust, and **`Database.register_collection(..., primary_field)`** with **`insert`** / **`get`** from Python using a **`fields_json`** descriptor (see [`python/typra/README.md`](../python/typra/README.md) and [`guide_python.md`](guide_python.md)). **Subset models**, **queries**, and **rich validation** are still planned—see [`ROADMAP.md`](../ROADMAP.md). This guide also describes **intended** longer-term behavior (subset models, naming defaults, etc.).
 
 ## Collection identity vs name
 

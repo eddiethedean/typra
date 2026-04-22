@@ -10,6 +10,8 @@ As of **v0.5.x**, Typra ships a **persisted schema catalog** plus **record inser
 - **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`snapshot_bytes`**, **`collection_names()`**, and `__version__`.
 - **Not yet**: SQL / rich queries, full validation-on-write, secondary indexes—see [`ROADMAP.md`](../ROADMAP.md).
 
+Contributor-oriented layout (Rust crates and `typra-core` modules): [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
+
 ## Install (Rust)
 
 In your application `Cargo.toml`:

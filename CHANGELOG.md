@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Record encoding v1**: `SegmentType::Record` payloads with typed primary key + body fields; see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md).
 - **Catalog**: wire v2 with optional `primary_field` on create; [`Catalog::lookup_name`](crates/typra-core/src/catalog/state.rs) for name → id.
-- **Database (Rust)**: generic [`Database<S: Store>`](crates/typra-core/src/db.rs) with default `Database` = on-disk [`FileStore`](crates/typra-core/src/storage.rs); [`Database::open_in_memory`](crates/typra-core/src/db.rs), [`from_snapshot_bytes`](crates/typra-core/src/db.rs), [`snapshot_bytes`](crates/typra-core/src/db.rs); [`insert`](crates/typra-core/src/db.rs) / [`get`](crates/typra-core/src/db.rs); [`register_collection(..., primary_field)`](crates/typra-core/src/db.rs).
+- **Database (Rust)**: generic [`Database<S: Store>`](crates/typra-core/src/db/mod.rs) with default `Database` = on-disk [`FileStore`](crates/typra-core/src/storage.rs); [`Database::open_in_memory`](crates/typra-core/src/db/mod.rs), [`from_snapshot_bytes`](crates/typra-core/src/db/mod.rs), [`snapshot_bytes`](crates/typra-core/src/db/mod.rs); [`insert`](crates/typra-core/src/db/mod.rs) / [`get`](crates/typra-core/src/db/mod.rs); [`register_collection(..., primary_field)`](crates/typra-core/src/db/mod.rs).
 - **Format**: new databases use file format minor **5**; first record write lazily bumps **4 → 5**; schema-only writes bump **3 → 4** as in 0.4.0.
 - **Python**: `register_collection(..., primary_field)`, `insert`, `get`, `open_in_memory`, `open_snapshot_bytes`, `snapshot_bytes`.
 
@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Schema catalog (Rust)**: binary encoding for catalog records in `SegmentType::Schema` segment payloads (`CreateCollection`, `NewSchemaVersion`), in-memory [`Catalog`](crates/typra-core/src/catalog/state.rs) with replay on `Database::open`, and public APIs [`Database::register_collection`](crates/typra-core/src/db.rs) / [`Database::register_schema_version`](crates/typra-core/src/db.rs).
+- **Schema catalog (Rust)**: binary encoding for catalog records in `SegmentType::Schema` segment payloads (`CreateCollection`, `NewSchemaVersion`), in-memory [`Catalog`](crates/typra-core/src/catalog/state.rs) with replay on `Database::open`, and public APIs [`Database::register_collection`](crates/typra-core/src/db/mod.rs) / [`Database::register_schema_version`](crates/typra-core/src/db/mod.rs).
 - **On-disk format**: file format minor **4**; new databases write **0.4** headers; **0.3** files are upgraded lazily to **0.4** on the first catalog write.
 - **Python**: [`Database`](python/typra/src/lib.rs) with `open`, `register_collection(fields_json)`, and `collection_names()`; JSON parsing for field definitions in [`fields_json.rs`](python/typra/src/fields_json.rs).
 - **Errors**: extended [`SchemaError`](crates/typra-core/src/error.rs) and [`FormatError::InvalidCatalogPayload`](crates/typra-core/src/error.rs).

@@ -21,7 +21,7 @@ Rich validation, SQL-style queries, and secondary indexes are **under developmen
 
 | Resource | Link |
 |----------|------|
-| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) |
+| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) |
 | **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) |
 | **Contributing** | [docs/contributing.md](docs/contributing.md) |
 
