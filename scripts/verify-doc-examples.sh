@@ -4,7 +4,16 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
+# Default venv interpreter: Unix uses .venv/bin/python; Windows uses .venv/Scripts/python.exe
+if [[ -z "${PYTHON:-}" ]]; then
+  if [[ -x "$ROOT/.venv/bin/python" ]]; then
+    PYTHON="$ROOT/.venv/bin/python"
+  elif [[ -f "$ROOT/.venv/Scripts/python.exe" ]]; then
+    PYTHON="$ROOT/.venv/Scripts/python.exe"
+  else
+    PYTHON="$ROOT/.venv/bin/python"
+  fi
+fi
 
 strip_cr() {
   tr -d '\r'
@@ -15,7 +24,7 @@ fail() {
   exit 1
 }
 
-[[ -x "$PYTHON" ]] || fail "Need a venv with the extension built (e.g. make python-develop). PYTHON=$PYTHON"
+{ [[ -x "$PYTHON" ]] || [[ -f "$PYTHON" ]]; } || fail "Need a venv with the extension built (e.g. make python-develop). PYTHON=$PYTHON"
 
 # --- Rust: crates/typra/examples/open.rs (also embedded in README + guide_getting_started) ---
 read -r -d '' EXPECT_RUST <<'EOF' || true
