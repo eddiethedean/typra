@@ -20,6 +20,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 serde_json = "1"
-typra-core = { path = "../../crates/typra-core", version = "0.5.0" }
+typra-core = { path = "../../crates/typra-core", version = "0.5.1" }
 # abi3-py39: one wheel per platform compatible with CPython 3.9+ (PEP 384 limited API).
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }

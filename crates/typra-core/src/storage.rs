@@ -3,6 +3,10 @@ use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::error::DbError;
 
+/// Byte-addressable backing store for the database file image.
+///
+/// Phase-2 “ReadStore” split is intentionally deferred: keep a single trait until a second
+/// consumer (e.g. read-only tooling) needs a narrower surface ([`crate::db`] refactor plan).
 pub trait Store {
     fn len(&self) -> Result<u64, DbError>;
     fn is_empty(&self) -> Result<bool, DbError> {
@@ -112,5 +116,3 @@ impl Store for VecStore {
         Ok(())
     }
 }
-
-pub struct StorageEngine;

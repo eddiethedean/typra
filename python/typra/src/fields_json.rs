@@ -4,7 +4,6 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 use typra_core::schema::{FieldDef, FieldPath, Type};
-use typra_core::DbError;
 
 pub fn fields_from_json(s: &str) -> Result<Vec<FieldDef>, String> {
     let v: Value = serde_json::from_str(s).map_err(|e| e.to_string())?;
@@ -88,14 +87,4 @@ fn primitive_type(s: &str) -> Result<Type, String> {
         "timestamp" => Type::Timestamp,
         _ => return Err(format!("unknown primitive type {s:?}")),
     })
-}
-
-pub fn db_error_to_py(err: DbError) -> pyo3::PyErr {
-    use pyo3::exceptions::{PyOSError, PyRuntimeError, PyValueError};
-    match err {
-        DbError::Io(e) => PyOSError::new_err(e.to_string()),
-        DbError::Format(e) => PyValueError::new_err(e.to_string()),
-        DbError::Schema(e) => PyValueError::new_err(e.to_string()),
-        DbError::NotImplemented => PyRuntimeError::new_err("not implemented"),
-    }
 }

@@ -53,7 +53,7 @@ Output (the version line matches the installed wheel):
 ```text
 registered 1 1
 {'title': 'Typra'}
-0.5.0
+0.5.1
 ```
 
 On disk, use **`Database.open("app.typra")`** instead; registrations are **persisted** across process restarts for that path.

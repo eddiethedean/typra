@@ -114,7 +114,7 @@ Output (the **`typra`** version line tracks the workspace / PyPI release):
 ```text
 registered collection_id= 1 schema_version= 1
 get: {'title': 'Hello'}
-typra 0.5.0
+typra 0.5.1
 ```
 
 ## Development quickstart (repo contributors)

@@ -2,7 +2,7 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.5.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **Current release**: `0.5.1` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **Next milestone**: `0.6.0` — validation engine (types + constraints) and better errors (not started; see **0.6.0** under [Roadmap by release](#roadmap-by-release)).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
