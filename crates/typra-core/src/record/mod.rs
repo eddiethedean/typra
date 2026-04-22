@@ -1,9 +1,13 @@
-//! Record payloads (v1 wire format) and tagged [`ScalarValue`] codecs.
+//! Record payloads (v1/v2) and row/scalar codecs.
 
 mod payload_v1;
+mod payload_v2;
+mod row_value;
 mod scalar;
 
 pub use payload_v1::{
     decode_record_payload_v1, encode_record_payload_v1, DecodedRecord, OP_INSERT,
 };
+pub use payload_v2::{decode_record_payload, encode_record_payload_v2, RECORD_PAYLOAD_VERSION_V2};
+pub use row_value::{encode_row_value, non_pk_defs_in_order, RowValue};
 pub use scalar::{decode_tagged_scalar, encode_tagged_scalar, Cursor, ScalarValue};

@@ -13,6 +13,7 @@ fn title_field() -> FieldDef {
     FieldDef {
         path: typra_core::schema::FieldPath(vec![Cow::Owned("title".to_string())]),
         ty: Type::String,
+        constraints: vec![],
     }
 }
 
@@ -57,6 +58,7 @@ fn replay_create_a_create_b_then_version_bump_a() {
             vec![FieldDef {
                 path: typra_core::schema::FieldPath(vec![Cow::Owned("id".to_string())]),
                 ty: Type::Int64,
+                constraints: vec![],
             }],
             "id",
         )

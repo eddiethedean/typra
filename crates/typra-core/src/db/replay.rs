@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::catalog::{decode_catalog_payload, Catalog};
 use crate::error::{DbError, FormatError, SchemaError};
-use crate::record::{decode_record_payload_v1, ScalarValue};
+use crate::record::{decode_record_payload, RowValue};
 use crate::schema::CollectionId;
 use crate::segments::header::SegmentType;
 use crate::segments::reader::{read_segment_payload, scan_segments};
@@ -64,15 +64,18 @@ pub(crate) fn load_catalog_and_latest_rows<S: Store>(
             .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
                 name: pk_name.to_string(),
             }))?;
-        let decoded = decode_record_payload_v1(&payload, pk_name, pk_ty, &col.fields)?;
+        let decoded = decode_record_payload(&payload, pk_name, pk_ty, &col.fields)?;
         if decoded.schema_version != col.current_version.0 {
             return Err(DbError::Schema(SchemaError::InvalidSchemaVersion {
                 expected: col.current_version.0,
                 got: decoded.schema_version,
             }));
         }
-        let mut full: BTreeMap<String, ScalarValue> = BTreeMap::new();
-        full.insert(pk_name.to_string(), decoded.pk.clone());
+        let mut full: BTreeMap<String, RowValue> = BTreeMap::new();
+        full.insert(
+            pk_name.to_string(),
+            RowValue::from_scalar(decoded.pk.clone()),
+        );
         for (k, v) in decoded.fields {
             full.insert(k, v);
         }

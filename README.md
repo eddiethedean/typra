@@ -9,20 +9,20 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-## Status (v0.5.x)
+## Status (v0.6.x)
 
 | Surface | What ships today |
 |---------|------------------|
-| **Rust** | `Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`**), **`insert` / `get`**, **`open_in_memory`**, snapshot helpers, **`#[derive(DbModel)]`** |
-| **Python** | **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory / snapshot APIs, **`collection_names()`** |
-| **Format** | New databases use file format minor **5** (lazy **4 → 5** on first record write; **3 → 4** on first catalog write as in 0.4.x) |
+| **Rust** | `Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`**), **`insert` / `get`** with **`RowValue`** (primitives + nested optionals/lists/objects/enums), validation + **constraints**, **`open_in_memory`**, snapshot helpers, **`#[derive(DbModel)]`** |
+| **Python** | **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory / snapshot APIs, **`collection_names()`**, optional **`constraints`** in `fields_json` |
+| **Format** | Catalog payload **v3** (constraints); record payload **v1 + v2** (replay reads both; new inserts use **v2**); file format minor **5** as in 0.5.x |
 
-Rich validation, SQL-style queries, and secondary indexes are **under development**. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
+SQL-style queries and secondary indexes are **under development**. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
 | Resource | Link |
 |----------|------|
 | **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) |
-| **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) |
+| **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) · [0.5.x → 0.6.x](docs/migration_0.5_to_0.6.md) |
 | **Contributing** | [docs/contributing.md](docs/contributing.md) |
 
 ---
@@ -84,11 +84,11 @@ Output:
 
 ```text
 {'title': 'Hello'}
-0.5.1
+0.6.0
 ```
 
 ```bash
-pip install "typra>=0.5.0,<0.6"
+pip install "typra>=0.6.0,<0.7"
 ```
 
 ---
@@ -101,13 +101,13 @@ Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(D
 
 ```toml
 [dependencies]
-typra = "0.5"
+typra = "0.6"
 ```
 
 Without proc-macros (engine only):
 
 ```toml
-typra = { version = "0.5", default-features = false }
+typra = { version = "0.6", default-features = false }
 ```
 
 ### Lower-level crates

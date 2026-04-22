@@ -4,7 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::BTreeMap;
 
-use typra_core::record::ScalarValue;
+use typra_core::record::{RowValue, ScalarValue};
 use typra_core::schema::{CollectionId, FieldDef, SchemaVersion};
 use typra_core::storage::{FileStore, VecStore};
 use typra_core::Database as CoreDatabase;
@@ -54,7 +54,7 @@ impl InnerDb {
     pub(crate) fn insert(
         &mut self,
         id: CollectionId,
-        row: BTreeMap<String, ScalarValue>,
+        row: BTreeMap<String, RowValue>,
     ) -> Result<(), typra_core::DbError> {
         match self {
             InnerDb::File(d) => d.insert(id, row),
@@ -66,7 +66,7 @@ impl InnerDb {
         &self,
         id: CollectionId,
         pk: &ScalarValue,
-    ) -> Result<Option<BTreeMap<String, ScalarValue>>, typra_core::DbError> {
+    ) -> Result<Option<BTreeMap<String, RowValue>>, typra_core::DbError> {
         match self {
             InnerDb::File(d) => d.get(id, pk),
             InnerDb::Mem(d) => d.get(id, pk),

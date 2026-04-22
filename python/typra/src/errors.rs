@@ -11,6 +11,7 @@ pub fn db_error_to_py(err: DbError) -> PyErr {
         DbError::Io(e) => PyOSError::new_err(e.to_string()),
         DbError::Format(e) => PyValueError::new_err(e.to_string()),
         DbError::Schema(e) => PyValueError::new_err(e.to_string()),
+        DbError::Validation(e) => PyValueError::new_err(e.to_string()),
         DbError::NotImplemented => PyRuntimeError::new_err("not implemented"),
     }
 }

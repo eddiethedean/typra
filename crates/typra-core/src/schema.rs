@@ -56,11 +56,51 @@ pub enum Type {
     Enum(Vec<String>),
 }
 
-/// One field’s path and type within a collection schema.
+/// Declarative constraint on a field (0.6+). Evaluated on insert after type checks.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Constraint {
+    /// Minimum inclusive for signed integers (`Int64`).
+    MinI64(i64),
+    /// Maximum inclusive for signed integers (`Int64`).
+    MaxI64(i64),
+    /// Minimum inclusive for unsigned integers (`Uint64`).
+    MinU64(u64),
+    /// Maximum inclusive for unsigned integers (`Uint64`).
+    MaxU64(u64),
+    /// Minimum inclusive for floats (`Float64`).
+    MinF64(f64),
+    /// Maximum inclusive for floats (`Float64`).
+    MaxF64(f64),
+    /// Minimum UTF-8 byte length (`String`) or element count (`List`).
+    MinLength(u64),
+    /// Maximum UTF-8 byte length (`String`) or element count (`List`).
+    MaxLength(u64),
+    /// Rust regex syntax (applied to `String`).
+    Regex(String),
+    /// Loose email shape check (`String`).
+    Email,
+    /// `http`/`https` URL prefix check (`String`).
+    Url,
+    /// Non-empty string, bytes, or list.
+    NonEmpty,
+}
+
+/// One field’s path, type, and optional constraints within a collection schema.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldDef {
     pub path: FieldPath,
     pub ty: Type,
+    pub constraints: Vec<Constraint>,
+}
+
+impl FieldDef {
+    pub fn new(path: FieldPath, ty: Type) -> Self {
+        Self {
+            path,
+            ty,
+            constraints: Vec::new(),
+        }
+    }
 }
 
 /// High-level description of a collection (name, version, fields); used by tooling and derives.

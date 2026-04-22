@@ -67,7 +67,7 @@ registered collection id=1 version=1
 ## Install (Python)
 
 ```bash
-pip install "typra>=0.5.0,<0.6"
+pip install "typra>=0.6.0,<0.7"
 ```
 
 ## Minimal Python example
@@ -116,7 +116,7 @@ Output (the **`typra`** version line tracks the workspace / PyPI release):
 ```text
 registered collection_id= 1 schema_version= 1
 get: {'title': 'Hello'}
-typra 0.5.1
+typra 0.6.0
 ```
 
 ## Development quickstart (repo contributors)

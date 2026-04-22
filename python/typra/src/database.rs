@@ -149,7 +149,7 @@ impl Database {
         let pk_ty = col
             .fields
             .iter()
-            .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
+            .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == pk_name)
             .map(|f| &f.ty)
             .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
         let pk_val = row_values::scalar_from_py(py, pk, pk_ty)?;

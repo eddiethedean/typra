@@ -9,6 +9,7 @@ fn title_field() -> FieldDef {
     FieldDef {
         path: FieldPath(vec![Cow::Owned("title".to_string())]),
         ty: Type::String,
+        constraints: vec![],
     }
 }
 

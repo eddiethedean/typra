@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-21
+
+### Added
+
+- **Validation engine**: recursive type checks for primitives, `Optional`, `List`, `Object`, and `Enum`; field **constraints** (`min_i64` / `max_i64`, `min_u64` / `max_u64`, `min_f64` / `max_f64`, `min_length` / `max_length`, `regex`, `email`, `url`, `nonempty`) on [`FieldDef`](crates/typra-core/src/schema.rs); structured [`DbError::Validation`](crates/typra-core/src/error.rs) with nested paths.
+- **Row values**: [`RowValue`](crates/typra-core/src/record/row_value.rs) for in-memory rows and nested structures; [`Database::insert`](crates/typra-core/src/db/mod.rs) / [`get`](crates/typra-core/src/db/mod.rs) use `BTreeMap<String, RowValue>` (primary key remains a primitive [`ScalarValue`](crates/typra-core/src/record/scalar.rs) for `get` lookups).
+- **Record payload v2**: [`encode_record_payload_v2`](crates/typra-core/src/record/payload_v2.rs) and unified [`decode_record_payload`](crates/typra-core/src/record/payload_v2.rs) (replays **v1** and **v2** segments); see [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md).
+- **Catalog v3**: [`CATALOG_PAYLOAD_VERSION_V3`](crates/typra-core/src/catalog/codec.rs) persists per-field `constraints`; decoders still read catalog **v1** and **v2**.
+- **Python**: optional `"constraints"` array on each field in `fields_json`; composite values in `insert` / `get`; [`DbError::Validation`](python/typra/src/errors.rs) mapped to `ValueError`.
+
+### Changed
+
+- **Breaking (Rust)**: `Database::insert` / `get` row type is `RowValue`, not `ScalarValue` only.
+- **Breaking (Python)**: same semantic change for rows (dicts/lists nest as in schema).
+
+See [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md).
+
 ## [0.5.1] - 2026-04-22
 
 ### Changed
@@ -83,3 +100,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.4.0]: https://github.com/eddiethedean/typra/releases/tag/v0.4.0
 [0.5.0]: https://github.com/eddiethedean/typra/releases/tag/v0.5.0
 [0.5.1]: https://github.com/eddiethedean/typra/releases/tag/v0.5.1
+[0.6.0]: https://github.com/eddiethedean/typra/releases/tag/v0.6.0

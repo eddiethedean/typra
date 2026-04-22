@@ -3,6 +3,13 @@ use std::fmt;
 /// Top-level error for [`crate::db::Database`] and storage: I/O, on-disk layout, or schema rules.
 ///
 /// Convert from [`std::io::Error`] via `?` for convenience on file operations.
+/// Structured validation failure (0.6+): nested path and human-readable detail.
+#[derive(Debug, Clone)]
+pub struct ValidationError {
+    pub path: Vec<String>,
+    pub message: String,
+}
+
 #[derive(Debug)]
 pub enum DbError {
     /// Failed to access the database file or path.
@@ -11,6 +18,8 @@ pub enum DbError {
     Format(FormatError),
     /// Catalog or row did not satisfy schema invariants.
     Schema(SchemaError),
+    /// Row value failed type or constraint checks before persistence.
+    Validation(ValidationError),
     /// Requested capability is not implemented in this release (e.g. nested field paths in rows).
     NotImplemented,
 }
@@ -110,12 +119,27 @@ pub enum SchemaError {
     },
 }
 
+impl fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.path.is_empty() {
+            return write!(f, "validation error: {}", self.message);
+        }
+        write!(
+            f,
+            "validation error at {}: {}",
+            self.path.join("."),
+            self.message
+        )
+    }
+}
+
 impl fmt::Display for DbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DbError::Io(e) => write!(f, "i/o error: {e}"),
             DbError::Format(e) => write!(f, "format error: {e}"),
             DbError::Schema(e) => write!(f, "schema error: {e}"),
+            DbError::Validation(e) => write!(f, "{e}"),
             DbError::NotImplemented => write!(f, "not implemented"),
         }
     }
@@ -246,6 +270,7 @@ impl std::error::Error for DbError {
             DbError::Io(e) => Some(e),
             DbError::Format(_) => None,
             DbError::Schema(_) => None,
+            DbError::Validation(_) => None,
             DbError::NotImplemented => None,
         }
     }

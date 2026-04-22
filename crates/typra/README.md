@@ -5,9 +5,9 @@
 
 User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get).
 
-## Status (v0.5.x)
+## Status (v0.6.x)
 
-`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get`**, **`Database::open_in_memory`**, snapshot import/export, and **`#[derive(DbModel)]`** (via the default `derive` feature). Queries, rich validation, and secondary indexes are **not** implemented yet.
+`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, and **`#[derive(DbModel)]`** (via the default `derive` feature). Secondary indexes and a query engine are **not** implemented yet.
 
 | Resource | Link |
 |----------|------|
@@ -19,13 +19,13 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 
 ```toml
 [dependencies]
-typra = "0.5"
+typra = "0.6"
 ```
 
 Disable the default `derive` feature if you only need the engine:
 
 ```toml
-typra = { version = "0.5", default-features = false }
+typra = { version = "0.6", default-features = false }
 ```
 
 ## Example
@@ -52,6 +52,7 @@ fn main() -> Result<(), DbError> {
         vec![FieldDef {
             path: FieldPath::new([Cow::Borrowed("title")])?,
             ty: Type::String,
+            constraints: vec![],
         }],
         "title",
     )?;

@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use typra_core::error::{DbError, FormatError};
-use typra_core::record::{decode_record_payload_v1, encode_record_payload_v1};
+use typra_core::record::{decode_record_payload_v1, encode_record_payload_v1, RowValue};
 use typra_core::record::{decode_tagged_scalar, encode_tagged_scalar, Cursor, ScalarValue};
 use typra_core::schema::{FieldDef, FieldPath, Type};
 
@@ -11,6 +11,7 @@ fn field(name: &str, ty: Type) -> FieldDef {
     FieldDef {
         path: FieldPath(vec![Cow::Owned(name.to_string())]),
         ty,
+        constraints: vec![],
     }
 }
 
@@ -275,8 +276,8 @@ fn payload_roundtrip_two_non_pk_fields() {
     assert_eq!(d.schema_version, 2);
     assert_eq!(d.op, 1);
     assert_eq!(d.pk, ScalarValue::String("k".into()));
-    assert_eq!(d.fields.get("a"), Some(&ScalarValue::Int64(9)));
-    assert_eq!(d.fields.get("b"), Some(&ScalarValue::Bool(true)));
+    assert_eq!(d.fields.get("a"), Some(&RowValue::Int64(9)));
+    assert_eq!(d.fields.get("b"), Some(&RowValue::Bool(true)));
 }
 
 #[test]

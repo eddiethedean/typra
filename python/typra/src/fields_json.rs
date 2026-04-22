@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 
 use serde_json::Value;
-use typra_core::schema::{FieldDef, FieldPath, Type};
+use typra_core::schema::{Constraint, FieldDef, FieldPath, Type};
 
 /// Parse the `fields_json` string passed to ``Database.register_collection`` into engine [`FieldDef`] values.
 ///
@@ -44,7 +44,78 @@ fn field_def_from_json_value(v: &Value) -> Result<FieldDef, String> {
         .get("type")
         .ok_or_else(|| "missing \"type\"".to_string())?;
     let ty = type_from_json_value(ty)?;
-    Ok(FieldDef { path, ty })
+    let constraints = obj
+        .get("constraints")
+        .map(constraints_from_json_value)
+        .transpose()?
+        .unwrap_or_default();
+    Ok(FieldDef {
+        path,
+        ty,
+        constraints,
+    })
+}
+
+fn constraints_from_json_value(v: &Value) -> Result<Vec<Constraint>, String> {
+    let arr = v
+        .as_array()
+        .ok_or_else(|| "\"constraints\" must be an array".to_string())?;
+    let mut out = Vec::new();
+    for item in arr {
+        let o = item
+            .as_object()
+            .ok_or_else(|| "each constraint must be a JSON object".to_string())?;
+        if let Some(n) = o.get("min_i64").and_then(|x| x.as_i64()) {
+            out.push(Constraint::MinI64(n));
+            continue;
+        }
+        if let Some(n) = o.get("max_i64").and_then(|x| x.as_i64()) {
+            out.push(Constraint::MaxI64(n));
+            continue;
+        }
+        if let Some(n) = o.get("min_u64").and_then(|x| x.as_u64()) {
+            out.push(Constraint::MinU64(n));
+            continue;
+        }
+        if let Some(n) = o.get("max_u64").and_then(|x| x.as_u64()) {
+            out.push(Constraint::MaxU64(n));
+            continue;
+        }
+        if let Some(n) = o.get("min_f64").and_then(|x| x.as_f64()) {
+            out.push(Constraint::MinF64(n));
+            continue;
+        }
+        if let Some(n) = o.get("max_f64").and_then(|x| x.as_f64()) {
+            out.push(Constraint::MaxF64(n));
+            continue;
+        }
+        if let Some(n) = o.get("min_length").and_then(|x| x.as_u64()) {
+            out.push(Constraint::MinLength(n));
+            continue;
+        }
+        if let Some(n) = o.get("max_length").and_then(|x| x.as_u64()) {
+            out.push(Constraint::MaxLength(n));
+            continue;
+        }
+        if let Some(s) = o.get("regex").and_then(|x| x.as_str()) {
+            out.push(Constraint::Regex(s.to_string()));
+            continue;
+        }
+        if o.get("email").and_then(|x| x.as_bool()) == Some(true) {
+            out.push(Constraint::Email);
+            continue;
+        }
+        if o.get("url").and_then(|x| x.as_bool()) == Some(true) {
+            out.push(Constraint::Url);
+            continue;
+        }
+        if o.get("nonempty").and_then(|x| x.as_bool()) == Some(true) {
+            out.push(Constraint::NonEmpty);
+            continue;
+        }
+        return Err("unknown constraint shape".to_string());
+    }
+    Ok(out)
 }
 
 fn type_from_json_value(v: &Value) -> Result<Type, String> {

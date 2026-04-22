@@ -5,7 +5,7 @@
 
 Proc-macro crate for **Typra** (`#[derive(DbModel)]`).
 
-## Status (v0.5.x)
+## Status (v0.6.x)
 
 The derive emits a minimal **`DbModel`** implementation. Field attributes, enums, and richer mapping are **not** implemented yet.
 
@@ -21,8 +21,8 @@ Most users should depend on **`typra`** (default `derive` feature). To depend on
 
 ```toml
 [dependencies]
-typra-derive = "0.5"
-typra-core = "0.5"
+typra-derive = "0.6"
+typra-core = "0.6"
 ```
 
 ## Example

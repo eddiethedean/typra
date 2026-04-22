@@ -3,15 +3,19 @@
 use std::borrow::Cow;
 
 use crate::error::{DbError, FormatError};
-use crate::schema::{FieldDef, FieldPath, Type};
+use crate::schema::{Constraint, FieldDef, FieldPath, Type};
 
 /// Maximum UTF-8 length for a collection name (exclusive upper bound is 1024 bytes).
 pub const MAX_COLLECTION_NAME_BYTES: usize = 1023;
 
 /// Legacy catalog payload (no primary key on create).
 pub const CATALOG_PAYLOAD_VERSION_V1: u16 = 1;
-/// Current catalog payload version (optional `primary_field` on create).
-pub const CATALOG_PAYLOAD_VERSION: u16 = 2;
+/// Catalog with optional `primary_field` on create, no per-field constraints.
+pub const CATALOG_PAYLOAD_VERSION_V2: u16 = 2;
+/// Current catalog write version: `primary_field` + [`FieldDef::constraints`].
+pub const CATALOG_PAYLOAD_VERSION_V3: u16 = 3;
+/// What [`encode_catalog_payload`] writes (latest).
+pub const CATALOG_PAYLOAD_VERSION: u16 = CATALOG_PAYLOAD_VERSION_V3;
 
 pub const ENTRY_KIND_CREATE_COLLECTION: u16 = 1;
 pub const ENTRY_KIND_NEW_SCHEMA_VERSION: u16 = 2;
@@ -56,7 +60,7 @@ pub fn encode_catalog_payload(record: &CatalogRecordWire) -> Vec<u8> {
             out.extend_from_slice(&collection_id.to_le_bytes());
             encode_name(&mut out, name);
             out.extend_from_slice(&schema_version.to_le_bytes());
-            encode_fields(&mut out, fields);
+            encode_fields_v3(&mut out, fields);
             encode_optional_primary_name(&mut out, primary_field.as_deref());
         }
         CatalogRecordWire::NewSchemaVersion {
@@ -67,7 +71,7 @@ pub fn encode_catalog_payload(record: &CatalogRecordWire) -> Vec<u8> {
             out.extend_from_slice(&ENTRY_KIND_NEW_SCHEMA_VERSION.to_le_bytes());
             out.extend_from_slice(&collection_id.to_le_bytes());
             out.extend_from_slice(&schema_version.to_le_bytes());
-            encode_fields(&mut out, fields);
+            encode_fields_v3(&mut out, fields);
         }
     }
     out
@@ -94,7 +98,10 @@ pub enum CatalogRecordWire {
 pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError> {
     let mut cur = Cursor::new(bytes);
     let ver = cur.take_u16()?;
-    if ver != CATALOG_PAYLOAD_VERSION && ver != CATALOG_PAYLOAD_VERSION_V1 {
+    if ver != CATALOG_PAYLOAD_VERSION_V1
+        && ver != CATALOG_PAYLOAD_VERSION_V2
+        && ver != CATALOG_PAYLOAD_VERSION_V3
+    {
         return Err(CatalogDecodeError::UnknownCatalogPayloadVersion { got: ver }.into());
     }
     let kind = cur.take_u16()?;
@@ -103,8 +110,8 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
             let collection_id = cur.take_u32()?;
             let name = decode_name(&mut cur)?;
             let schema_version = cur.take_u32()?;
-            let fields = decode_fields(&mut cur)?;
-            let primary_field = if ver == CATALOG_PAYLOAD_VERSION {
+            let fields = decode_fields(&mut cur, ver)?;
+            let primary_field = if ver >= CATALOG_PAYLOAD_VERSION_V2 {
                 decode_optional_primary_name(&mut cur)?
             } else {
                 None
@@ -123,7 +130,7 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
         ENTRY_KIND_NEW_SCHEMA_VERSION => {
             let collection_id = cur.take_u32()?;
             let schema_version = cur.take_u32()?;
-            let fields = decode_fields(&mut cur)?;
+            let fields = decode_fields(&mut cur, ver)?;
             if cur.remaining() != 0 {
                 return Err(CatalogDecodeError::TrailingBytes.into());
             }
@@ -182,21 +189,128 @@ fn decode_name(cur: &mut Cursor<'_>) -> Result<String, DbError> {
     String::from_utf8(bytes).map_err(|_| CatalogDecodeError::InvalidUtf8.into())
 }
 
-fn encode_fields(out: &mut Vec<u8>, fields: &[FieldDef]) {
+fn encode_fields_v3(out: &mut Vec<u8>, fields: &[FieldDef]) {
     out.extend_from_slice(&(fields.len() as u32).to_le_bytes());
     for f in fields {
         encode_field_path(out, &f.path);
         encode_type(out, &f.ty, 0);
+        encode_constraints(out, &f.constraints);
     }
 }
 
-fn decode_fields(cur: &mut Cursor<'_>) -> Result<Vec<FieldDef>, DbError> {
+fn decode_fields(cur: &mut Cursor<'_>, catalog_ver: u16) -> Result<Vec<FieldDef>, DbError> {
     let n = cur.take_u32()? as usize;
     let mut v = Vec::with_capacity(n.min(1024));
     for _ in 0..n {
         let path = decode_field_path(cur)?;
         let ty = decode_type(cur, 0)?;
-        v.push(FieldDef { path, ty });
+        let constraints = if catalog_ver >= CATALOG_PAYLOAD_VERSION_V3 {
+            decode_constraints(cur)?
+        } else {
+            Vec::new()
+        };
+        v.push(FieldDef {
+            path,
+            ty,
+            constraints,
+        });
+    }
+    Ok(v)
+}
+
+const CT_MIN_I64: u8 = 1;
+const CT_MAX_I64: u8 = 2;
+const CT_MIN_U64: u8 = 3;
+const CT_MAX_U64: u8 = 4;
+const CT_MIN_F64: u8 = 5;
+const CT_MAX_F64: u8 = 6;
+const CT_MIN_LEN: u8 = 7;
+const CT_MAX_LEN: u8 = 8;
+const CT_REGEX: u8 = 9;
+const CT_EMAIL: u8 = 10;
+const CT_URL: u8 = 11;
+const CT_NONEMPTY: u8 = 12;
+
+fn encode_constraints(out: &mut Vec<u8>, c: &[Constraint]) {
+    out.extend_from_slice(&(c.len() as u32).to_le_bytes());
+    for x in c {
+        match x {
+            Constraint::MinI64(n) => {
+                out.push(CT_MIN_I64);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::MaxI64(n) => {
+                out.push(CT_MAX_I64);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::MinU64(n) => {
+                out.push(CT_MIN_U64);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::MaxU64(n) => {
+                out.push(CT_MAX_U64);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::MinF64(n) => {
+                out.push(CT_MIN_F64);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::MaxF64(n) => {
+                out.push(CT_MAX_F64);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::MinLength(n) => {
+                out.push(CT_MIN_LEN);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::MaxLength(n) => {
+                out.push(CT_MAX_LEN);
+                out.extend_from_slice(&n.to_le_bytes());
+            }
+            Constraint::Regex(s) => {
+                out.push(CT_REGEX);
+                let b = s.as_bytes();
+                out.extend_from_slice(&(b.len() as u32).to_le_bytes());
+                out.extend_from_slice(b);
+            }
+            Constraint::Email => out.push(CT_EMAIL),
+            Constraint::Url => out.push(CT_URL),
+            Constraint::NonEmpty => out.push(CT_NONEMPTY),
+        }
+    }
+}
+
+fn decode_constraints(cur: &mut Cursor<'_>) -> Result<Vec<Constraint>, DbError> {
+    let n = cur.take_u32()? as usize;
+    let mut v = Vec::with_capacity(n.min(4096));
+    for _ in 0..n {
+        let tag = cur.take_u8()?;
+        let c = match tag {
+            CT_MIN_I64 => Constraint::MinI64(cur.take_i64()?),
+            CT_MAX_I64 => Constraint::MaxI64(cur.take_i64()?),
+            CT_MIN_U64 => Constraint::MinU64(cur.take_u64()?),
+            CT_MAX_U64 => Constraint::MaxU64(cur.take_u64()?),
+            CT_MIN_F64 => Constraint::MinF64(f64::from_bits(cur.take_u64()?)),
+            CT_MAX_F64 => Constraint::MaxF64(f64::from_bits(cur.take_u64()?)),
+            CT_MIN_LEN => Constraint::MinLength(cur.take_u64()?),
+            CT_MAX_LEN => Constraint::MaxLength(cur.take_u64()?),
+            CT_REGEX => {
+                let len = cur.take_u32()? as usize;
+                let bytes = cur.take_bytes(len)?;
+                Constraint::Regex(
+                    String::from_utf8(bytes).map_err(|_| CatalogDecodeError::InvalidUtf8)?,
+                )
+            }
+            CT_EMAIL => Constraint::Email,
+            CT_URL => Constraint::Url,
+            CT_NONEMPTY => Constraint::NonEmpty,
+            _ => {
+                return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+                    message: format!("unknown constraint tag {tag}"),
+                }))
+            }
+        };
+        v.push(c);
     }
     Ok(v)
 }
@@ -307,7 +421,11 @@ fn decode_type(cur: &mut Cursor<'_>, depth: u32) -> Result<Type, DbError> {
             for _ in 0..n {
                 let path = decode_field_path(cur)?;
                 let ty = decode_type(cur, depth + 1)?;
-                fields.push(FieldDef { path, ty });
+                fields.push(FieldDef {
+                    path,
+                    ty,
+                    constraints: Vec::new(),
+                });
             }
             Type::Object(fields)
         }
@@ -376,6 +494,20 @@ impl<'a> Cursor<'a> {
         Ok(v)
     }
 
+    fn take_u64(&mut self) -> Result<u64, DbError> {
+        if self.remaining() < 8 {
+            return Err(CatalogDecodeError::UnexpectedEof.into());
+        }
+        let mut b = [0u8; 8];
+        b.copy_from_slice(&self.bytes[self.pos..self.pos + 8]);
+        self.pos += 8;
+        Ok(u64::from_le_bytes(b))
+    }
+
+    fn take_i64(&mut self) -> Result<i64, DbError> {
+        Ok(self.take_u64()? as i64)
+    }
+
     fn take_bytes(&mut self, n: usize) -> Result<Vec<u8>, DbError> {
         if self.remaining() < n {
             return Err(CatalogDecodeError::UnexpectedEof.into());
@@ -404,6 +536,7 @@ mod tests {
             fields: vec![FieldDef {
                 path: path(&["title"]),
                 ty: Type::String,
+                constraints: Vec::new(),
             }],
             primary_field: Some("title".to_string()),
         };

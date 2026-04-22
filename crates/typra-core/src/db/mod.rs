@@ -13,11 +13,12 @@ use std::path::{Path, PathBuf};
 
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
 use crate::error::{DbError, FormatError, SchemaError};
-use crate::record::{encode_record_payload_v1, ScalarValue};
+use crate::record::{encode_record_payload_v2, non_pk_defs_in_order, RowValue, ScalarValue};
 use crate::schema::{CollectionId, FieldDef, SchemaVersion};
 use crate::storage::{FileStore, Store, VecStore};
+use crate::validation;
 
-pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, ScalarValue>>;
+pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
 
 /// Opened Typra database: generic over a [`Store`] ([`FileStore`] on disk, [`VecStore`] in memory).
 pub struct Database<S: Store = FileStore> {
@@ -139,12 +140,12 @@ impl<S: Store> Database<S> {
 
     /// Insert or replace the row for `collection_id` identified by its primary-key field.
     ///
-    /// `row` maps **top-level** field names to [`ScalarValue`] and must include every non-optional
-    /// field in the current schema. v1 encoding supports only single-segment field paths.
+    /// `row` maps **top-level** field names to [`RowValue`]. The primary key field must be present.
+    /// Only single-segment field paths are supported in 0.6.x.
     pub fn insert(
         &mut self,
         collection_id: CollectionId,
-        mut row: BTreeMap<String, ScalarValue>,
+        mut row: BTreeMap<String, RowValue>,
     ) -> Result<(), DbError> {
         write::ensure_header_v0_5(&mut self.store, &mut self.format_minor)?;
         let (payload, full) = {
@@ -172,47 +173,55 @@ impl<S: Store> Database<S> {
                     name: pk_name.to_string(),
                 }))?;
             let pk_ty = &pk_def.ty;
+            validation::ensure_pk_type_primitive(pk_ty)?;
+            let mut pk_path = vec![pk_name.to_string()];
+            let pk_cell =
+                row.get(pk_name)
+                    .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
+                        name: pk_name.to_string(),
+                    }))?;
+            validation::validate_value(&mut pk_path, pk_ty, &pk_def.constraints, pk_cell)?;
+            validation::validate_top_level_row(&col.fields, pk_name, &row)?;
+
             let pk_val =
                 row.remove(pk_name)
                     .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
                         name: pk_name.to_string(),
                     }))?;
-            if !pk_val.ty_matches(pk_ty) {
-                return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-            }
-            let mut non_pk: Vec<(FieldDef, ScalarValue)> = Vec::new();
-            for def in &col.fields {
+            let pk_scalar = pk_val.clone().into_scalar()?;
+
+            let non_pk_defs = non_pk_defs_in_order(&col.fields, pk_name);
+            let mut non_pk: Vec<(FieldDef, RowValue)> = Vec::with_capacity(non_pk_defs.len());
+            for def in &non_pk_defs {
                 let seg = def.path.0[0].as_ref();
-                if seg == pk_name {
-                    continue;
-                }
-                let v = row
-                    .remove(seg)
-                    .ok_or(DbError::Schema(SchemaError::RowMissingField {
-                        name: seg.to_string(),
-                    }))?;
-                if !v.ty_matches(&def.ty) {
-                    return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-                }
-                non_pk.push((def.clone(), v));
+                let v = match row.remove(seg) {
+                    Some(x) => x,
+                    None if validation::allows_absent_root(&def.ty) => RowValue::None,
+                    None => {
+                        return Err(DbError::Schema(SchemaError::RowMissingField {
+                            name: seg.to_string(),
+                        }));
+                    }
+                };
+                non_pk.push(((*def).clone(), v));
             }
             if let Some(name) = row.keys().next().cloned() {
                 return Err(DbError::Schema(SchemaError::RowUnknownField { name }));
             }
 
-            let payload = encode_record_payload_v1(
+            let payload = encode_record_payload_v2(
                 collection_id.0,
                 col.current_version.0,
-                &pk_val,
+                &pk_scalar,
                 pk_ty,
                 &non_pk,
             )?;
-            let mut full_map: BTreeMap<String, ScalarValue> = BTreeMap::new();
-            full_map.insert(pk_name.to_string(), pk_val.clone());
-            for (def, v) in non_pk {
-                full_map.insert(def.path.0[0].to_string(), v);
+            let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();
+            full_map.insert(pk_name.to_string(), pk_val);
+            for (def, v) in &non_pk {
+                full_map.insert(def.path.0[0].to_string(), v.clone());
             }
-            let pk_key = pk_val.canonical_key_bytes();
+            let pk_key = pk_scalar.canonical_key_bytes();
             (payload, (pk_key, full_map))
         };
         write::append_record_segment_and_publish(
@@ -232,7 +241,7 @@ impl<S: Store> Database<S> {
         &self,
         collection_id: CollectionId,
         pk: &ScalarValue,
-    ) -> Result<Option<BTreeMap<String, ScalarValue>>, DbError> {
+    ) -> Result<Option<BTreeMap<String, RowValue>>, DbError> {
         let col = self.catalog.get(collection_id).ok_or(DbError::Schema(
             SchemaError::UnknownCollection {
                 id: collection_id.0,
@@ -329,6 +338,7 @@ mod tests {
         FieldDef {
             path: crate::schema::FieldPath(vec![Cow::Owned(name.to_string())]),
             ty: Type::String,
+            constraints: vec![],
         }
     }
 

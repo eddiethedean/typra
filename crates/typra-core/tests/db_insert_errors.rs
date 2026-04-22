@@ -6,7 +6,7 @@ use std::fs;
 
 use typra_core::error::{DbError, FormatError, SchemaError};
 use typra_core::file_format::{decode_header, FILE_HEADER_SIZE, FORMAT_MINOR};
-use typra_core::record::ScalarValue;
+use typra_core::record::{RowValue, ScalarValue};
 use typra_core::schema::{FieldDef, FieldPath, Type};
 use typra_core::CollectionId;
 use typra_core::Database;
@@ -15,6 +15,7 @@ fn title() -> FieldDef {
     FieldDef {
         path: FieldPath(vec![Cow::Owned("title".to_string())]),
         ty: Type::String,
+        constraints: vec![],
     }
 }
 
@@ -22,6 +23,7 @@ fn year() -> FieldDef {
     FieldDef {
         path: FieldPath(vec![Cow::Owned("year".to_string())]),
         ty: Type::Int64,
+        constraints: vec![],
     }
 }
 
@@ -44,14 +46,11 @@ fn insert_row_unknown_field_errors() {
         .register_collection("b", vec![title(), year()], "title")
         .unwrap();
     let mut row = BTreeMap::new();
-    row.insert("title".into(), ScalarValue::String("t".into()));
-    row.insert("year".into(), ScalarValue::Int64(1));
-    row.insert("extra".into(), ScalarValue::Int64(0));
+    row.insert("title".into(), RowValue::String("t".into()));
+    row.insert("year".into(), RowValue::Int64(1));
+    row.insert("extra".into(), RowValue::Int64(0));
     let e = db.insert(id, row).unwrap_err();
-    assert!(matches!(
-        e,
-        DbError::Schema(SchemaError::RowUnknownField { name }) if name == "extra"
-    ));
+    assert!(matches!(e, DbError::Validation(_)));
 }
 
 #[test]
@@ -62,12 +61,9 @@ fn insert_missing_non_pk_field_errors() {
         .register_collection("b", vec![title(), year()], "title")
         .unwrap();
     let mut row = BTreeMap::new();
-    row.insert("title".into(), ScalarValue::String("t".into()));
+    row.insert("title".into(), RowValue::String("t".into()));
     let e = db.insert(id, row).unwrap_err();
-    assert!(matches!(
-        e,
-        DbError::Schema(SchemaError::RowMissingField { name }) if name == "year"
-    ));
+    assert!(matches!(e, DbError::Validation(_)));
 }
 
 #[test]
@@ -76,12 +72,9 @@ fn insert_pk_type_mismatch_errors() {
     let mut db = Database::open(dir.path().join("p.typra")).unwrap();
     let (id, _) = db.register_collection("b", vec![title()], "title").unwrap();
     let mut row = BTreeMap::new();
-    row.insert("title".into(), ScalarValue::Int64(1));
+    row.insert("title".into(), RowValue::Int64(1));
     let e = db.insert(id, row).unwrap_err();
-    assert!(matches!(
-        e,
-        DbError::Format(FormatError::RecordPayloadTypeMismatch)
-    ));
+    assert!(matches!(e, DbError::Validation(_)));
 }
 
 #[test]
@@ -103,12 +96,13 @@ fn insert_nested_path_schema_not_implemented() {
     let nested = FieldDef {
         path: FieldPath(vec![Cow::Owned("a".into()), Cow::Owned("b".into())]),
         ty: Type::String,
+        constraints: vec![],
     };
     let (id, _) = db
         .register_collection("x", vec![nested, title()], "title")
         .unwrap();
     let mut row = BTreeMap::new();
-    row.insert("title".into(), ScalarValue::String("t".into()));
+    row.insert("title".into(), RowValue::String("t".into()));
     let e = db.insert(id, row).unwrap_err();
     assert!(matches!(e, DbError::NotImplemented));
 }
@@ -133,8 +127,8 @@ fn lazy_header_v4_to_v5_on_first_record_write() {
         assert_eq!(h.format_minor, 4);
 
         let mut row = BTreeMap::new();
-        row.insert("title".into(), ScalarValue::String("Rust".into()));
-        row.insert("year".into(), ScalarValue::Int64(2024));
+        row.insert("title".into(), RowValue::String("Rust".into()));
+        row.insert("year".into(), RowValue::Int64(2024));
         db.insert(CollectionId(1), row).unwrap();
     }
     let bytes = fs::read(&path).unwrap();

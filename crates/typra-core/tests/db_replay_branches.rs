@@ -6,7 +6,7 @@ use std::fs::OpenOptions;
 
 use typra_core::error::{DbError, FormatError, SchemaError};
 use typra_core::file_format::FileHeader;
-use typra_core::record::ScalarValue;
+use typra_core::record::{RowValue, ScalarValue};
 use typra_core::schema::{FieldDef, FieldPath, Type};
 use typra_core::segments::header::{SegmentHeader, SegmentType};
 use typra_core::segments::writer::SegmentWriter;
@@ -17,6 +17,7 @@ fn id_field() -> FieldDef {
     FieldDef {
         path: FieldPath(vec![Cow::Owned("id".to_string())]),
         ty: Type::Int64,
+        constraints: vec![],
     }
 }
 
@@ -24,6 +25,7 @@ fn title_field() -> FieldDef {
     FieldDef {
         path: FieldPath(vec![Cow::Owned("title".to_string())]),
         ty: Type::String,
+        constraints: vec![],
     }
 }
 
@@ -80,13 +82,10 @@ fn insert_rejects_non_pk_type_mismatch() {
         .register_collection("c", vec![id_field(), title_field()], "id")
         .unwrap();
     let mut row = BTreeMap::new();
-    row.insert("id".into(), ScalarValue::Int64(1));
-    row.insert("title".into(), ScalarValue::Int64(2));
+    row.insert("id".into(), RowValue::Int64(1));
+    row.insert("title".into(), RowValue::Int64(2));
     let e = db.insert(id, row).unwrap_err();
-    assert!(matches!(
-        e,
-        DbError::Format(FormatError::RecordPayloadTypeMismatch)
-    ));
+    assert!(matches!(e, DbError::Validation(_)));
 }
 
 #[test]
@@ -96,15 +95,15 @@ fn into_snapshot_bytes_roundtrips_like_snapshot_bytes() {
         .register_collection("c", vec![id_field(), title_field()], "id")
         .unwrap();
     let mut row = BTreeMap::new();
-    row.insert("id".into(), ScalarValue::Int64(7));
-    row.insert("title".into(), ScalarValue::String("snap".into()));
+    row.insert("id".into(), RowValue::Int64(7));
+    row.insert("title".into(), RowValue::String("snap".into()));
     db.insert(id, row).unwrap();
     let snap = db.into_snapshot_bytes();
     let db2 = Database::from_snapshot_bytes(snap).unwrap();
     let got = db2.get(id, &ScalarValue::Int64(7)).unwrap().expect("row");
     assert_eq!(
         got.get("title"),
-        Some(&ScalarValue::String("snap".to_string()))
+        Some(&RowValue::String("snap".to_string()))
     );
 }
 
@@ -118,8 +117,8 @@ fn replay_errors_when_record_schema_version_behind_catalog() {
             .register_collection("c", vec![id_field(), title_field()], "id")
             .unwrap();
         let mut row = BTreeMap::new();
-        row.insert("id".into(), ScalarValue::Int64(1));
-        row.insert("title".into(), ScalarValue::String("a".into()));
+        row.insert("id".into(), RowValue::Int64(1));
+        row.insert("title".into(), RowValue::String("a".into()));
         db.insert(id, row).unwrap();
         db.register_schema_version(id, vec![id_field(), title_field()])
             .unwrap();
@@ -147,8 +146,8 @@ fn replay_errors_on_nested_field_paths_in_schema() {
             .register_collection("c", vec![id_field(), title_field()], "id")
             .unwrap();
         let mut row = BTreeMap::new();
-        row.insert("id".into(), ScalarValue::Int64(1));
-        row.insert("title".into(), ScalarValue::String("a".into()));
+        row.insert("id".into(), RowValue::Int64(1));
+        row.insert("title".into(), RowValue::String("a".into()));
         db.insert(id, row).unwrap();
         let nested = FieldDef {
             path: FieldPath(vec![
@@ -156,6 +155,7 @@ fn replay_errors_on_nested_field_paths_in_schema() {
                 Cow::Owned("inner".to_string()),
             ]),
             ty: Type::Int64,
+            constraints: vec![],
         };
         db.register_schema_version(id, vec![id_field(), title_field(), nested])
             .unwrap();
@@ -177,8 +177,8 @@ fn open_rejects_record_segment_with_short_payload_body() {
             .register_collection("c", vec![id_field(), title_field()], "id")
             .unwrap();
         let mut row = BTreeMap::new();
-        row.insert("id".into(), ScalarValue::Int64(1));
-        row.insert("title".into(), ScalarValue::String("a".into()));
+        row.insert("id".into(), RowValue::Int64(1));
+        row.insert("title".into(), RowValue::String("a".into()));
         db.insert(id, row).unwrap();
     }
     let file = OpenOptions::new()

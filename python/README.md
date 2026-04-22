@@ -24,12 +24,12 @@ Use this doc when you work **in or under `python/`**. End users installing from 
 
 The Rust workspace lists **`python/typra`** as a member so **`cargo check -p typra-python`** and release versioning stay aligned with **`crates/`**.
 
-## What the extension exposes (v0.5.x)
+## What the extension exposes (v0.6.x)
 
 - **`typra.Database`**: `open`, `open_in_memory`, `open_snapshot_bytes`, `path`, `register_collection`, `insert`, `get`, `collection_names`, `snapshot_bytes`
 - **`typra.__version__`**: matches the workspace / crates release
 
-**`register_schema_version`**, SQL-style queries, and rich composite validation are **not** exposed from Python yet; see **[`ROADMAP.md`](../ROADMAP.md)**.
+**`register_schema_version`** and SQL-style queries are **not** exposed from Python yet; see **[`ROADMAP.md`](../ROADMAP.md)**.
 
 ## Setup and tests
 

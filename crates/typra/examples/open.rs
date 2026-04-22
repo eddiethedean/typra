@@ -17,6 +17,7 @@ fn main() -> Result<(), DbError> {
         vec![FieldDef {
             path: FieldPath::new([Cow::Borrowed("title")])?,
             ty: Type::String,
+            constraints: vec![],
         }],
         "title",
     )?;

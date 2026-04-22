@@ -214,6 +214,7 @@ mod tests {
             fields: vec![FieldDef {
                 path: path(&["x"]),
                 ty: Type::Int64,
+                constraints: vec![],
             }],
         };
         c.apply_record(w2).unwrap();
@@ -388,6 +389,7 @@ mod tests {
             fields: vec![FieldDef {
                 path: path(&["x"]),
                 ty: Type::Int64,
+                constraints: vec![],
             }],
             primary_field: Some("missing".to_string()),
         });
@@ -407,6 +409,7 @@ mod tests {
             fields: vec![FieldDef {
                 path: path(&["id"]),
                 ty: Type::Int64,
+                constraints: vec![],
             }],
             primary_field: Some("id".to_string()),
         })

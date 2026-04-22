@@ -4,7 +4,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! typra = "0.5"
+//! typra = "0.6"
 //! ```
 //!
 //! Use [`prelude`] for common imports. For full control over dependencies, depend on the

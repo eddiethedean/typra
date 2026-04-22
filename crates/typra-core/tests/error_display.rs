@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use typra_core::error::{FormatError, SchemaError};
+use typra_core::error::{FormatError, SchemaError, ValidationError};
 use typra_core::DbError;
 
 #[test]
@@ -21,6 +21,18 @@ fn format_error_display_and_source() {
 fn schema_error_display_and_source() {
     let e = DbError::Schema(SchemaError::InvalidFieldPath);
     assert!(e.to_string().contains("schema error"));
+    assert!(e.source().is_none());
+}
+
+#[test]
+fn validation_error_display_and_source() {
+    let e = DbError::Validation(ValidationError {
+        path: vec!["a".into(), "b".into()],
+        message: "expected int64".into(),
+    });
+    let s = e.to_string();
+    assert!(s.contains("validation"));
+    assert!(s.contains("a.b"));
     assert!(e.source().is_none());
 }
 

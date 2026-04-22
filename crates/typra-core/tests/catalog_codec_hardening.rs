@@ -92,34 +92,42 @@ fn roundtrip_all_primitive_field_types() {
         FieldDef {
             path: path(&["a"]),
             ty: Type::Bool,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["b"]),
             ty: Type::Int64,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["c"]),
             ty: Type::Uint64,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["d"]),
             ty: Type::Float64,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["e"]),
             ty: Type::String,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["f"]),
             ty: Type::Bytes,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["g"]),
             ty: Type::Uuid,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["h"]),
             ty: Type::Timestamp,
+            constraints: vec![],
         },
     ];
     let rec = CatalogRecordWire::CreateCollection {
@@ -139,23 +147,28 @@ fn roundtrip_nested_types_optional_list_object_enum() {
     let inner_obj = Type::Object(vec![FieldDef {
         path: path(&["n"]),
         ty: Type::String,
+        constraints: vec![],
     }]);
     let fields = vec![
         FieldDef {
             path: path(&["opt"]),
             ty: Type::Optional(Box::new(Type::Int64)),
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["tags"]),
             ty: Type::List(Box::new(Type::String)),
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["profile"]),
             ty: inner_obj,
+            constraints: vec![],
         },
         FieldDef {
             path: path(&["kind"]),
             ty: Type::Enum(vec!["a".to_string(), "b".to_string()]),
+            constraints: vec![],
         },
     ];
     let rec = CatalogRecordWire::CreateCollection {

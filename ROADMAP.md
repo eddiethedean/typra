@@ -2,9 +2,9 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.5.1` (see [`CHANGELOG.md`](CHANGELOG.md))
-- **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules and removed unused internal placeholders; the public API is unchanged ([`CHANGELOG.md`](CHANGELOG.md)).
-- **Next milestone**: `0.6.0` — validation engine (types + constraints) and better errors (not started; see **0.6.0** under [Roadmap by release](#roadmap-by-release)).
+- **Current release**: `0.6.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
+- **Next milestone**: `0.7.0` — secondary indexes and simple filters (see [Roadmap by release](#roadmap-by-release)).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -26,7 +26,7 @@ In addition, Typra should support **multiple storage/compute modes** (SQLite-lik
 Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
-- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0)
+- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0) · [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md) (**`RowValue`**, validation, record/catalog encodings in 0.6.0)
 
 Primary design references:
 - [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
@@ -48,15 +48,15 @@ flowchart LR
   v060 --> v070 --> v080
 ```
 
-## Status snapshot (current: 0.5.x)
+## Status snapshot (current: 0.6.x)
 
 **Implemented today:**
-- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1** (`SegmentType::Record`); last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints**, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
 - **Rust workspace policy**: root [`Cargo.toml`](Cargo.toml) sets **`unsafe_code = forbid`** via **`[workspace.lints.rust]`** (no `unsafe` in workspace crates).
-- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors ([`python/typra/README.md`](python/typra/README.md)).
+- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
 - **CI / coverage**: multi-OS Rust and Python CI; **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from the minimal Rust example and Python README snippets matches the documented output blocks (same text as the fenced **`text`** sections in those docs).
 
-**Not yet:** rich validation-on-write (composites/constraints), secondary indexes, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
+**Not yet:** secondary indexes, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
 
 **Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
 - **`0.5.1`**: Internal `Database` split into `db/` submodules; removed unused **`StorageEngine`** placeholder; public API unchanged.
@@ -203,21 +203,19 @@ Design anchor: record log + encoding strategy in [`docs/02_on_disk_file_format.m
 
 ### 0.6.0 — Validation engine (types + constraints) and better errors
 
+**Status:** **Delivered** in v0.6.0 (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md), [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md)).
+
 **Goal**: enforce schema contracts at write time with high-quality error reporting.
 
-- **Rust**
-  - Implement type validation for primitives/composites (optional/list/object/enum per spec).
-  - Add constraint validators (min/max/length/regex/email/url, etc.) with structured errors.
-  - Decide strictness/coercion policy for v1 (prefer strict by default).
-  - Ensure validation runs before any durable commit step.
-- **Python**
-  - Integrate Python model validation story cleanly with engine validation:
-    - Either rely on Pydantic (Python-side) + engine validation (authoritative), or
-    - Use engine validation as the source of truth and keep Python lightweight.
-  - Provide actionable exception types/messages for invalid writes.
-- **Definition of done**
-  - Deterministic validation semantics across Rust/Python (same rule, same outcome).
-  - Error messages include field paths (including nested paths) and expected/actual types.
+- **Rust** *(shipped)*
+  - Type validation for primitives/composites (`Optional` / `List` / `Object` / `Enum`), strict unknown fields for objects, **`RowValue`** + **record payload v2**, **`DbError::Validation`**, catalog **v3** constraints on **`FieldDef`**.
+  - Constraint validators: numeric min/max, string/list length, regex, email/url shape, nonempty.
+  - Validation runs before segment append.
+- **Python** *(shipped)*
+  - Engine validation is authoritative; nested **`dict`** / **`list`** / **`None`** for optionals; optional **`constraints`** in **`fields_json`**; **`ValueError`** for validation failures.
+- **Definition of done** *(met for core scope)*
+  - Deterministic validation semantics across Rust/Python for supported types.
+  - Errors include nested **paths** via **`ValidationError`**.
 
 Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
 
