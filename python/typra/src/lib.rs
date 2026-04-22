@@ -1,3 +1,4 @@
+// PyO3 `IntoPy` / `extract` patterns often trigger `useless_conversion`; keep noise down.
 #![allow(clippy::useless_conversion)]
 
 mod database;

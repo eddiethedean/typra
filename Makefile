@@ -14,7 +14,7 @@ MATURIN ?= $(PYTHON) -m maturin
 .PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples
 .PHONY: coverage coverage-rust coverage-python
 .PHONY: ruff-format-check ruff-check ty-check
-.PHONY: rust-fmt-check rust-clippy rust-check rust-test
+.PHONY: rust-fmt-check rust-clippy rust-check rust-doc rust-test
 
 help:
 	@echo "Typra Makefile"
@@ -27,7 +27,7 @@ help:
 	@echo "Checks:"
 	@echo "  check-full      Python checks + Rust checks + Python tests + doc example outputs"
 	@echo "  check-python    ruff format/check + ty check (python/)"
-	@echo "  check-rust      cargo fmt/clippy/check/test (workspace)"
+	@echo "  check-rust      cargo fmt/clippy/check/doc/test (workspace)"
 	@echo ""
 	@echo "Tests:"
 	@echo "  test            maturin develop --release + pytest (python/typra)"
@@ -53,7 +53,7 @@ ruff-check:
 ty-check:
 	env -u VIRTUAL_ENV $(TY) check --python $(PYTHON) --python-version 3.12 python
 
-check-rust: rust-fmt-check rust-clippy rust-check rust-test
+check-rust: rust-fmt-check rust-clippy rust-check rust-doc rust-test
 
 rust-fmt-check:
 	cargo fmt --all -- --check
@@ -63,6 +63,9 @@ rust-clippy:
 
 rust-check:
 	cargo check --workspace --all-targets --all-features
+
+rust-doc:
+	env RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 
 rust-test:
 	cargo test --workspace --all-features

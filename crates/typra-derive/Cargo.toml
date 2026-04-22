@@ -14,3 +14,6 @@ proc-macro = true
 quote = "1"
 syn = { version = "2", features = ["full"] }
 typra-core.workspace = true
+
+[lints]
+workspace = true

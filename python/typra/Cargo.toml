@@ -17,9 +17,14 @@ include = [
 [lib]
 name = "typra"
 crate-type = ["cdylib"]
+# Same lib name as the `typra` facade crate; skip rustdoc to avoid output collision with `cargo doc --workspace`.
+doc = false
 
 [dependencies]
 serde_json = "1"
 typra-core = { path = "../../crates/typra-core", version = "0.5.1" }
 # abi3-py39: one wheel per platform compatible with CPython 3.9+ (PEP 384 limited API).
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
+
+[lints]
+workspace = true

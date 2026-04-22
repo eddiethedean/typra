@@ -12,3 +12,6 @@ crc32c = "0.6"
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints]
+workspace = true

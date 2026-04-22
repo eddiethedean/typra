@@ -1,4 +1,4 @@
-//! Record payloads ([`crate::record::payload_v1`]) and tagged [`ScalarValue`] codecs (v1 row encoding).
+//! Record payloads (v1 wire format) and tagged [`ScalarValue`] codecs.
 
 mod payload_v1;
 mod scalar;

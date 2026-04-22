@@ -17,3 +17,6 @@ version = "0.5.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/eddiethedean/typra"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

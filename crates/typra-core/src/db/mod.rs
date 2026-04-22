@@ -196,12 +196,7 @@ impl<S: Store> Database<S> {
                 }
                 non_pk.push((def.clone(), v));
             }
-            if !row.is_empty() {
-                let name = row
-                    .keys()
-                    .next()
-                    .cloned()
-                    .expect("row non-empty implies a key");
+            if let Some(name) = row.keys().next().cloned() {
                 return Err(DbError::Schema(SchemaError::RowUnknownField { name }));
             }
 

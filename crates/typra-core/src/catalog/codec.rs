@@ -242,6 +242,7 @@ const TAG_LIST: u8 = 9;
 const TAG_OBJECT: u8 = 10;
 const TAG_ENUM: u8 = 11;
 
+// `depth` is only read when recursing into nested types; clippy does not see cross-call use.
 #[allow(clippy::only_used_in_recursion)]
 fn encode_type(out: &mut Vec<u8>, ty: &Type, depth: u32) {
     match ty {
