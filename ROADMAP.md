@@ -3,6 +3,7 @@
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
 - **Current release**: `0.5.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **Next milestone**: `0.6.0` — validation engine (types + constraints) and better errors (not started; see **0.6.0** under [Roadmap by release](#roadmap-by-release)).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -24,6 +25,7 @@ In addition, Typra should support **multiple storage/compute modes** (SQLite-lik
 Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
+- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0)
 
 Primary design references:
 - [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
@@ -36,9 +38,9 @@ Primary design references:
 ## Status snapshot (current: 0.5.x)
 
 **Implemented today:**
-- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`** and optional **`primary_field`** on create (catalog wire v2); **`insert` / `get`** with **record payload v1** (`SegmentType::Record`); last-write-wins replay; **`snapshot_bytes` / `from_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
-- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`open_in_memory`**, snapshot constructors, **`collection_names()`**; **`fields_json`** descriptors ([`python/typra/README.md`](python/typra/README.md)).
-- **CI / coverage**: multi-OS Rust and Python CI; **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1** (`SegmentType::Record`); last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors ([`python/typra/README.md`](python/typra/README.md)).
+- **CI / coverage**: multi-OS Rust and Python CI; **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from the minimal Rust example and Python README snippets matches the documented output blocks (same text as the fenced **`text`** sections in those docs).
 
 **Not yet:** rich validation-on-write (composites/constraints), secondary indexes, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
 
@@ -158,7 +160,7 @@ Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](doc
 **Goal**: store records and retrieve them; establish the first durable record encoding.
 
 **What shipped in v0.5.0**
-- **Rust**: `Database<S: Store>` with **`FileStore`** and **`VecStore`**; **`insert` / `get`** by **`CollectionId`** and primary-key **`ScalarValue`**; record payload **v1** (insert op; replace/delete op codes reserved); **latest row** map rebuilt on open (last segment wins); **catalog wire v2** with **`primary_field`** on create; **`snapshot_bytes` / `from_snapshot_bytes`**; lazy header **4 → 5** on first record write.
+- **Rust**: `Database<S: Store>` with **`FileStore`** and **`VecStore`**; **`insert` / `get`** by **`CollectionId`** and primary-key **`ScalarValue`**; record payload **v1** (insert op; replace/delete op codes reserved); **latest row** map rebuilt on open (last segment wins); **catalog wire v2** with **`primary_field`** on create; **`Catalog::lookup_name`**; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; lazy header **4 → 5** on first record write.
 - **Python**: **`register_collection(..., primary_field)`**, **`insert(collection_name, row)`**, **`get(collection_name, pk)`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**; rows as **`dict`** / scalar PKs (no ORM-style `db.users` accessor yet).
 
 **Still open / later** (was aspirational in the milestone text): typed **`Collection<T>`** handles, **replace/delete** record ops, rich **Pydantic**-first return types, and **attribute** accessors on **`Database`**.
@@ -321,6 +323,7 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 - **Tooling**
   - “Inspect”/debug dump of file structures (header, superblocks, segments).
   - Benchmarks and profiling harness for `get(pk)` and indexed equality queries.
+  - **Doc drift checks**: `scripts/verify-doc-examples.sh` keeps README / getting-started command output aligned with **`cargo run -p typra --example open`** and the embedded Python snippets (see **`Makefile`** **`verify-doc-examples`**).
 - **Docs**
   - Keep design specs aligned with actual implementation as versions ship.
   - Provide explicit “what’s implemented” sections (to avoid spec drift confusion).
@@ -396,7 +399,7 @@ This section refines the roadmap to ensure Typra can operate **in memory and on 
 ### Rust-first public API direction
 
 - **`Database::open(path)`** for disk-backed databases (**shipped**).
-- **In-memory**: **`Database::open_in_memory()`** + **`from_snapshot_bytes`** / **`into_snapshot_bytes`** / **`snapshot_bytes`** (**shipped** for `VecStore`).
+- **In-memory**: **`Database::open_in_memory()`** + **`from_snapshot_bytes`** / **`into_snapshot_bytes`** / **`snapshot_bytes`** (**shipped** for **`VecStore`**).
 - Optional future sugar: `export_snapshot_to_path` / `import_snapshot_from_path` if we want file convenience beyond raw bytes.
 
 Python mirrors **`open_in_memory`**, **`open_snapshot_bytes`**, and **`snapshot_bytes`** today.
