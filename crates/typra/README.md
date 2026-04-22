@@ -16,23 +16,20 @@ typra = "0.5"
 
 ### Example
 
+Same program as **`examples/open.rs`** (`cargo run -p typra --example open`):
+
 ```rust
 use std::borrow::Cow;
 
 use typra::prelude::*;
 use typra::schema::FieldPath;
-use typra::DbModel;
 use typra::FieldDef;
 use typra::Type;
 
-#[derive(DbModel)]
-struct Book {
-    title: String,
-}
-
 fn main() -> Result<(), DbError> {
-    let mut db = Database::open("example.typra")?;
-    let _ = db.register_collection(
+    let mut db = Database::open_in_memory()?;
+    println!("opened: {}", db.path().display());
+    let (id, ver) = db.register_collection(
         "books",
         vec![FieldDef {
             path: FieldPath::new([Cow::Borrowed("title")])?,
@@ -40,8 +37,16 @@ fn main() -> Result<(), DbError> {
         }],
         "title",
     )?;
+    println!("registered collection id={} version={}", id.0, ver.0);
     Ok(())
 }
+```
+
+Output:
+
+```text
+opened: :memory:
+registered collection id=1 version=1
 ```
 
 ### Features

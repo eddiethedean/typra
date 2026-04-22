@@ -38,7 +38,7 @@ CI runs the same Rust and Python checks via [`.github/workflows/ci.yml`](../.git
 
 ## Versioning
 
-Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.4.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.5.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Coverage (practical 100%)
 
@@ -50,7 +50,7 @@ We aim for **practical 100%** test coverage over first-party code, with an expli
 - **Python**: coverage is computed via `pytest-cov` (coverage.py).
   - Virtual environments, `site-packages`, and vendored dependencies are omitted via `.coveragerc`.
 
-CI publishes coverage reports but does not fail builds based on percentage.
+The **coverage** CI job runs `cargo llvm-cov` for the workspace, then enforces a **minimum line coverage for `typra-core`** via `COVERAGE_TYPRA_CORE_LINES` (see [`Makefile`](../Makefile)). Adjust the threshold only when intentionally changing test scope.
 
 ## Publishing
 
@@ -139,14 +139,13 @@ Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.tom
 
 ## Next implementation steps (high level)
 
-1. Record encoding and insert/get APIs (`0.5.x` milestone).
-2. Validation engine and constraint errors (`0.6.x`).
-3. Secondary indexes and simple filters (`0.7.x`).
-4. Transactions and crash-safe checkpoints (`0.8.x`).
+1. Validation engine and constraint errors (`0.6.x`).
+2. Secondary indexes and simple filters (`0.7.x`).
+3. Transactions and crash-safe checkpoints (`0.8.x`).
 
 See [`ROADMAP.md`](../ROADMAP.md) for the full release breakdown.
 
-### File format notes (0.3.x–0.4.x)
+### File format notes (0.3.x–0.5.x)
 
 Starting with the `0.3.x` on-disk format work, the database file layout includes reserved **Superblock A/B** regions (for crash-safe metadata publication later) and checksummed **append-only segments**. This scaffolding is still internal, but it changes on-disk compatibility behavior:
 
@@ -156,3 +155,5 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 `0.3.0` also adds minimal **manifest publication**: a tiny MANIFEST payload is appended as a checksummed segment, then its pointer is published by alternating Superblock A/B with `generation+1`.
 
 **`0.4.0`** adds a persisted **schema catalog**: catalog events are written as **`SegmentType::Schema`** payloads and **replayed on open**. New databases write format **0.4** headers; existing **0.3** files are upgraded **lazily** to **0.4** on the first catalog write (see [`CHANGELOG.md`](../CHANGELOG.md)).
+
+**`0.5.0`** adds **record** segments (**`SegmentType::Record`**, payload v1), **primary key** on catalog create (catalog wire v2), **`insert` / `get`**, and in-memory **`VecStore`** + snapshot bytes. New databases use format minor **5**; existing **0.4** files are upgraded **lazily** to **0.5** on the first **record** write. See [`06_record_encoding_v1.md`](06_record_encoding_v1.md) and [`migration_0.4_to_0.5.md`](migration_0.4_to_0.5.md).

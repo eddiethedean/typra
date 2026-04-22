@@ -11,8 +11,8 @@ Most users should depend on `typra` (which enables this via the default `derive`
 
 ```toml
 [dependencies]
-typra-derive = "0.4"
-typra-core = "0.4"
+typra-derive = "0.5"
+typra-core = "0.5"
 ```
 
 ### Example
@@ -26,7 +26,7 @@ struct Book {
 }
 ```
 
-### Status (0.4.0)
+### Status (0.5.0)
 
 This derive currently provides a minimal `DbModel` impl. Field attributes and enums are not implemented yet.
 

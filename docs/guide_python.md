@@ -16,20 +16,25 @@ Pin the minor range you test against; pre-1.0 minors may include API or format c
 
 ## Quick start
 
+In-memory (repeatable; no file). To use a file instead, replace `open_in_memory()` with `open("/path/to/app.typra")`.
+
 ```python
 import typra
 
-db = typra.Database.open("app.typra")
+db = typra.Database.open_in_memory()
 cid, ver = db.register_collection(
     "books",
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
-assert db.path().endswith("app.typra")
+assert db.path() == ":memory:"
+assert cid == 1 and ver == 1
 assert db.collection_names() == ["books"]
 ```
 
 `register_collection` returns **`(collection_id, schema_version)`**. For a new collection, ids start at **`1`** and the first schema version is **`1`**.
+
+A runnable snippet that **prints** real output (and matches CI) is in **[`guide_getting_started.md` — Minimal Python example](guide_getting_started.md#minimal-python-example)**.
 
 ## `Database`
 

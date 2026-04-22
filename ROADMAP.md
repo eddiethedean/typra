@@ -2,7 +2,7 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.4.0` (see [`CHANGELOG.md`](/Users/odosmatthews/Documents/coding/typra/CHANGELOG.md))
+- **Current release**: `0.5.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -26,22 +26,25 @@ Quick links:
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
 
 Primary design references:
-- [`docs/01_full_architecture_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/01_full_architecture_spec.md)
-- [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
-- [`docs/04_schema_dsl_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/04_schema_dsl_spec.md)
-- [`docs/05_query_planner_and_execution_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/05_query_planner_and_execution_spec.md)
-- [`docs/typed_embedded_db_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/typed_embedded_db_spec.md)
+- [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
+- [`docs/02_on_disk_file_format.md`](docs/02_on_disk_file_format.md)
+- [`docs/04_schema_dsl_spec.md`](docs/04_schema_dsl_spec.md)
+- [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
+- [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md) (record payload v1, 0.5.0+)
+- [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
 
-## Status snapshot (current: 0.4.x)
+## Status snapshot (current: 0.5.x)
 
 **Implemented today:**
-- **Rust**: `Database::open`; persisted **schema catalog** via **`register_collection`** / **`register_schema_version`** ( **`SegmentType::Schema`** payloads); `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format **0.4** with lazy **0.3 → 0.4** header bump on first catalog write.
-- **Python**: `Database.open`, **`register_collection`**, **`collection_names()`**; **`fields_json`** field descriptors ([`python/typra/README.md`](/Users/odosmatthews/Documents/coding/typra/python/typra/README.md)).
-- **CI / coverage**: multi-OS Rust and Python CI; coverage artifacts (no percentage gate).
+- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`** and optional **`primary_field`** on create (catalog wire v2); **`insert` / `get`** with **record payload v1** (`SegmentType::Record`); last-write-wins replay; **`snapshot_bytes` / `from_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`open_in_memory`**, snapshot constructors, **`collection_names()`**; **`fields_json`** descriptors ([`python/typra/README.md`](python/typra/README.md)).
+- **CI / coverage**: multi-OS Rust and Python CI; **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
-**Not yet:** record storage, indexes, validation-on-write, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
+**Not yet:** rich validation-on-write (composites/constraints), secondary indexes, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
 
-**Earlier releases** (details in [`CHANGELOG.md`](/Users/odosmatthews/Documents/coding/typra/CHANGELOG.md)):
+**Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
+- **`0.5.0`**: Record payload v1, **primary_field** on catalog create, **`insert` / `get`**, **`VecStore`** / snapshots, format minor **5** (see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)).
+- **`0.4.0`**: Persisted **schema catalog** in **Schema** segments, **`register_collection` / `register_schema_version`**, format minor **4** (lazy **0.3 → 0.4** on first catalog write).
 - **`0.3.0`**: Superblock A/B, append-only segments, manifest publication, safe **0.2 → 0.3** upgrade for header-only `0.2` files.
 - **`0.2.0`**: File header + format recognition, schema metadata scaffolding, `Store` / `FileStore`, runnable `open` example, Python `__version__`.
 
@@ -76,12 +79,12 @@ Each milestone lists:
 - **Internal storage boundary**: `Store` + `FileStore` used by `Database::open`.
 - **Tests** covering header creation/validation/corruption, decode errors, and schema path edge cases.
 - **Docs**: `ROADMAP.md` + user guides under `docs/`.
-- **CI / coverage**: multi-OS Rust+Python CI plus a coverage job that uploads artifacts (no percentage gate).
+- **CI / coverage**: multi-OS Rust+Python CI plus coverage artifacts (today the repo also enforces a **minimum `typra-core` line coverage** in CI—see [`Makefile`](Makefile); that gate did not exist at the 0.2.0 ship date).
 
 **Deferred from 0.2.x scope (still planned):**
 - “Minimal manifest / superblocks / checkpoints” durability machinery (lands with later storage milestones).
 
-Design anchor: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
+Design anchor: [`docs/02_on_disk_file_format.md`](docs/02_on_disk_file_format.md)
 
 ### 0.3.0 — Append-only segment writer/reader + minimal recovery checks
 
@@ -118,7 +121,7 @@ Design anchor: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/
 **Remaining for 0.3.0 (to finish the milestone):**
 - (none)
 
-Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
+Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](docs/02_on_disk_file_format.md)
 
 ### 0.4.0 — Persisted schema catalog + collection registration
 
@@ -130,7 +133,10 @@ Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/
   - Persisted **schema catalog** records in **`SegmentType::Schema`** payloads (v1 binary encoding: create collection + new schema version).
   - **`Database::register_collection`** / **`Database::register_schema_version`**; **`Catalog`** replay on open; stable **`CollectionId`** / **`SchemaVersion(1)`** baseline; lazy **0.3 → 0.4** header bump on first catalog write.
 - **Python**
-  - **`typra.Database`**: **`open`**, **`register_collection(name, fields_json, primary_field)`**, **`collection_names()`**; **`fields_json`** documented in [`python/typra/README.md`](python/typra/README.md).
+  - **`typra.Database`**: **`open`**, **`register_collection(name, fields_json)`** (no primary-field argument yet), **`collection_names()`**; **`fields_json`** documented in [`python/typra/README.md`](python/typra/README.md).
+
+**Superseded by 0.5.0** (breaking): **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory and snapshot constructors—see [CHANGELOG](CHANGELOG.md) and [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md).
+
 - **Tests / docs**
   - Integration tests for duplicate names, unknown id, reopen, corrupt payload, lazy header bump; user guide note in models/collections doc.
 
@@ -143,7 +149,7 @@ Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](/
   - Registering a collection persists the catalog entry and survives reopen.
   - Duplicate name handling and versioning behavior specified and tested.
 
-Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/01_full_architecture_spec.md)
+Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
 
 ### 0.5.0 — Record encoding v1 + insert/get by primary key
 
@@ -151,7 +157,13 @@ Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](/Us
 
 **Goal**: store records and retrieve them; establish the first durable record encoding.
 
-- **Rust**
+**What shipped in v0.5.0**
+- **Rust**: `Database<S: Store>` with **`FileStore`** and **`VecStore`**; **`insert` / `get`** by **`CollectionId`** and primary-key **`ScalarValue`**; record payload **v1** (insert op; replace/delete op codes reserved); **latest row** map rebuilt on open (last segment wins); **catalog wire v2** with **`primary_field`** on create; **`snapshot_bytes` / `from_snapshot_bytes`**; lazy header **4 → 5** on first record write.
+- **Python**: **`register_collection(..., primary_field)`**, **`insert(collection_name, row)`**, **`get(collection_name, pk)`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**; rows as **`dict`** / scalar PKs (no ORM-style `db.users` accessor yet).
+
+**Still open / later** (was aspirational in the milestone text): typed **`Collection<T>`** handles, **replace/delete** record ops, rich **Pydantic**-first return types, and **attribute** accessors on **`Database`**.
+
+- **Rust** *(original milestone bullets; see “What shipped” vs “Still open”)*
   - Implement record event encoding/decoding (insert/replace/delete; starting with insert + get).
   - Add `Collection<T>` typed handle and `insert` + `get(pk)` APIs (exact shape may evolve).
   - Implement primary-key indexing mechanism sufficient for `get(pk)` (may be an embedded index or minimal index segment).
@@ -160,7 +172,7 @@ Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](/Us
     - fast insert/get
     - no durability guarantees
     - **explicit snapshot export/import** to/from the on-disk format (initially as a whole-db snapshot)
-- **Python**
+- **Python** *(original milestone bullets)*
   - Expose `db.collection("User")` / `db.users` + `insert` + `get` for the first supported model type.
   - Return validated model instances (or dicts) in a predictable way; document trade-offs.
   - Add Python surface for in-memory usage (e.g. `Database.in_memory()` or `Database(":memory:")`) plus snapshot save/load entrypoints.
@@ -170,7 +182,7 @@ Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](/Us
   - Encoding documented (at least at the conceptual level and stability guarantees).
   - In-memory insert/get and snapshot export/import are covered by integration tests (Rust and Python).
 
-Design anchor: record log + encoding strategy in [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
+Design anchor: record log + encoding strategy in [`docs/02_on_disk_file_format.md`](docs/02_on_disk_file_format.md) and payload details in [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)
 
 ### 0.6.0 — Validation engine (types + constraints) and better errors
 
@@ -190,7 +202,7 @@ Design anchor: record log + encoding strategy in [`docs/02_on_disk_file_format.m
   - Deterministic validation semantics across Rust/Python (same rule, same outcome).
   - Error messages include field paths (including nested paths) and expected/actual types.
 
-Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/typed_embedded_db_spec.md)
+Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
 
 ### 0.7.0 — Secondary indexes (unique + non-unique) and simple filters
 
@@ -217,7 +229,7 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](/Users
   - Performance sanity checks/benchmarks for `get` and indexed equality.
   - Subset projection tests: querying the same records into a “full” model vs a subset model yields consistent values for shared fields, and subset materialization does not require decoding unused fields.
 
-Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/05_query_planner_and_execution_spec.md)
+Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 
 ### 0.8.0 — Transactions v1 (single-writer) + crash safety checkpoints
 
@@ -238,7 +250,7 @@ Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec
   - Crash-simulation tests (kill mid-write / partial segment) with recovery correctness.
   - Document transaction semantics and concurrency expectations for v1.
 
-Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md)
+Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`](docs/02_on_disk_file_format.md)
 
 ### 0.9.0 — Schema evolution & migrations (safe changes), plus compaction prototype
 
@@ -262,7 +274,7 @@ Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`
   - Compaction correctness tests (no data loss; indexes rebuilt).
   - Large-than-RAM query tests in CI using constrained memory settings (best-effort, platform dependent).
 
-Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](/Users/odosmatthews/Documents/coding/typra/docs/01_full_architecture_spec.md)
+Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
 
 ### 1.0.0 — Stable public API + format guarantees
 
@@ -342,7 +354,7 @@ From the architecture spec’s v1 non-goals:
 
 ## Open questions (to resolve before 1.0)
 
-- **Record encoding**: confirm the v1 encoding and its long-term evolution strategy.
+- **Record encoding**: v1 is implemented (see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)); confirm **long-term evolution** (new payload versions, replace/delete, MVCC).
 - **Optionality semantics**: required vs nullable vs defaulted (keep v1 simple as per spec).
 - **Python model story**: Pydantic-first vs lightweight models vs engine-first validation.
 - **Index physical layout**: embedded in record log vs separate index segments and rebuild strategies.
@@ -370,7 +382,7 @@ This section refines the roadmap to ensure Typra can operate **in memory and on 
   - Separate logical engine code (schema/validation/query planning) from physical persistence and caching.
   - Provide at least two store implementations:
     - `FileStore`: segment/page IO over a `.typra` file.
-    - `MemStore`: an in-memory representation with the same semantics.
+    - `VecStore`: an in-memory byte image with the same **`Store`** semantics (used by **`Database::open_in_memory`** today; naming may evolve toward a pager-friendly `MemStore`).
 - **BufferPool/Pager** (for `FileStore`):
   - Cache unit: segments or pages (decision to lock down early).
   - Eviction policy: LRU/clock with dirty tracking.
@@ -383,14 +395,11 @@ This section refines the roadmap to ensure Typra can operate **in memory and on 
 
 ### Rust-first public API direction
 
-- Keep `Database::open(path)` for disk-backed databases.
-- Add an explicit in-memory constructor (name TBD, but prefer clarity over magic strings):
-  - `Database::open_in_memory()` / `Database::in_memory()`
-- Add snapshot APIs (names TBD):
-  - `db.export_snapshot_to_path(path)`
-  - `Database::import_snapshot_from_path(path)`
+- **`Database::open(path)`** for disk-backed databases (**shipped**).
+- **In-memory**: **`Database::open_in_memory()`** + **`from_snapshot_bytes`** / **`into_snapshot_bytes`** / **`snapshot_bytes`** (**shipped** for `VecStore`).
+- Optional future sugar: `export_snapshot_to_path` / `import_snapshot_from_path` if we want file convenience beyond raw bytes.
 
-Python should mirror these later as thin wrappers (once Rust stabilizes).
+Python mirrors **`open_in_memory`**, **`open_snapshot_bytes`**, and **`snapshot_bytes`** today.
 
 ### Acceptance tests (what “done” means for these features)
 

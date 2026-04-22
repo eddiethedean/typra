@@ -6,7 +6,7 @@ This guide explains the planned **storage modes** and what they mean for perform
 
 ## Current status (important)
 
-Today, the **on-disk** path supports open/create, superblocks, checksummed segments, manifest publication, and a **persisted schema catalog** (`register_collection` / `register_schema_version` on disk). **In-memory** and **hybrid/streaming** modes below are not implemented yet; see [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md) for timing.
+Today, the **on-disk** path supports open/create, superblocks, checksummed segments, manifest publication, a **persisted schema catalog**, and **record insert/get** (v1 encoding). **In-memory** mode is implemented via the same APIs (`Database::open_in_memory` / Python `open_in_memory`) with **snapshot** export/import. **Hybrid/streaming** execution is still planned; see [`ROADMAP.md`](../ROADMAP.md).
 
 ## Mode 1: On-disk (default)
 
@@ -21,7 +21,7 @@ Today, the **on-disk** path supports open/create, superblocks, checksummed segme
 - versioned format
 - append-friendly segments + checkpoints
 
-Design reference: [`docs/02_on_disk_file_format.md`](/Users/odosmatthews/Documents/coding/typra/docs/02_on_disk_file_format.md).
+Design reference: [`02_on_disk_file_format.md`](02_on_disk_file_format.md).
 
 ## Mode 2: In-memory (fast, explicit snapshot)
 

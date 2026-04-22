@@ -4,7 +4,7 @@ This guide explains how application models map to collections, how collection na
 
 ## Current status (important)
 
-As of **`0.4.0`**, Typra persists a **schema catalog** (append-only schema segments): you can **`register_collection`** / **`register_schema_version`** from Rust, and **`Database.register_collection`** from Python using a **`fields_json`** descriptor (see [`python/typra/README.md`](/Users/odosmatthews/Documents/coding/typra/python/typra/README.md) and [`guide_python.md`](guide_python.md)). **Record storage** (insert/get) is still a later milestone (`0.5.0` in [`ROADMAP.md`](/Users/odosmatthews/Documents/coding/typra/ROADMAP.md)). This guide also describes **intended** longer-term behavior (subset models, naming defaults, etc.).
+As of **`0.5.0`**, Typra persists a **schema catalog** (append-only schema segments) and **records** (v1 encoding): you can **`register_collection`** / **`register_schema_version`** from Rust, and **`Database.register_collection(..., primary_field)`** with **`insert`** / **`get`** from Python using a **`fields_json`** descriptor (see [`python/typra/README.md`](../python/typra/README.md) and [`guide_python.md`](guide_python.md)). **Subset models**, **queries**, and **rich validation** are still planned—see [`ROADMAP.md`](../ROADMAP.md). This guide also describes **intended** longer-term behavior (subset models, naming defaults, etc.).
 
 ## Collection identity vs name
 
@@ -40,7 +40,7 @@ Typra should support explicit naming to avoid accidental renames:
 
 ## Registering models and schema compatibility
 
-**Today (0.4.x)**, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection`** (Python, with a **`fields_json`** descriptor—see [`python/typra/README.md`](/Users/odosmatthews/Documents/coding/typra/python/typra/README.md)).
+**Today (0.5.x)**, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection(..., primary_field)`** (Python, with a **`fields_json`** descriptor—see [`python/typra/README.md`](../python/typra/README.md)).
 
 Longer term, the database should also support ergonomic registration from model types:
 

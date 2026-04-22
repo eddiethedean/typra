@@ -31,19 +31,27 @@ Pin the minor range you test against; pre-1.0 releases may still change APIs or 
 ```python
 import typra
 
-db = typra.Database.open("app.typra")
+db = typra.Database.open_in_memory()
 cid, ver = db.register_collection(
     "books",
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
-assert cid == 1 and ver == 1
-assert db.collection_names() == ["books"]
+print("registered", cid, ver)
 db.insert("books", {"title": "Typra"})
-assert db.get("books", "Typra")["title"] == "Typra"
+print(db.get("books", "Typra"))
+print(typra.__version__)
 ```
 
-Registrations are **persisted**: reopening the same path shows the same catalog.
+Output (version matches the installed wheel):
+
+```text
+registered 1 1
+{'title': 'Typra'}
+0.5.0
+```
+
+On disk, use `Database.open("app.typra")` instead; registrations are **persisted** across process restarts for that path.
 
 ## API overview
 

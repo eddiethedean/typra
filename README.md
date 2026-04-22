@@ -61,9 +61,22 @@ The `typra` package on PyPI exposes the native extension. **0.5.0** adds **`regi
 ```python
 import typra
 
-db = typra.Database.open("app.typra")
-db.register_collection("books", '[{"path": ["title"], "type": "string"}]', "title")
+db = typra.Database.open_in_memory()
+_, _ = db.register_collection(
+    "books",
+    '[{"path": ["title"], "type": "string"}]',
+    "title",
+)
+db.insert("books", {"title": "Hello"})
+print(db.get("books", "Hello"))
 print(typra.__version__)
+```
+
+Output:
+
+```text
+{'title': 'Hello'}
+0.5.0
 ```
 
 ```bash
@@ -95,6 +108,8 @@ For a minimal dependency tree or out-of-tree macros, depend on **`typra-core`** 
 
 ### Example (0.5.x)
 
+In-memory (repeatable; no leftover file). From the repo you can also run `cargo run -p typra --example open`.
+
 ```rust
 use std::borrow::Cow;
 use typra::prelude::*;
@@ -103,8 +118,9 @@ use typra::Type;
 use typra::schema::FieldPath;
 
 fn main() -> Result<(), DbError> {
-    let mut db = Database::open("example.typra")?;
-    let _ = db.register_collection(
+    let mut db = Database::open_in_memory()?;
+    println!("opened: {}", db.path().display());
+    let (id, ver) = db.register_collection(
         "books",
         vec![FieldDef {
             path: FieldPath::new([Cow::Borrowed("title")])?,
@@ -112,8 +128,16 @@ fn main() -> Result<(), DbError> {
         }],
         "title",
     )?;
+    println!("registered collection id={} version={}", id.0, ver.0);
     Ok(())
 }
+```
+
+Output:
+
+```text
+opened: :memory:
+registered collection id=1 version=1
 ```
 
 Field attributes (`#[db(primary)]`, etc.) on `DbModel` are **not** implemented yet; they remain design targets.
