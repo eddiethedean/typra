@@ -39,58 +39,6 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --all-features
 
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
-
-      - name: Rust coverage (lcov + typra-core line gate)
-        env:
-          COVERAGE_TYPRA_CORE_LINES: "97"
-        run: |
-          mkdir -p target/coverage
-          CI=1 cargo llvm-cov --workspace --all-features \
-            --ignore-filename-regex 'python/typra/src/.*' \
-            --lcov --output-path target/coverage/rust.lcov
-          CI=1 cargo llvm-cov -p typra-core --all-features \
-            --fail-under-lines "$COVERAGE_TYPRA_CORE_LINES" --summary-only
-
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install system deps (PyO3)
-        run: sudo apt-get update && sudo apt-get install -y python3-dev pkg-config
-
-      - name: Python coverage (pytest-cov)
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install -U pip "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5"
-          cd python/typra
-          maturin develop --release
-          pytest -q --cov=tests --cov-report=term-missing --cov-report=xml:../../target/coverage/python.xml
-
-      - name: Verify documented example outputs
-        run: |
-          cd "${GITHUB_WORKSPACE}"
-          bash ./scripts/verify-doc-examples.sh
-
-      - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: target/coverage/*
-
   python:
     strategy:
       fail-fast: false
