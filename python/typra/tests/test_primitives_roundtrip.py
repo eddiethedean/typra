@@ -1,4 +1,4 @@
-"""Roundtrip each supported primitive through insert/get."""
+"""Per-type coverage: each v1 primitive roundtrips through ``insert`` and ``get``."""
 
 from __future__ import annotations
 

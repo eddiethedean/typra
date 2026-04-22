@@ -1,3 +1,10 @@
+//! Embedded Typra database engine: append-only segments, versioned schema catalog, and
+//! last-write-wins row storage keyed by primary values.
+//!
+//! Start with [`Database`] for open, register, insert, and get. Supporting types include
+//! [`Catalog`], [`ScalarValue`], [`FieldDef`], and [`DbError`]. For a small import set, use
+//! [`prelude`].
+
 pub mod catalog;
 pub mod checksum;
 pub mod config;
@@ -25,7 +32,7 @@ pub use schema::FieldDef;
 pub use schema::SchemaVersion;
 pub use schema::Type;
 
-/// Commonly used types and traits.
+/// Convenient re-exports for typical application code (`Database`, schema types, [`DbError`]).
 pub mod prelude {
     pub use crate::catalog::{Catalog, CollectionInfo};
     pub use crate::db::Database;

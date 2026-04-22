@@ -1,4 +1,4 @@
-//! PyO3 [`Database`] class: Python surface over [`crate::inner_db::InnerDb`].
+//! PyO3 `Database` class: file- and memory-backed [`crate::inner_db::InnerDb`] behind a mutex.
 
 use std::sync::Mutex;
 
@@ -13,7 +13,7 @@ use crate::fields_json;
 use crate::inner_db::InnerDb;
 use crate::row_values;
 
-/// Shared Python handle for on-disk and in-memory databases.
+/// Python `Database`: Typra engine behind an internal mutex (safe across threads that release the GIL).
 #[pyclass(name = "Database")]
 pub struct Database {
     pub(crate) inner: Mutex<InnerDb>,
@@ -30,7 +30,18 @@ fn collection_info(inner: &Mutex<InnerDb>, name: &str) -> PyResult<CollectionInf
 
 #[pymethods]
 impl Database {
-    /// Open or create a database file at ``path``.
+    /// Open or create an on-disk database at the given path.
+    ///
+    /// Args:
+    ///     path (str): Filesystem path to the Typra file (created if it does not exist).
+    ///
+    /// Returns:
+    ///     Database: Handle backed by a file store.
+    ///
+    /// Raises:
+    ///     OSError: File open/create or I/O failures from the engine.
+    ///     ValueError: Invalid or unsupported on-disk format.
+    ///     RuntimeError: Engine reports an unimplemented code path.
     #[staticmethod]
     fn open(path: &str) -> PyResult<Self> {
         let db = CoreDatabase::open(path).map_err(db_error_to_py)?;
@@ -39,16 +50,28 @@ impl Database {
         })
     }
 
+    /// Return the path string for this database.
+    ///
+    /// For in-memory databases this is ``":memory:"`` (see ``open_in_memory``).
     fn path(&self) -> String {
         let g = self.inner.lock().unwrap();
         g.path_display()
     }
 
-    /// Register a collection with schema version 1.
+    /// Register a new collection at schema version 1.
     ///
-    /// ``fields_json`` is a JSON array of objects like
-    /// ``{"path": ["title"], "type": "string"}``. See README for the v1 shape.
-    /// ``primary_field`` is the top-level field name used as the primary key.
+    /// Args:
+    ///     name (str): Collection name (trimmed; must be unique).
+    ///     fields_json (str): JSON array of field objects, e.g.
+    ///         ``[{"path": ["title"], "type": "string"}, ...]``. See the package README for the v1 shape.
+    ///     primary_field (str): Top-level field name used as the primary key.
+    ///
+    /// Returns:
+    ///     tuple[int, int]: ``(collection_id, schema_version)`` (both ``1`` for a new collection).
+    ///
+    /// Raises:
+    ///     ValueError: Invalid JSON or schema rules (including unknown types for unsupported shapes).
+    ///     OSError / RuntimeError: Mapped from engine errors where applicable.
     fn register_collection(
         &self,
         name: &str,
@@ -63,11 +86,20 @@ impl Database {
         Ok((id.0, v.0))
     }
 
+    /// Return all collection names in sorted order.
     fn collection_names(&self) -> Vec<String> {
         self.inner.lock().unwrap().collection_names()
     }
 
-    /// Insert a full row (all fields). ``row`` keys are field names; the primary key must be included.
+    /// Insert or replace one row (all top-level fields required per schema).
+    ///
+    /// Args:
+    ///     collection_name (str): Registered collection name.
+    ///     row (dict): Maps field name strings to Python values; must include the primary key.
+    ///
+    /// Raises:
+    ///     ValueError: Unknown field, wrong Python type for schema, or missing required field.
+    ///     OSError / RuntimeError: Engine errors from the Rust layer.
     fn insert(
         &self,
         py: Python<'_>,
@@ -77,11 +109,24 @@ impl Database {
         let col = collection_info(&self.inner, collection_name)?;
         let mapped = row_values::row_from_dict(py, row, &col)?;
         let mut g = self.inner.lock().unwrap();
-        let cid = g.collection_id_named(collection_name).map_err(db_error_to_py)?;
+        let cid = g
+            .collection_id_named(collection_name)
+            .map_err(db_error_to_py)?;
         g.insert(cid, mapped).map_err(db_error_to_py)
     }
 
-    /// Return the latest row for ``pk``, or ``None``.
+    /// Fetch the latest row for a primary key, or ``None`` if absent.
+    ///
+    /// Args:
+    ///     collection_name (str): Registered collection name.
+    ///     pk: Primary-key value compatible with the schema type (e.g. ``str`` for ``string``).
+    ///
+    /// Returns:
+    ///     dict | None: Row as a ``dict`` of field names to Python values, or ``None``.
+    ///
+    /// Raises:
+    ///     ValueError: Unknown collection, missing primary in schema, type mismatch, or unsupported type.
+    ///     OSError / RuntimeError: Engine errors from the Rust layer.
     fn get(
         &self,
         py: Python<'_>,
@@ -102,7 +147,9 @@ impl Database {
         let pk_val = row_values::scalar_from_py(py, pk, pk_ty)?;
         let row = {
             let g = self.inner.lock().unwrap();
-            let cid = g.collection_id_named(collection_name).map_err(db_error_to_py)?;
+            let cid = g
+                .collection_id_named(collection_name)
+                .map_err(db_error_to_py)?;
             g.get(cid, &pk_val).map_err(db_error_to_py)?
         };
         match row {
@@ -111,7 +158,13 @@ impl Database {
         }
     }
 
-    /// In-memory database (see Rust ``Database::open_in_memory``).
+    /// Create a new empty in-memory database (``VecStore``; path ``":memory:"``).
+    ///
+    /// Returns:
+    ///     Database: In-memory handle; use ``snapshot_bytes`` / ``open_snapshot_bytes`` to serialize.
+    ///
+    /// Raises:
+    ///     OSError / RuntimeError: If the engine fails to initialize.
     #[staticmethod]
     fn open_in_memory() -> PyResult<Self> {
         let db = CoreDatabase::open_in_memory().map_err(db_error_to_py)?;
@@ -120,7 +173,13 @@ impl Database {
         })
     }
 
-    /// Load a snapshot produced by [`snapshot_bytes`](Self::snapshot_bytes).
+    /// Restore an in-memory database from bytes produced by ``snapshot_bytes``.
+    ///
+    /// Args:
+    ///     data (bytes): Full database image (same layout as a file).
+    ///
+    /// Returns:
+    ///     Database: In-memory handle ready for reads and writes.
     #[staticmethod]
     fn open_snapshot_bytes(data: &[u8]) -> PyResult<Self> {
         let db = CoreDatabase::from_snapshot_bytes(data.to_vec()).map_err(db_error_to_py)?;
@@ -129,7 +188,14 @@ impl Database {
         })
     }
 
-    /// Serialize the in-memory database to bytes (in-memory databases only).
+    /// Serialize an in-memory database to bytes (not supported for on-disk databases).
+    ///
+    /// Returns:
+    ///     bytes: Copy of the full store image.
+    ///
+    /// Raises:
+    ///     ValueError: If this database is file-backed (only in-memory images can be snapshotted here).
+    ///     OSError / RuntimeError: Engine errors when reading the buffer.
     fn snapshot_bytes(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let g = self.inner.lock().unwrap();
         let v = g.snapshot_bytes()?;

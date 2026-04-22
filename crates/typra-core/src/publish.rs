@@ -1,3 +1,5 @@
+//! Append a manifest segment and rotate superblocks so readers see consistent tail metadata.
+
 use crate::error::DbError;
 use crate::manifest::ManifestV0;
 use crate::segments::header::{SegmentHeader, SegmentType, SEGMENT_HEADER_LEN};

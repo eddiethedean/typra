@@ -1,4 +1,6 @@
-//! In-memory catalog state; must match replay from on-disk schema segments.
+//! In-memory catalog: maps names to ids, tracks schema versions, and applies replayed records.
+//!
+//! State must match the sequence of `Schema` segments on disk.
 
 use std::collections::HashMap;
 

@@ -1,5 +1,7 @@
-//! Database handle and orchestration: [`Database`] composes internal helpers for
-//! bootstrap (`open`), scan/replay (`replay`), segment writes (`write`), and naming (`helpers`).
+//! Database handle and orchestration.
+//!
+//! [`Database`] is implemented using internal modules `open` (bootstrap), `replay` (catalog and
+//! rows from segments), `write` (append segments and publish), and `helpers` (name rules).
 
 mod helpers;
 mod open;
@@ -17,15 +19,18 @@ use crate::storage::{FileStore, Store, VecStore};
 
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, ScalarValue>>;
 
-/// Typra database handle backed by a [`Store`] (file or in-memory).
+/// Opened Typra database: generic over a [`Store`] ([`FileStore`] on disk, [`VecStore`] in memory).
 pub struct Database<S: Store = FileStore> {
+    /// Path shown by [`Database::path`] (`":memory:"` for [`VecStore`]).
     path: PathBuf,
     store: S,
+    /// In-memory view of schema segments replayed from disk.
     catalog: Catalog,
+    /// Byte offset where the append-only segment log begins (after header and superblocks).
     segment_start: u64,
-    /// Format minor read from the file header (lazy bumps `3` → `4` → `5`).
+    /// Format minor from the file header; may be lazily upgraded (`3` → `4` → `5`) on write.
     format_minor: u16,
-    /// Latest row per `(collection_id, canonical_pk_bytes)` (replay order / last wins).
+    /// Latest row per `(collection_id, canonical primary-key bytes)`; last replayed insert wins.
     latest: LatestMap,
 }
 
@@ -34,22 +39,24 @@ impl<S: Store> Database<S> {
         open::open_with_store(path, store)
     }
 
-    /// Path passed to [`Database::open`](Database::<FileStore>::open) or `":memory:"` for in-memory stores.
+    /// Path passed to [`Database::open`](Database::<FileStore>::open), or `":memory:"` for [`VecStore`].
     pub fn path(&self) -> &Path {
         &self.path
     }
 
-    /// In-memory view of the persisted schema catalog.
+    /// Read-only view of the schema catalog built from `Schema` segments.
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
     }
 
-    /// Registered collection names (sorted).
+    /// All registered collection names in lexicographic order.
     pub fn collection_names(&self) -> Vec<String> {
         self.catalog.collection_names()
     }
 
-    /// Resolve a registered collection id by name (trimmed).
+    /// Look up [`CollectionId`] by collection name (leading/trailing whitespace trimmed).
+    ///
+    /// Returns [`SchemaError::UnknownCollectionName`] when the name is not registered.
     pub fn collection_id_named(&self, name: &str) -> Result<CollectionId, DbError> {
         self.catalog
             .lookup_name(name)
@@ -58,7 +65,10 @@ impl<S: Store> Database<S> {
             }))
     }
 
-    /// Register a new collection with schema version `1` and a **top-level** primary key field name.
+    /// Create a new collection at schema version `1`.
+    ///
+    /// `primary_field` must name a **single-segment** (top-level) field present in `fields`.
+    /// Appends a catalog segment and updates the in-memory catalog.
     pub fn register_collection(
         &mut self,
         name: &str,
@@ -94,7 +104,9 @@ impl<S: Store> Database<S> {
         Ok((CollectionId(id), SchemaVersion(1)))
     }
 
-    /// Append a new schema version for an existing collection (`current + 1` required).
+    /// Bump the schema version for `id` to `current + 1` with a new field set.
+    ///
+    /// The primary-key field must remain present as a top-level field (see catalog rules).
     pub fn register_schema_version(
         &mut self,
         id: CollectionId,
@@ -121,7 +133,10 @@ impl<S: Store> Database<S> {
         Ok(SchemaVersion(next_v))
     }
 
-    /// Insert or replace the latest row for `collection_id` (same primary key).
+    /// Insert or replace the row for `collection_id` identified by its primary-key field.
+    ///
+    /// `row` maps **top-level** field names to [`ScalarValue`] and must include every non-optional
+    /// field in the current schema. v1 encoding supports only single-segment field paths.
     pub fn insert(
         &mut self,
         collection_id: CollectionId,
@@ -207,7 +222,9 @@ impl<S: Store> Database<S> {
         Ok(())
     }
 
-    /// Get the latest row by primary key, or `None` if missing.
+    /// Return the latest stored row for `pk`, or `None` if no insert has been replayed for that key.
+    ///
+    /// `pk` must match the declared primary field’s [`crate::schema::Type`].
     pub fn get(
         &self,
         collection_id: CollectionId,
@@ -241,7 +258,9 @@ impl<S: Store> Database<S> {
 }
 
 impl Database<FileStore> {
-    /// Open or create a database at `path`.
+    /// Open an existing file or create a new database at `path`.
+    ///
+    /// Creates parent directories as needed via the OS; the file is opened read/write.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, DbError> {
         let path = path.as_ref().to_path_buf();
         let file = std::fs::OpenOptions::new()
@@ -256,22 +275,22 @@ impl Database<FileStore> {
 }
 
 impl Database<VecStore> {
-    /// Empty in-memory database (same layout as a new file, held in a [`VecStore`]).
+    /// New empty in-memory database (same on-disk layout as a new file image in a [`VecStore`]).
     pub fn open_in_memory() -> Result<Self, DbError> {
         Self::open_with_store(PathBuf::from(":memory:"), VecStore::new())
     }
 
-    /// Open from snapshot bytes produced by [`into_snapshot_bytes`](Self::into_snapshot_bytes).
+    /// Deserialize a full database image from bytes (e.g. from [`into_snapshot_bytes`](Self::into_snapshot_bytes)).
     pub fn from_snapshot_bytes(bytes: Vec<u8>) -> Result<Self, DbError> {
         Self::open_with_store(PathBuf::from(":memory:"), VecStore::from_vec(bytes))
     }
 
-    /// Consume the database and return the raw file image.
+    /// Consume `self` and return the owned byte buffer backing the store.
     pub fn into_snapshot_bytes(self) -> Vec<u8> {
         self.store.into_inner()
     }
 
-    /// Copy of the full on-disk image (same bytes as [`into_snapshot_bytes`](Self::into_snapshot_bytes)).
+    /// Clone of the full serialized database image (alias of the buffer returned by [`into_snapshot_bytes`](Self::into_snapshot_bytes)).
     pub fn snapshot_bytes(&self) -> Vec<u8> {
         self.store.as_slice().to_vec()
     }

@@ -1,3 +1,7 @@
+//! Fixed-size file header (`TDB0`) and format major/minor constants.
+//!
+//! The crate version is unrelated to [`FORMAT_MAJOR`] / [`FORMAT_MINOR`]; see `docs/` for evolution.
+
 use crate::error::{DbError, FormatError};
 
 pub const FILE_MAGIC: [u8; 4] = *b"TDB0";
@@ -16,6 +20,7 @@ pub const FORMAT_MINOR_V3: u16 = 3;
 
 pub const FILE_HEADER_SIZE: usize = 32;
 
+/// Parsed or constructed first [`FILE_HEADER_SIZE`] bytes of a Typra file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileHeader {
     pub format_major: u16,

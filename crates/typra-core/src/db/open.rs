@@ -1,3 +1,5 @@
+//! Open and bootstrap: decode header, superblocks, manifest, and initial segment scan.
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 

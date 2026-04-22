@@ -12,7 +12,9 @@ use pyo3::prelude::*;
 fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add(
         "__doc__",
-        "Python bindings for Typra: typed embedded database (Database.open, register_collection, collection_names).",
+        "Typra Python bindings: typed embedded database built on the Rust engine.\n\n\
+         Import ``Database`` for ``open``, ``open_in_memory``, ``register_collection``, ``insert``, ``get``, \
+         and ``collection_names``. See the package README for ``fields_json`` and error mapping.",
     )?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<database::Database>()?;

@@ -1,3 +1,5 @@
+//! Replay schema and record segments into [`crate::catalog::Catalog`] and in-memory latest-row maps.
+
 use std::collections::{BTreeMap, HashMap};
 
 use crate::catalog::{decode_catalog_payload, Catalog};

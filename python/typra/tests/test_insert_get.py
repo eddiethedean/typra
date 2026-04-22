@@ -1,4 +1,4 @@
-"""Insert / get / snapshot for Python bindings."""
+"""End-to-end insert, get, and snapshot roundtrips on file- and memory-backed databases."""
 
 from __future__ import annotations
 

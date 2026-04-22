@@ -1,4 +1,4 @@
-//! Persisted schema catalog: binary encoding and in-memory state.
+//! Persisted schema catalog: binary [`codec`](crate::catalog::codec) payloads and [`Catalog`] state.
 
 mod codec;
 mod state;

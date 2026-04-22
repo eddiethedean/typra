@@ -1,3 +1,5 @@
+//! Append catalog or record segments and bump format headers when required.
+
 use crate::file_format::{decode_header, FILE_HEADER_SIZE};
 use crate::publish::append_manifest_and_publish;
 use crate::segments::header::{SegmentHeader, SegmentType};

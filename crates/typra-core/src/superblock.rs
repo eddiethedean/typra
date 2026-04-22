@@ -1,3 +1,5 @@
+//! Dual redundant superblocks (`TSB0`) storing generation and manifest pointer.
+
 use crate::checksum::{crc32c, CHECKSUM_KIND_CRC32C};
 use crate::error::{DbError, FormatError};
 
@@ -5,6 +7,7 @@ pub const SUPERBLOCK_SIZE: usize = 4096;
 pub const SUPERBLOCK_MAGIC: [u8; 4] = *b"TSB0";
 pub const SUPERBLOCK_VERSION: u16 = 0;
 
+/// Fixed-layout block pointing at the manifest segment and carrying a monotonic `generation`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Superblock {
     pub generation: u64,

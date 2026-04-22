@@ -1,8 +1,11 @@
+//! Manifest v0: points at the last appended segment (tail of the log).
+
 use crate::error::{DbError, FormatError};
 
 pub const MANIFEST_VERSION_V0: u16 = 0;
 pub const MANIFEST_V0_LEN: usize = 2 + 8 + 8;
 
+/// Tail pointer for the append-only segment chain (version [`MANIFEST_VERSION_V0`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ManifestV0 {
     pub last_segment_offset: u64,

@@ -1,4 +1,4 @@
-"""Integration-style tests for ``Database.open``, paths, and catalog persistence."""
+"""Paths, reopen persistence, and catalog behavior across ``Database.open`` and in-memory APIs."""
 
 from __future__ import annotations
 

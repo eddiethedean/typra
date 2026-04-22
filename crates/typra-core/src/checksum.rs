@@ -1,3 +1,5 @@
+//! CRC32C helpers used by headers, superblocks, and segment payloads.
+
 pub const CHECKSUM_KIND_CRC32C: u8 = 0;
 
 pub fn crc32c(bytes: &[u8]) -> u32 {

@@ -1,7 +1,12 @@
+//! Procedural macro crate: derives [`typra_core::schema::DbModel`] for Rust types.
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
+/// Derive the [`typra_core::schema::DbModel`] marker trait (no fields or methods yet).
+///
+/// Intended for use with the `typra` facade crate’s **`derive`** feature.
 #[proc_macro_derive(DbModel, attributes(db))]
 pub fn derive_db_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

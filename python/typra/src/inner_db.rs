@@ -1,4 +1,4 @@
-//! Backend selection for the Python [`crate::database::Database`] wrapper (file vs in-memory).
+//! Dispatches engine calls to either [`typra_core::storage::FileStore`] or [`typra_core::storage::VecStore`].
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;

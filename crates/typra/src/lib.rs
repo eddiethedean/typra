@@ -1,21 +1,21 @@
-//! Application-facing Typra API.
+//! Application-facing Typra API: re-exports [`typra_core`] and optionally the [`DbModel`](typra_derive::DbModel) derive.
 //!
-//! This crate re-exports the engine ([`typra_core`]) and, with the default **`derive`**
-//! feature, the [`DbModel`](typra_derive::DbModel) procedural macro.
+//! Add to `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
 //! typra = "0.5"
 //! ```
 //!
-//! For lower-level control, depend on [`typra-core`] and [`typra-derive`] directly.
+//! Use [`prelude`] for common imports. For full control over dependencies, depend on the
+//! `typra-core` and `typra-derive` crates directly.
 
 pub use typra_core::*;
 
 #[cfg(feature = "derive")]
 pub use typra_derive::DbModel;
 
-/// Common imports for application code.
+/// Re-exports [`typra_core::prelude`] plus [`DbModel`](typra_derive::DbModel) when **`derive`** is enabled.
 pub mod prelude {
     pub use typra_core::prelude::*;
 

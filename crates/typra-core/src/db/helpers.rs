@@ -1,3 +1,5 @@
+//! Shared helpers for collection naming rules.
+
 use crate::catalog::MAX_COLLECTION_NAME_BYTES;
 use crate::error::{DbError, SchemaError};
 

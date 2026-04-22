@@ -1,4 +1,4 @@
-"""Tests for ``fields_json`` parsing and composite types."""
+"""Schema registration via JSON: primitives, composites, and validation errors from ``register_collection``."""
 
 from __future__ import annotations
 

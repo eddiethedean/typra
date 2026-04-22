@@ -1,53 +1,47 @@
 use std::fmt;
 
-/// Errors returned by the database engine and I/O around database files.
+/// Top-level error for [`crate::db::Database`] and storage: I/O, on-disk layout, or schema rules.
+///
+/// Convert from [`std::io::Error`] via `?` for convenience on file operations.
 #[derive(Debug)]
 pub enum DbError {
     /// Failed to access the database file or path.
     Io(std::io::Error),
-    /// Failed to parse/validate the on-disk format.
+    /// Failed to parse or validate the on-disk format (header, superblock, segments, payloads).
     Format(FormatError),
-    /// Failed to build or validate schema metadata.
+    /// Catalog or row did not satisfy schema invariants.
     Schema(SchemaError),
-    /// Feature not yet implemented (reserved for early releases).
+    /// Requested capability is not implemented in this release (e.g. nested field paths in rows).
     NotImplemented,
 }
 
+/// Low-level decode/validation failures for bytes read from the store.
 #[derive(Debug)]
 pub enum FormatError {
-    BadMagic {
-        got: [u8; 4],
-    },
-    TruncatedHeader {
-        got: usize,
-        expected: usize,
-    },
-    UnsupportedVersion {
-        major: u16,
-        minor: u16,
-    },
-    TruncatedSuperblock {
-        got: usize,
-        expected: usize,
-    },
-    BadSuperblockMagic {
-        got: [u8; 4],
-    },
+    /// File magic was not `TDB0`.
+    BadMagic { got: [u8; 4] },
+    /// Fewer bytes than expected for a fixed-size header region.
+    TruncatedHeader { got: usize, expected: usize },
+    /// Header or manifest reported an unsupported format or manifest version.
+    UnsupportedVersion { major: u16, minor: u16 },
+    /// Superblock slice shorter than [`crate::superblock::SUPERBLOCK_SIZE`].
+    TruncatedSuperblock { got: usize, expected: usize },
+    /// Superblock magic was not `TSB0`.
+    BadSuperblockMagic { got: [u8; 4] },
+    /// Superblock CRC did not match payload.
     BadSuperblockChecksum,
-    TruncatedSegmentHeader {
-        got: usize,
-        expected: usize,
-    },
-    BadSegmentMagic {
-        got: [u8; 4],
-    },
+    /// Segment header slice shorter than expected.
+    TruncatedSegmentHeader { got: usize, expected: usize },
+    /// Segment header magic was not `TSG0`.
+    BadSegmentMagic { got: [u8; 4] },
+    /// Header CRC32C did not match header bytes.
     BadSegmentHeaderChecksum,
+    /// Payload CRC32C did not match segment body.
     BadSegmentPayloadChecksum,
+    /// Declared payload length would extend past the file end.
     SegmentPayloadPastEof,
     /// Invalid catalog segment payload (binary layout).
-    InvalidCatalogPayload {
-        message: String,
-    },
+    InvalidCatalogPayload { message: String },
     /// Record segment payload truncated or malformed.
     TruncatedRecordPayload,
     /// Record payload type tag did not match schema.
@@ -57,19 +51,21 @@ pub enum FormatError {
     /// Record payload used a composite type not supported in v1 row encoding.
     RecordPayloadUnsupportedType,
     /// Record payload version not supported.
-    UnknownRecordPayloadVersion {
-        got: u16,
-    },
+    UnknownRecordPayloadVersion { got: u16 },
     /// Extra bytes after a decoded record payload.
     TrailingRecordPayload,
 }
 
+/// Schema and row-level validation errors (catalog replay, registration, insert/get).
 #[derive(Debug, Clone)]
 pub enum SchemaError {
+    /// Field path had no segments or an empty segment.
     InvalidFieldPath,
+    /// Another collection already uses this name.
     DuplicateCollectionName {
         name: String,
     },
+    /// No collection registered with this id.
     UnknownCollection {
         id: u32,
     },

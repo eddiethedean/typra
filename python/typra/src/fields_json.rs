@@ -1,10 +1,15 @@
-//! Parse `fields_json` for [`crate::Database::register_collection`] (v1 schema subset).
+//! JSON parsing for ``register_collection`` on the Python [`crate::database::Database`].
+//!
+//! Accepts the v1 subset of field definitions (paths, primitives, optional/list/object/enum).
 
 use std::borrow::Cow;
 
 use serde_json::Value;
 use typra_core::schema::{FieldDef, FieldPath, Type};
 
+/// Parse the `fields_json` string passed to ``Database.register_collection`` into engine [`FieldDef`] values.
+///
+/// On failure returns a human-readable message string (surfaced as `ValueError` in Python).
 pub fn fields_from_json(s: &str) -> Result<Vec<FieldDef>, String> {
     let v: Value = serde_json::from_str(s).map_err(|e| e.to_string())?;
     let arr = v

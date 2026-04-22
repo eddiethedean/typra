@@ -1,4 +1,6 @@
-//! Map Python values to [`typra_core::record::ScalarValue`] using collection schema types.
+//! Convert Python objects to [`typra_core::record::ScalarValue`] using each field's [`typra_core::schema::Type`].
+//!
+//! v1 rows support only top-level primitive fields; composite types raise `ValueError` until implemented.
 
 use std::collections::BTreeMap;
 
@@ -9,6 +11,7 @@ use typra_core::catalog::CollectionInfo;
 use typra_core::record::ScalarValue;
 use typra_core::schema::Type;
 
+/// Build a full row map from a Python `dict` using top-level field names from `col`.
 pub fn row_from_dict(
     py: Python<'_>,
     dict: &Bound<'_, PyDict>,
@@ -28,6 +31,7 @@ pub fn row_from_dict(
     Ok(out)
 }
 
+/// Coerce `obj` to a [`ScalarValue`] according to `ty` (including UUID and timestamp rules).
 pub fn scalar_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>, ty: &Type) -> PyResult<ScalarValue> {
     match ty {
         Type::Bool => obj.extract::<bool>().map(ScalarValue::Bool),
@@ -62,6 +66,7 @@ pub fn scalar_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>, ty: &Type) -> PyRe
     }
 }
 
+/// Serialize a row map to a new Python `dict` (UUIDs become `uuid.UUID` instances).
 pub fn row_to_dict<'py>(
     py: Python<'py>,
     row: &BTreeMap<String, ScalarValue>,

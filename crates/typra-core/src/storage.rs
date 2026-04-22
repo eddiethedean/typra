@@ -3,10 +3,10 @@ use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::error::DbError;
 
-/// Byte-addressable backing store for the database file image.
+/// Random-access byte image of a Typra database (length, read, write, sync).
 ///
-/// Phase-2 “ReadStore” split is intentionally deferred: keep a single trait until a second
-/// consumer (e.g. read-only tooling) needs a narrower surface ([`crate::db`] refactor plan).
+/// Implemented by [`FileStore`] (real files) and [`VecStore`] (in-memory snapshots). A future
+/// read-only store split is deferred until a second consumer needs a smaller surface.
 pub trait Store {
     fn len(&self) -> Result<u64, DbError>;
     fn is_empty(&self) -> Result<bool, DbError> {

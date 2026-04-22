@@ -1,4 +1,4 @@
-"""Tests for the native `typra` extension module."""
+"""Smoke tests for the ``typra`` native module: metadata, exports, and ``Database`` constructors."""
 
 from __future__ import annotations
 
