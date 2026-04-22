@@ -1,4 +1,4 @@
-//! Insert / get / reopen and in-memory snapshot parity (0.5.0).
+//! Insert / get / reopen and in-memory snapshot parity (record payloads; v1+v2 replay).
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;

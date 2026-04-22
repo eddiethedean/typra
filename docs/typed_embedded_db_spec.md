@@ -205,7 +205,7 @@ db.insert(user)?;
 
 ## Roadmap
 
-This document is a **product-level** vision. For the **shipping** release plan (0.5.x, 0.6, …), see **[`ROADMAP.md`](../ROADMAP.md)** in the repository.
+This document is a **product-level** vision. For the **shipping** release plan and what each version actually ships, see **[`ROADMAP.md`](../ROADMAP.md)** and **[`CHANGELOG.md`](../CHANGELOG.md)** in the repository.
 
 ### v1
 - Core storage engine

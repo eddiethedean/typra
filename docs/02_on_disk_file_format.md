@@ -161,7 +161,7 @@ A schema version is immutable once written. New versions supersede old ones.
 
 ## Record Log Encoding
 
-**Implemented layout (v1)** for `SegmentType::Record` payloads is specified in **[06_record_encoding_v1.md](06_record_encoding_v1.md)** (Typra **0.5.x**).
+**Implemented layouts** for `SegmentType::Record` payloads: primitive **v1** in **[06_record_encoding_v1.md](06_record_encoding_v1.md)** (0.5.0+); nested **v2** rows in **[07_record_encoding_v2.md](07_record_encoding_v2.md)** (0.6.0+). Replay accepts **both**; new inserts use **v2**.
 
 Each logical record mutation is an event:
 - `insert`

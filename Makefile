@@ -31,7 +31,7 @@ help:
 	@echo ""
 	@echo "Tests:"
 	@echo "  test            maturin develop --release + pytest (python/typra)"
-	@echo "  verify-doc-examples  Assert README/guide command output matches snippets"
+	@echo "  verify-doc-examples  Assert README + guide_python + getting_started output matches snippets"
 
 venv:
 	@test -x .venv/bin/python || python3 -m venv .venv

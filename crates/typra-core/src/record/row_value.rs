@@ -170,4 +170,3 @@ pub fn non_pk_defs_in_order<'a>(fields: &'a [FieldDef], pk_name: &str) -> Vec<&'
         .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
         .collect()
 }
-

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Verifies stdout from the minimal Rust and Python snippets shown in README / guides.
+# Covered: root README (Rust + Python), docs/guide_getting_started.md (Rust cmd + Python),
+# docs/guide_python.md (quick start), python/typra/README.md (quick start).
 # When outputs change intentionally, update the expected heredocs here and the matching ```text blocks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,7 +36,7 @@ registered collection id=1 version=1
 EOF
 ACTUAL_RUST=$(cargo run -q -p typra --example open | strip_cr)
 [[ "$ACTUAL_RUST" == "$EXPECT_RUST" ]] || {
-  echo "Rust example output mismatch. Update scripts/verify-doc-examples.sh and docs (guide_getting_started, root README, crates/typra/README)." >&2
+  echo "Rust example output mismatch. Update scripts/verify-doc-examples.sh and docs (guide_getting_started, root README, crates/typra/README, guide_python)." >&2
   diff -u <(printf '%s' "$EXPECT_RUST") <(printf '%s' "$ACTUAL_RUST") >&2 || true
   exit 1
 }
@@ -121,4 +123,31 @@ PY
   exit 1
 }
 
-echo "verify-doc-examples: OK (Rust open + 3 Python snippets)"
+# --- Python: docs/guide_python.md Quick start ---
+read -r -d '' EXPECT_PY_GUIDE_PYTHON <<'EOF' || true
+path: :memory:
+collection_id: 1 schema_version: 1
+collection_names: ['books']
+
+EOF
+ACTUAL_PY_GUIDE_PYTHON=$("$PYTHON" <<'PY' | strip_cr
+import typra
+
+db = typra.Database.open_in_memory()
+cid, ver = db.register_collection(
+    "books",
+    '[{"path": ["title"], "type": "string"}]',
+    "title",
+)
+print("path:", db.path())
+print("collection_id:", cid, "schema_version:", ver)
+print("collection_names:", db.collection_names())
+PY
+)
+[[ "$ACTUAL_PY_GUIDE_PYTHON" == "$EXPECT_PY_GUIDE_PYTHON" ]] || {
+  echo "Python (guide_python quick start) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_GUIDE_PYTHON") <(printf '%s' "$ACTUAL_PY_GUIDE_PYTHON") >&2 || true
+  exit 1
+}
+
+echo "verify-doc-examples: OK (Rust open + 4 Python snippets)"

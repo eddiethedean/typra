@@ -4,11 +4,11 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 ## Current status (important)
 
-As of **v0.5.x**, Typra ships a **persisted schema catalog** plus **record insert/get** (v1 encoding), **in-memory** databases and snapshots, alongside earlier on-disk foundations:
+As of **v0.6.x**, Typra ships a **persisted schema catalog** (including per-field **constraints** on catalog v3), **record insert/get** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **in-memory** databases and snapshots, alongside earlier on-disk foundations:
 
-- **Rust**: `Database::open`, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get`**, **`Database::open_in_memory`**, and `#[derive(DbModel)]`.
-- **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`snapshot_bytes`**, **`collection_names()`**, and `__version__`.
-- **Not yet**: SQL / rich queries, full validation-on-write, secondary indexes—see [`ROADMAP.md`](../ROADMAP.md).
+- **Rust**: `Database::open`, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get`** with **`RowValue`**, **`Database::open_in_memory`**, and `#[derive(DbModel)]`.
+- **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(name, fields_json, primary_field)`** (optional **`constraints`** in `fields_json`), **`insert`**, **`get`**, **`snapshot_bytes`**, **`collection_names()`**, and `__version__`.
+- **Not yet**: SQL / rich queries, secondary indexes—see [`ROADMAP.md`](../ROADMAP.md).
 
 Contributor-oriented layout (Rust crates and `typra-core` modules): [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
 
@@ -18,7 +18,7 @@ In your application `Cargo.toml`:
 
 ```toml
 [dependencies]
-typra = "0.5"
+typra = "0.6"
 ```
 
 ## Minimal Rust example
@@ -41,6 +41,7 @@ fn main() -> Result<(), DbError> {
         vec![FieldDef {
             path: FieldPath::new([Cow::Borrowed("title")])?,
             ty: Type::String,
+            constraints: vec![],
         }],
         "title",
     )?;
@@ -133,7 +134,7 @@ This runs:
 - Rust format/clippy/tests
 - Python ruff/ty checks
 - Python tests (via `maturin develop --release` + `pytest`)
-- **`make verify-doc-examples`**: asserts stdout from `cargo run -p typra --example open` and the Python snippets above matches the documented output blocks on this page and in the READMEs
+- **`make verify-doc-examples`**: asserts stdout from `cargo run -p typra --example open` and the Python snippets above matches the documented output blocks on this page, in the READMEs, and in **`docs/guide_python.md`** (quick start)
 
 ## Where to go next
 

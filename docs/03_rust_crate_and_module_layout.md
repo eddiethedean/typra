@@ -8,11 +8,11 @@ The Rust project layout should:
 - make testing isolated and practical
 - allow incremental engine growth
 
-## Implementation note (0.5.x)
+## Implementation note (current)
 
 The **current** Cargo workspace members are **`typra`**, **`typra-core`**, **`typra-derive`**, and **`typra-python`** (PyO3 package under `python/typra/`). Names like **`typra-storage`**, **`typra-query`**, and **`typra-migrate`** describe **planned** crate splits that are **not** separate directories or published crates yet; file I/O, segments, catalog, and record encoding live inside **`typra-core`** today.
 
-## Workspace layout (0.5.x)
+## Workspace layout
 
 ```text
 typra/
@@ -35,7 +35,7 @@ Design docs may refer to **`typra-storage`**, **`typra-schema`**, **`typra-query
 ## Crate Responsibilities
 
 ### `typra-core`
-Public engine façade and shared primitives for **0.5.x**: **`Database<S: Store>`**, persisted **catalog**, **record** payload v1, **segment** I/O, **superblock** / **manifest** publication, and **error** types. Configuration and validation modules exist largely as **stubs** ahead of [`ROADMAP.md`](../ROADMAP.md) milestones.
+Public engine façade and shared primitives: **`Database<S: Store>`**, persisted **catalog** (decode **v1–v3**; new registrations write **v3** with optional per-field **constraints**), **record** payload **v1 + v2** (decode both; new inserts use **v2**), **segment** I/O, **superblock** / **manifest** publication, **`validation`** (types + constraints before write), and **error** types. **`config`** remains a small placeholder for future engine configuration ([`ROADMAP.md`](../ROADMAP.md)).
 
 ### `typra-storage`
 Low-level storage engine.
@@ -131,6 +131,8 @@ src/
 ├── record/
 │   ├── mod.rs
 │   ├── payload_v1.rs
+│   ├── payload_v2.rs
+│   ├── row_value.rs
 │   └── scalar.rs
 ├── segments/
 │   ├── mod.rs
@@ -145,17 +147,17 @@ src/
 ├── manifest.rs
 ├── publish.rs
 ├── checksum.rs
-├── config.rs           # stub / reserved
-└── validation.rs       # stub / reserved
+├── config.rs           # placeholder / reserved
+└── validation.rs       # validate_value + constraints (0.6.0+)
 ```
 
-#### Key types (shipped in 0.5.x)
+#### Key types (shipped today)
 
 - **`Database<S: Store>`** — default `Database` = on-disk **`FileStore`**; **`open_in_memory`** uses **`VecStore`**
 - **`Store`**, **`FileStore`**, **`VecStore`**
 - **`Catalog`**, **`CollectionInfo`**, catalog replay records
-- **`DbError`**, **`SchemaError`**, format/manifest/superblock errors as in **`error.rs`**
-- **`ScalarValue`**, **`CollectionSchema`**, **`FieldDef`**, **`Type`**, **`SchemaVersion`**, **`CollectionId`**
+- **`DbError`**, **`SchemaError`**, **`ValidationError`** (**`DbError::Validation`**), format/manifest/superblock errors as in **`error.rs`**
+- **`ScalarValue`**, **`RowValue`**, **`Constraint`**, **`CollectionSchema`**, **`FieldDef`**, **`Type`**, **`SchemaVersion`**, **`CollectionId`**
 - **`DbModel`** marker trait (derive lives in **`typra-derive`**)
 
 Not yet in the public API: **`Transaction`**, typed **`CollectionHandle<T>`**, SQL/query builders (see [`ROADMAP.md`](../ROADMAP.md)).

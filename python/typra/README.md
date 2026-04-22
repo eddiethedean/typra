@@ -75,7 +75,7 @@ On disk, use **`Database.open("app.typra")`** instead; registrations are **persi
 
 For behavior details (errors, edge cases, development), see the **[Python user guide](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md)**.
 
-## `fields_json` (v1)
+## `fields_json` (schema descriptor)
 
 `register_collection` expects `fields_json` to be a JSON **array** of objects. Each object describes one field:
 

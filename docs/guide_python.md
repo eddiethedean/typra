@@ -27,14 +27,22 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
-assert db.path() == ":memory:"
-assert cid == 1 and ver == 1
-assert db.collection_names() == ["books"]
+print("path:", db.path())
+print("collection_id:", cid, "schema_version:", ver)
+print("collection_names:", db.collection_names())
+```
+
+Output (checked by **`scripts/verify-doc-examples.sh`** in CI):
+
+```text
+path: :memory:
+collection_id: 1 schema_version: 1
+collection_names: ['books']
 ```
 
 `register_collection` returns **`(collection_id, schema_version)`**. For a new collection, ids start at **`1`** and the first schema version is **`1`**.
 
-A runnable snippet that **prints** real output (and matches CI) is in **[`guide_getting_started.md` — Minimal Python example](guide_getting_started.md#minimal-python-example)**.
+A longer insert/get snippet with **`typra.__version__`** is in **[`guide_getting_started.md` — Minimal Python example](guide_getting_started.md#minimal-python-example)** (also verified in CI).
 
 ## `Database`
 
@@ -52,13 +60,13 @@ Returns the path string used to open the database (normalized by the OS path han
 
 Registers a **new** collection named `name` with schema version **1**. Collection names are **trimmed** of leading/trailing whitespace; empty names after trimming raise **`ValueError`**.
 
-`fields_json` must be a JSON **array** of field objects (see below). **`primary_field`** must name a **single-segment** top-level field present in that array (record encoding v1).
+`fields_json` must be a JSON **array** of field objects (see below). **`primary_field`** must name a **single-segment** top-level field present in that array; the primary key must be a **primitive** scalar (see [`migration_0.5_to_0.6.md`](migration_0.5_to_0.6.md)).
 
 If parsing or typing fails, **`ValueError`** is raised with a message describing the problem. If the name is already registered, **`ValueError`** is raised.
 
 ### `insert(collection_name: str, row: dict) -> None`
 
-Inserts or replaces the latest row for that collection. **`row`** must include every schema field, including the primary key.
+Inserts or replaces the latest row for that collection. **`row`** values are converted to the engine’s **`RowValue`** model (nested dicts/lists, optional omission / null per schema). Required fields must be present; **`Optional<T>`** fields may be omitted or set to **`None`**. Invalid types or **constraint** failures raise **`ValueError`** (same rules as Rust).
 
 ### `get(collection_name: str, pk: object) -> dict | None`
 
@@ -72,7 +80,7 @@ In-memory databases use the same logical format as files. **`snapshot_bytes`** c
 
 Returns registered collection names in **sorted order** (not insertion order).
 
-## `fields_json` (v1)
+## `fields_json` (schema descriptor)
 
 `fields_json` is a JSON **array**. Each element is an object with:
 
@@ -80,6 +88,7 @@ Returns registered collection names in **sorted order** (not insertion order).
 |-----|------|--------|
 | **`path`** | array of strings | Field path segments, e.g. `["profile", "name"]`. Each segment must be a JSON string. |
 | **`type`** | string or object | Primitive name, or a nested composite (optional, list, object, enum). |
+| **`constraints`** | array (optional) | Constraint objects persisted in the catalog (e.g. `{"min_i64": 0}`, `{"max_length": 100}`, `{"regex": "^[a-z]+$"}`, `{"email": true}`). See [`python/typra/README.md`](../python/typra/README.md). |
 
 ### Primitives
 
@@ -141,15 +150,15 @@ Registrations are **durable**: after you close the process and open the same pat
 |-----------|-------------------|
 | Invalid JSON, wrong JSON shape, unknown type, duplicate collection name, invalid collection name | **`ValueError`** |
 | I/O problems opening the file (missing parent dir, permission, is a directory, etc.) | **`OSError`** |
-| Engine reports “not implemented” (should not occur for supported 0.5.x calls) | **`RuntimeError`** |
+| Engine reports “not implemented” (should not occur for supported 0.6.x calls) | **`RuntimeError`** |
 
 Always catch **`ValueError`** and **`OSError`** around `open`, `register_collection`, and **`insert`** in production code.
 
-## What is not in 0.5.x yet
+## What is not in 0.6.x yet
 
-- SQL / rich **queries**
+- SQL / rich **queries** and **secondary indexes**
 - **`register_schema_version`** from Python (Rust only for now)
-- Pydantic model inference (you pass explicit `fields_json`)
+- Pydantic model inference (you pass explicit `fields_json`; the Rust engine still validates on insert)
 
 See [`ROADMAP.md`](../ROADMAP.md) for upcoming milestones.
 

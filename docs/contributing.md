@@ -92,7 +92,7 @@ Rust crates under `crates/` include **`typra`** (application facade), **`typra-c
 make check-full
 ```
 
-That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guide_getting_started.md`**, and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and the embedded Python snippets (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
+That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`** (quick start), and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and the embedded Python snippets (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
 
 1. Log in: `cargo login` with an API token from [crates.io account settings](https://crates.io/settings/tokens).
 2. Optionally set `repository = "..."` under `[workspace.package]` in the root `Cargo.toml` (recommended).
@@ -141,13 +141,13 @@ Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.tom
 
 ## Next implementation steps (high level)
 
-1. Validation engine and constraint errors (`0.6.x`).
+1. ~~Validation engine and constraint errors~~ (**delivered in `0.6.0`**).
 2. Secondary indexes and simple filters (`0.7.x`).
 3. Transactions and crash-safe checkpoints (`0.8.x`).
 
 See [`ROADMAP.md`](../ROADMAP.md) for the full release breakdown.
 
-### File format notes (0.3.x–0.5.x)
+### File format notes (0.3.x–0.6.x)
 
 Starting with the `0.3.x` on-disk format work, the database file layout includes reserved **Superblock A/B** regions (for crash-safe metadata publication later) and checksummed **append-only segments**. This scaffolding is still internal, but it changes on-disk compatibility behavior:
 
@@ -161,3 +161,5 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 **`0.5.0`** adds **record** segments (**`SegmentType::Record`**, payload v1), **primary key** on catalog create (catalog wire v2), **`insert` / `get`**, and in-memory **`VecStore`** + snapshot bytes. New databases use format minor **5**; existing **0.4** files are upgraded **lazily** to **0.5** on the first **record** write. See [`06_record_encoding_v1.md`](06_record_encoding_v1.md) and [`migration_0.4_to_0.5.md`](migration_0.4_to_0.5.md).
 
 **`0.5.1`** is an internal **Rust-only** refactor: the `Database` implementation lives under **`crates/typra-core/src/db/`** (`open`, `replay`, `write`, `helpers`); the public **`Database`** API and on-disk format are unchanged (see [`CHANGELOG.md`](../CHANGELOG.md)).
+
+**`0.6.0`** adds **validation**, **`RowValue`**, **record payload v2**, and **catalog payload v3** (constraints). See [`07_record_encoding_v2.md`](07_record_encoding_v2.md) and [`migration_0.5_to_0.6.md`](migration_0.5_to_0.6.md).
