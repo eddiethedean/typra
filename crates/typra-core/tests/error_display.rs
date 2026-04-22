@@ -122,6 +122,10 @@ fn schema_error_display_all_variants() {
             &["invalid schema version", "1", "2"],
         ),
         (
+            SchemaError::SchemaVersionExhausted,
+            &["schema version limit"],
+        ),
+        (
             SchemaError::UnexpectedCollectionId {
                 expected: 1,
                 got: 2,

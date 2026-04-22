@@ -78,6 +78,8 @@ pub enum SchemaError {
         expected: u32,
         got: u32,
     },
+    /// `u32` schema version counter cannot be incremented further.
+    SchemaVersionExhausted,
     UnexpectedCollectionId {
         expected: u32,
         got: u32,
@@ -200,6 +202,9 @@ impl fmt::Display for SchemaError {
             SchemaError::InvalidCollectionName => write!(f, "invalid collection name"),
             SchemaError::InvalidSchemaVersion { expected, got } => {
                 write!(f, "invalid schema version: expected {expected}, got {got}")
+            }
+            SchemaError::SchemaVersionExhausted => {
+                write!(f, "schema version limit reached (cannot bump further)")
             }
             SchemaError::UnexpectedCollectionId { expected, got } => {
                 write!(

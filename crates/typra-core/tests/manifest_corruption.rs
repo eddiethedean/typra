@@ -3,12 +3,12 @@ use typra_core::file_format::FILE_HEADER_SIZE;
 use typra_core::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
 
 #[test]
-fn corrupt_manifest_does_not_prevent_open_when_scan_succeeds() {
+fn corrupt_manifest_pointer_fails_open() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.typra");
     let _db = Database::open(&path).unwrap();
 
-    // Corrupt the manifest pointer (not the segment stream), so scan fallback can succeed.
+    // Point the manifest at a bogus offset so manifest validation fails.
     let bytes = std::fs::read(&path).unwrap();
     let sb_a_offset = FILE_HEADER_SIZE as u64;
     let sb_b_offset = (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64;
@@ -26,7 +26,7 @@ fn corrupt_manifest_does_not_prevent_open_when_scan_succeeds() {
     };
 
     let corrupted = Superblock {
-        manifest_offset: 1, // definitely not a valid segment start
+        manifest_offset: 1, // not a valid segment start
         ..current
     };
     let target_offset = if current_is_a {
@@ -44,6 +44,5 @@ fn corrupt_manifest_does_not_prevent_open_when_scan_succeeds() {
     f.seek(std::io::SeekFrom::Start(target_offset)).unwrap();
     f.write_all(&corrupted.encode()).unwrap();
 
-    // Should still open (falls back to scan).
-    let _db2 = Database::open(&path).unwrap();
+    assert!(Database::open(&path).is_err());
 }

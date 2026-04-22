@@ -1,4 +1,7 @@
 //! Replay schema and record segments into [`crate::catalog::Catalog`] and in-memory latest-row maps.
+//!
+//! Legacy catalog entries may omit `primary_field`; record segments for those collections are
+//! skipped during replay (insert was never supported without a primary key).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -12,35 +15,29 @@ use crate::storage::Store;
 
 use super::LatestMap;
 
-pub(crate) fn load_catalog<S: Store>(
+/// One [`scan_segments`] pass, then apply schema segments to build `Catalog`, then replay record
+/// segments in order using the final catalog (same semantics as two separate full scans).
+pub(crate) fn load_catalog_and_latest_rows<S: Store>(
     store: &mut S,
     segment_start: u64,
-) -> Result<Catalog, DbError> {
+) -> Result<(Catalog, LatestMap), DbError> {
     let metas = scan_segments(store, segment_start)?;
     let mut catalog = Catalog::default();
-    for meta in metas {
+    for meta in &metas {
         if meta.header.segment_type != SegmentType::Schema {
             continue;
         }
-        let payload = read_segment_payload(store, &meta)?;
+        let payload = read_segment_payload(store, meta)?;
         let record = decode_catalog_payload(&payload)?;
         catalog.apply_record(record)?;
     }
-    Ok(catalog)
-}
 
-pub(crate) fn load_latest_rows<S: Store>(
-    store: &mut S,
-    segment_start: u64,
-    catalog: &Catalog,
-) -> Result<LatestMap, DbError> {
-    let metas = scan_segments(store, segment_start)?;
     let mut latest = HashMap::new();
-    for meta in metas {
+    for meta in &metas {
         if meta.header.segment_type != SegmentType::Record {
             continue;
         }
-        let payload = read_segment_payload(store, &meta)?;
+        let payload = read_segment_payload(store, meta)?;
         if payload.len() < 6 {
             return Err(DbError::Format(FormatError::TruncatedRecordPayload));
         }
@@ -81,5 +78,5 @@ pub(crate) fn load_latest_rows<S: Store>(
         }
         latest.insert((collection_id, decoded.pk.canonical_key_bytes()), full);
     }
-    Ok(latest)
+    Ok((catalog, latest))
 }

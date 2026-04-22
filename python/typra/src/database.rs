@@ -2,9 +2,10 @@
 
 use std::sync::Mutex;
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
+use std::sync::MutexGuard;
 use typra_core::catalog::CollectionInfo;
 use typra_core::Database as CoreDatabase;
 
@@ -13,6 +14,12 @@ use crate::fields_json;
 use crate::inner_db::InnerDb;
 use crate::row_values;
 
+fn lock_inner(inner: &Mutex<InnerDb>) -> PyResult<MutexGuard<'_, InnerDb>> {
+    inner
+        .lock()
+        .map_err(|e| PyRuntimeError::new_err(format!("database lock poisoned: {e}")))
+}
+
 /// Python `Database`: Typra engine behind an internal mutex (safe across threads that release the GIL).
 #[pyclass(name = "Database")]
 pub struct Database {
@@ -20,7 +27,7 @@ pub struct Database {
 }
 
 fn collection_info(inner: &Mutex<InnerDb>, name: &str) -> PyResult<CollectionInfo> {
-    let g = inner.lock().unwrap();
+    let g = lock_inner(inner)?;
     let cid = g.collection_id_named(name).map_err(db_error_to_py)?;
     g.catalog()
         .get(cid)
@@ -53,9 +60,9 @@ impl Database {
     /// Return the path string for this database.
     ///
     /// For in-memory databases this is ``":memory:"`` (see ``open_in_memory``).
-    fn path(&self) -> String {
-        let g = self.inner.lock().unwrap();
-        g.path_display()
+    fn path(&self) -> PyResult<String> {
+        let g = lock_inner(&self.inner)?;
+        Ok(g.path_display())
     }
 
     /// Register a new collection at schema version 1.
@@ -79,7 +86,7 @@ impl Database {
         primary_field: &str,
     ) -> PyResult<(u32, u32)> {
         let fields = fields_json::fields_from_json(fields_json).map_err(PyValueError::new_err)?;
-        let mut g = self.inner.lock().unwrap();
+        let mut g = lock_inner(&self.inner)?;
         let (id, v) = g
             .register_collection(name, fields, primary_field)
             .map_err(db_error_to_py)?;
@@ -87,8 +94,9 @@ impl Database {
     }
 
     /// Return all collection names in sorted order.
-    fn collection_names(&self) -> Vec<String> {
-        self.inner.lock().unwrap().collection_names()
+    fn collection_names(&self) -> PyResult<Vec<String>> {
+        let g = lock_inner(&self.inner)?;
+        Ok(g.collection_names())
     }
 
     /// Insert or replace one row (all top-level fields required per schema).
@@ -108,7 +116,7 @@ impl Database {
     ) -> PyResult<()> {
         let col = collection_info(&self.inner, collection_name)?;
         let mapped = row_values::row_from_dict(py, row, &col)?;
-        let mut g = self.inner.lock().unwrap();
+        let mut g = lock_inner(&self.inner)?;
         let cid = g
             .collection_id_named(collection_name)
             .map_err(db_error_to_py)?;
@@ -146,7 +154,7 @@ impl Database {
             .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
         let pk_val = row_values::scalar_from_py(py, pk, pk_ty)?;
         let row = {
-            let g = self.inner.lock().unwrap();
+            let g = lock_inner(&self.inner)?;
             let cid = g
                 .collection_id_named(collection_name)
                 .map_err(db_error_to_py)?;
@@ -197,7 +205,7 @@ impl Database {
     ///     ValueError: If this database is file-backed (only in-memory images can be snapshotted here).
     ///     OSError / RuntimeError: Engine errors when reading the buffer.
     fn snapshot_bytes(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
-        let g = self.inner.lock().unwrap();
+        let g = lock_inner(&self.inner)?;
         let v = g.snapshot_bytes()?;
         Ok(PyBytes::new_bound(py, &v).unbind())
     }

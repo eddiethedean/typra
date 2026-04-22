@@ -116,7 +116,11 @@ impl<S: Store> Database<S> {
             .catalog
             .get(id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
-        let next_v = current.current_version.0.saturating_add(1);
+        let next_v = current
+            .current_version
+            .0
+            .checked_add(1)
+            .ok_or(DbError::Schema(SchemaError::SchemaVersionExhausted))?;
         let wire = CatalogRecordWire::NewSchemaVersion {
             collection_id: id.0,
             schema_version: next_v,
@@ -193,7 +197,11 @@ impl<S: Store> Database<S> {
                 non_pk.push((def.clone(), v));
             }
             if !row.is_empty() {
-                let name = row.keys().next().unwrap().clone();
+                let name = row
+                    .keys()
+                    .next()
+                    .cloned()
+                    .expect("row non-empty implies a key");
                 return Err(DbError::Schema(SchemaError::RowUnknownField { name }));
             }
 

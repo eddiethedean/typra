@@ -8,7 +8,7 @@ use crate::file_format::{decode_header, FileHeader, FILE_HEADER_SIZE};
 use crate::manifest::decode_manifest_v0;
 use crate::publish::append_manifest_and_publish;
 use crate::segments::header::SegmentType;
-use crate::segments::reader::{read_segment_header_at, scan_segments};
+use crate::segments::reader::read_segment_header_at;
 use crate::storage::Store;
 use crate::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
 
@@ -114,10 +114,7 @@ pub(crate) fn open_with_store<S: Store>(
             }
             let selected = read_and_select_superblock(&mut store)?;
             if selected.manifest_offset != 0 {
-                let _ = read_manifest(&mut store, &selected);
-            }
-            if len > segment_start {
-                let _ = scan_segments(&mut store, segment_start)?;
+                read_manifest(&mut store, &selected)?;
             }
             format_minor = header.format_minor;
         } else {
@@ -128,16 +125,10 @@ pub(crate) fn open_with_store<S: Store>(
         }
     }
 
-    let catalog = if len == 0 {
-        crate::catalog::Catalog::default()
+    let (catalog, latest) = if len == 0 {
+        (crate::catalog::Catalog::default(), HashMap::new())
     } else {
-        replay::load_catalog(&mut store, segment_start)?
-    };
-
-    let latest = if len == 0 {
-        HashMap::new()
-    } else {
-        replay::load_latest_rows(&mut store, segment_start, &catalog)?
+        replay::load_catalog_and_latest_rows(&mut store, segment_start)?
     };
 
     let db = Database {

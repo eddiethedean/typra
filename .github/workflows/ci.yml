@@ -22,6 +22,14 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: cargo test
         run: cargo test --workspace --all-features
@@ -106,7 +114,12 @@ jobs:
           else
             VENV_PY="$(pwd)/.venv/bin/python"
           fi
-          "$VENV_PY" -m pip install -U pip "maturin>=1.5,<2" "pytest>=8"
+          "$VENV_PY" -m pip install -U pip "maturin>=1.5,<2" "pytest>=8" "ruff>=0.8" "ty>=0.0.28"
           cd python/typra
           "$VENV_PY" -m maturin develop --release
           "$VENV_PY" -m pytest -v
+          cd "${GITHUB_WORKSPACE}"
+          "$VENV_PY" -m ruff format --check python
+          "$VENV_PY" -m ruff check python
+          env -u VIRTUAL_ENV "$VENV_PY" -m ty check --python "$VENV_PY" --python-version ${{ matrix.python-version }} python
+          bash ./scripts/verify-doc-examples.sh
