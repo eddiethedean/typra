@@ -3,20 +3,25 @@
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/typra.svg)](https://pypi.org/project/typra/)
 
-**Typra** is a typed, embedded database with a Rust core. This package is the official **CPython** bindings (PyO3, native extension).
+Official **CPython** bindings for **Typra** (PyO3 native extension): a typed, embedded database with a Rust core.
 
-**In 0.5.x** you get a durable **schema catalog** and **record insert/get** (v1 encoding) in a single `.typra` file, plus **in-memory** databases and **snapshot** bytes. **SQL / rich queries** are still planned ([roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md)).
+## Status (v0.5.x)
 
-| | |
-|--|--|
+You get a durable **schema catalog** and **record insert/get** (v1 encoding) in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes. **SQL / rich queries** are still planned—see the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
+
+| Resource | Link |
+|----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
+| **Rust crates** | [`typra` on crates.io](https://crates.io/crates/typra) |
 | **Full Python guide** | [docs/guide_python.md](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md) |
+| **Getting started** | [docs/guide_getting_started.md](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) |
+| **Migrating 0.4 → 0.5** | [docs/migration_0.4_to_0.5.md](https://github.com/eddiethedean/typra/blob/main/docs/migration_0.4_to_0.5.md) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
 
 ## Requirements
 
 - **CPython 3.9+**
-- Wheels use the stable ABI (**`cp39-abi3`**): one wheel per platform, compatible with Python 3.9 and newer on that platform.
+- Wheels use the stable ABI (**`cp39-abi3`**): one wheel per platform, compatible with Python 3.9+ on that platform.
 
 ## Install
 
@@ -43,7 +48,7 @@ print(db.get("books", "Typra"))
 print(typra.__version__)
 ```
 
-Output (version matches the installed wheel):
+Output (the version line matches the installed wheel):
 
 ```text
 registered 1 1
@@ -51,7 +56,7 @@ registered 1 1
 0.5.0
 ```
 
-On disk, use `Database.open("app.typra")` instead; registrations are **persisted** across process restarts for that path.
+On disk, use **`Database.open("app.typra")`** instead; registrations are **persisted** across process restarts for that path.
 
 ## API overview
 
@@ -113,11 +118,11 @@ db.register_collection("books", schema, "title")
 
 ## Building from source
 
-You need **Rust**, **Python 3.9+**, and **[maturin](https://www.maturin.rs/)**. From the repo’s `python/typra` directory:
+You need **Rust**, **Python 3.9+**, and **[maturin](https://www.maturin.rs/)**. From the repo’s **`python/typra`** directory:
 
 ```bash
 maturin develop --release
 pytest -q
 ```
 
-Or from the repository root, run **`make check-full`** (Rust + Python checks and tests). See also **[python/README.md](https://github.com/eddiethedean/typra/blob/main/python/README.md)**.
+From the repository root, **`make check-full`** runs Rust + Python checks, tests, and **`make verify-doc-examples`** (validates documented command output). See also **[python/README.md](https://github.com/eddiethedean/typra/blob/main/python/README.md)** (workspace layout for contributors).

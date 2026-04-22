@@ -7,56 +7,64 @@
 > **SQLite simplicity, with real types.**
 
 Typra is a **typed, embedded database** for application data.  
-It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is always correct by design.
+It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-**Status (v0.5.0):** The Rust crates expose `Database::open`, **`register_collection` / `register_schema_version`**, **`insert` / `get`**, **`Database::open_in_memory`** and snapshot helpers, and `DbModel` derive. Python exposes **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory and snapshot constructors, and **`collection_names`**. Rich validation and queries are still **under development**. New databases use format minor **5** (lazy bumps from **4** on first record write, **3 → 4** on first catalog write). See [CHANGELOG.md](CHANGELOG.md).
+## Status (v0.5.x)
+
+| Surface | What ships today |
+|---------|------------------|
+| **Rust** | `Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`**), **`insert` / `get`**, **`open_in_memory`**, snapshot helpers, **`#[derive(DbModel)]`** |
+| **Python** | **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory / snapshot APIs, **`collection_names()`** |
+| **Format** | New databases use file format minor **5** (lazy **4 → 5** on first record write; **3 → 4** on first catalog write as in 0.4.x) |
+
+Rich validation, SQL-style queries, and secondary indexes are **under development**. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
+
+| Resource | Link |
+|----------|------|
+| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) |
+| **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) |
+| **Contributing** | [docs/contributing.md](docs/contributing.md) |
 
 ---
 
 ## Why Typra?
 
-Modern applications already define their data using:
+Modern applications already define their data using Rust structs, Pydantic models, or TypeScript schemas—but many databases accept loosely typed rows anyway.
 
-- Rust structs
-- Pydantic models
-- TypeScript schemas
-
-But most databases ignore that structure and accept loosely typed data.
-
-**Typra** is meant to fix that: models as schema, validation on write, nested data as first-class, single-file deployment.
+**Typra** targets **models as schema**, **validation on write**, **nested data as first-class**, and **single-file** deployment.
 
 ---
 
 ## Features (roadmap)
 
-Many items below are **goals**; check the changelog for what each release actually ships.
+Many items below are **goals**; see the changelog for what each release actually ships.
 
-- Type-first design
-- Validation on write
-- Nested objects and lists
-- Embedded, zero-config, single file
-- Safe schema evolution
-- Typed queries
+- Type-first design  
+- Validation on write  
+- Nested objects and lists  
+- Embedded, zero-config, single file  
+- Safe schema evolution  
+- Typed queries  
 
 ---
 
 ## Typra vs SQLite (vision)
 
-| Feature           | SQLite | Typra (target) |
-|-------------------|--------|----------------|
-| Typing            | Weak   | Strong         |
-| Validation        | Minimal| Built-in       |
-| Nested data       | JSON   | Native         |
-| API               | SQL    | Model-first    |
+| Feature | SQLite | Typra (target) |
+|---------|--------|----------------|
+| Typing | Weak | Strong |
+| Validation | Minimal | Built-in |
+| Nested data | JSON | Native |
+| API | SQL | Model-first |
 
 ---
 
 ## Python
 
-The `typra` package on PyPI exposes the native extension. **0.5.0** adds **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, and in-memory / snapshot helpers. **`fields_json`** is a JSON array of field descriptors (see [`python/typra/README.md`](python/typra/README.md) and **[docs/guide_python.md](docs/guide_python.md)**).
+The **`typra`** package on PyPI is a native extension. **`fields_json`** is a JSON array of field descriptors—see **[`python/typra/README.md`](python/typra/README.md)** and **[`docs/guide_python.md`](docs/guide_python.md)**.
 
-- **Python support**: **3.9+**
-- **Wheels**: **`cp39-abi3`** (one wheel per platform for CPython 3.9+)
+- **Python:** 3.9+  
+- **Wheels:** `cp39-abi3` (one wheel per platform)
 
 ```python
 import typra
@@ -89,14 +97,14 @@ pip install "typra>=0.5.0,<0.6"
 
 ### Application crate (recommended)
 
-Use the **`typra`** crate — it re-exports the engine and enables `#[derive(DbModel)]` by default.
+Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(DbModel)]`** by default. See **[`crates/typra/README.md`](crates/typra/README.md)**.
 
 ```toml
 [dependencies]
 typra = "0.5"
 ```
 
-Disable the default `derive` feature if you only need the engine:
+Without proc-macros (engine only):
 
 ```toml
 typra = { version = "0.5", default-features = false }
@@ -104,11 +112,11 @@ typra = { version = "0.5", default-features = false }
 
 ### Lower-level crates
 
-For a minimal dependency tree or out-of-tree macros, depend on **`typra-core`** and **`typra-derive`** directly (same versions as the facade).
+Depend on **`typra-core`** and **`typra-derive`** directly when you need a minimal graph or custom macro wiring (same semver as **`typra`**).
 
-### Example (0.5.x)
+### Example
 
-In-memory (repeatable; no leftover file). From the repo you can also run `cargo run -p typra --example open`.
+In-memory (repeatable; no leftover file). From the repo: **`cargo run -p typra --example open`**.
 
 ```rust
 use std::borrow::Cow;
@@ -140,7 +148,7 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-Field attributes (`#[db(primary)]`, etc.) on `DbModel` are **not** implemented yet; they remain design targets.
+Field attributes (`#[db(primary)]`, etc.) on **`DbModel`** are **not** implemented yet.
 
 ---
 
@@ -152,9 +160,12 @@ Field attributes (`#[db(primary)]`, etc.) on `DbModel` are **not** implemented y
 
 ## Development
 
-Rust crates live under `crates/` (`typra` facade, `typra-core`, `typra-derive`); PyPI packages under `python/` ([`python/README.md`](python/README.md)). See [docs/contributing.md](docs/contributing.md) for layout, build commands, and publishing.
+| Path | Role |
+|------|------|
+| **`crates/`** | Rust crates (**`typra`**, **`typra-core`**, **`typra-derive`**) — see per-crate READMEs |
+| **`python/`** | PyPI packaging — see **[`python/README.md`](python/README.md)** |
 
-From the repo root, you can run the full local CI suite:
+Full local checks (ruff, ty, cargo fmt/clippy/test, pytest, **documented example output verification**):
 
 ```bash
 python3 -m venv .venv
@@ -162,8 +173,8 @@ python3 -m venv .venv
 make check-full
 ```
 
-Design specs live under [docs/](docs/).
+Design specs live under **[`docs/`](docs/)**.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see **[LICENSE](LICENSE)**.

@@ -1,8 +1,18 @@
 # Python workspace (`python/`)
 
+[![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
+
 This directory holds **PyPI packaging and Python tooling** for Typra. The embedded engine lives in Rust under **`crates/`**; the **`typra`** wheel is a **native extension** (PyO3) that calls into **`typra-core`**.
 
-Use this doc when you work **in or under `python/`**. End users installing from PyPI should start with the package README: **[`typra/README.md`](typra/README.md)** (also shown on [PyPI](https://pypi.org/project/typra/)). The long-form guide is **[`docs/guide_python.md`](../docs/guide_python.md)**.
+Use this doc when you work **in or under `python/`**. End users installing from PyPI should start with the package README: **[`typra/README.md`](typra/README.md)** (also shown on [PyPI](https://pypi.org/project/typra/)).
+
+| Resource | Link |
+|----------|------|
+| **Full Python guide** | [`docs/guide_python.md`](../docs/guide_python.md) |
+| **Getting started** | [`docs/guide_getting_started.md`](../docs/guide_getting_started.md) |
+| **Changelog** | [`CHANGELOG.md`](../CHANGELOG.md) |
+| **Roadmap** | [`ROADMAP.md`](../ROADMAP.md) |
+| **Contributing / publish** | [`docs/contributing.md`](../docs/contributing.md) |
 
 ## Layout
 
@@ -13,7 +23,7 @@ Use this doc when you work **in or under `python/`**. End users installing from 
 
 The Rust workspace lists **`python/typra`** as a member so **`cargo check -p typra-python`** and release versioning stay aligned with **`crates/`**.
 
-## What the extension exposes (0.5.x)
+## What the extension exposes (v0.5.x)
 
 - **`typra.Database`**: `open`, `open_in_memory`, `open_snapshot_bytes`, `path`, `register_collection`, `insert`, `get`, `collection_names`, `snapshot_bytes`
 - **`typra.__version__`**: matches the workspace / crates release
@@ -30,7 +40,7 @@ python3 -m venv .venv
 make check-full
 ```
 
-That installs dev tools into `.venv`, runs **ruff**, **ty**, **cargo** fmt/clippy/test, then **`maturin develop --release`** under `python/typra` and **pytest**.
+That installs dev tools into `.venv`, runs **ruff**, **ty**, **cargo** fmt/clippy/test, **`maturin develop --release`** + **pytest** under `python/typra`, then **`scripts/verify-doc-examples.sh`** (asserts README / guide command output matches the minimal snippets).
 
 Manual equivalent (minimal):
 

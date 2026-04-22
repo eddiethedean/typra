@@ -1,22 +1,40 @@
-## `typra` (Rust)
+# `typra` (Rust facade)
 
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
 
-User-facing facade crate for **Typra**, a typed embedded database.
+User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get).
 
-**Status (0.5.0):** `Database::open`, **`register_collection`** (with primary key field), **`insert` / `get`**, **`Database::open_in_memory`** / snapshots, **`register_schema_version`**, and `#[derive(DbModel)]` are available. Queries, rich validation, and secondary indexes are not implemented yet.
+## Status (v0.5.x)
 
-### Install
+`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get`**, **`Database::open_in_memory`**, snapshot import/export, and **`#[derive(DbModel)]`** (via the default `derive` feature). Queries, rich validation, and secondary indexes are **not** implemented yet.
+
+| Resource | Link |
+|----------|------|
+| **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
+| **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
+| **User guides** | [Getting started](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guide_concepts.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+
+## Install
 
 ```toml
 [dependencies]
 typra = "0.5"
 ```
 
-### Example
+Disable the default `derive` feature if you only need the engine:
 
-Same program as **`examples/open.rs`** (`cargo run -p typra --example open`):
+```toml
+typra = { version = "0.5", default-features = false }
+```
+
+## Example
+
+Same program as **`examples/open.rs`**:
+
+```bash
+cargo run -p typra --example open
+```
 
 ```rust
 use std::borrow::Cow;
@@ -49,12 +67,21 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-### Features
+Field attributes (`#[db(primary)]`, etc.) on `DbModel` are **not** implemented yet.
 
-- `derive` (default): enables `#[derive(DbModel)]` via `typra-derive`.
+## Features
 
-### Lower-level crates
+| Feature | Role |
+|---------|------|
+| **`derive`** (default) | `#[derive(DbModel)]` via **`typra-derive`** |
 
-- `typra-core`: engine API
-- `typra-derive`: proc-macro derives
+## Related crates
 
+| Crate | Role |
+|-------|------|
+| **`typra-core`** | Engine (`Database`, storage, catalog, records) |
+| **`typra-derive`** | Proc-macros |
+
+## License
+
+MIT — see [LICENSE](https://github.com/eddiethedean/typra/blob/main/LICENSE).
