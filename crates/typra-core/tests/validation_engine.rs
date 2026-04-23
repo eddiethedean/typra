@@ -19,6 +19,88 @@ fn ensure_pk_rejects_optional() {
 }
 
 #[test]
+fn ensure_pk_accepts_primitive_types() {
+    for ty in [
+        Type::Bool,
+        Type::Int64,
+        Type::String,
+        Type::Bytes,
+        Type::Float64,
+        Type::Uint64,
+        Type::Uuid,
+        Type::Timestamp,
+    ] {
+        ensure_pk_type_primitive(&ty).unwrap();
+    }
+}
+
+#[test]
+fn ensure_pk_rejects_list_object_enum() {
+    for ty in [
+        Type::List(Box::new(Type::String)),
+        Type::Object(vec![]),
+        Type::Enum(vec!["a".into()]),
+    ] {
+        assert!(matches!(
+            ensure_pk_type_primitive(&ty),
+            Err(DbError::Validation(_))
+        ));
+    }
+}
+
+#[test]
+fn validate_uuid_and_timestamp_values_ok() {
+    let mut p = vec!["u".into()];
+    validate_value(&mut p, &Type::Uuid, &[], &RowValue::Uuid([7u8; 16])).unwrap();
+    let mut p = vec!["t".into()];
+    validate_value(&mut p, &Type::Timestamp, &[], &RowValue::Timestamp(1)).unwrap();
+}
+
+#[test]
+fn validate_bool_value_ok() {
+    let mut p = vec!["b".into()];
+    validate_value(&mut p, &Type::Bool, &[], &RowValue::Bool(true)).unwrap();
+}
+
+#[test]
+fn validate_bool_uuid_timestamp_wrong_value_type() {
+    let mut p = vec!["p".into()];
+    for (ty, msg) in [
+        (Type::Bool, "expected bool"),
+        (Type::Uuid, "expected uuid"),
+        (Type::Timestamp, "expected timestamp"),
+    ] {
+        let e = validate_value(&mut p, &ty, &[], &RowValue::Int64(1)).unwrap_err();
+        assert!(matches!(e, DbError::Validation(v) if v.message == msg));
+    }
+}
+
+#[test]
+fn validate_enum_requires_string_value() {
+    let mut p = vec!["e".into()];
+    let e = validate_value(
+        &mut p,
+        &Type::Enum(vec!["a".into()]),
+        &[],
+        &RowValue::Int64(1),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message == "expected string (enum)"));
+}
+
+#[test]
+fn validate_optional_inner_then_constraint_on_wrapper() {
+    let mut p = vec!["o".into()];
+    validate_value(
+        &mut p,
+        &Type::Optional(Box::new(Type::String)),
+        &[Constraint::NonEmpty],
+        &RowValue::String("x".into()),
+    )
+    .unwrap();
+}
+
+#[test]
 fn validate_int64_min_constraint() {
     let mut p = vec!["n".into()];
     let e = validate_value(
@@ -137,6 +219,96 @@ fn validate_constraint_type_mismatch_errors() {
     )
     .unwrap_err();
     assert!(matches!(e, DbError::Validation(v) if v.message.contains("NonEmpty")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MaxI64(0)],
+        &RowValue::String("s".into()),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("requires int64")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MinU64(0)],
+        &RowValue::String("s".into()),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("requires uint64")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MaxU64(0)],
+        &RowValue::String("s".into()),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("requires uint64")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MinF64(0.0)],
+        &RowValue::String("s".into()),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("requires float64")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MaxF64(0.0)],
+        &RowValue::String("s".into()),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("requires float64")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MinLength(1)],
+        &RowValue::Int64(1),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("MinLength")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MaxLength(1)],
+        &RowValue::Int64(1),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("MaxLength")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::Regex(".".into())],
+        &RowValue::Int64(1),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("Regex")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::Email],
+        &RowValue::Int64(1),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("Email")));
+
+    let e = validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::Url],
+        &RowValue::Int64(1),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("Url")));
 }
 
 #[test]
@@ -199,6 +371,33 @@ fn validate_top_level_required_null_rejected() {
     row.insert("y".into(), RowValue::None);
     let e = validate_top_level_row(&defs, "id", &row).unwrap_err();
     assert!(matches!(e, DbError::Validation(_)));
+}
+
+#[test]
+fn validate_list_and_object_expected_value_type() {
+    let mut p = vec!["l".into()];
+    let e = validate_value(
+        &mut p,
+        &Type::List(Box::new(Type::Int64)),
+        &[],
+        &RowValue::Object(BTreeMap::new()),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message == "expected list"));
+
+    let mut p = vec!["o".into()];
+    let e = validate_value(
+        &mut p,
+        &Type::Object(vec![FieldDef {
+            path: path_seg("a"),
+            ty: Type::String,
+            constraints: vec![],
+        }]),
+        &[],
+        &RowValue::List(vec![]),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message == "expected object"));
 }
 
 #[test]

@@ -166,6 +166,58 @@ fn validation_constraints_cover_all_variants() {
         ),
         Err(DbError::Validation(_))
     ));
+
+    // Url / email success paths.
+    validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::Url],
+        &RowValue::String("https://example.com/x".into()),
+    )
+    .unwrap();
+    validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::Email],
+        &RowValue::String("a@b.co".into()),
+    )
+    .unwrap();
+
+    // NonEmpty: empty bytes and non-empty bytes ok.
+    assert!(matches!(
+        validate_value(
+            &mut p,
+            &Type::Bytes,
+            &[Constraint::NonEmpty],
+            &RowValue::Bytes(vec![])
+        ),
+        Err(DbError::Validation(_))
+    ));
+    validate_value(
+        &mut p,
+        &Type::Bytes,
+        &[Constraint::NonEmpty],
+        &RowValue::Bytes(vec![0]),
+    )
+    .unwrap();
+
+    // MinLength / MaxLength on bytes.
+    assert!(matches!(
+        validate_value(
+            &mut p,
+            &Type::Bytes,
+            &[Constraint::MinLength(2)],
+            &RowValue::Bytes(vec![1])
+        ),
+        Err(DbError::Validation(_))
+    ));
+    validate_value(
+        &mut p,
+        &Type::Bytes,
+        &[Constraint::MaxLength(2)],
+        &RowValue::Bytes(vec![1, 2]),
+    )
+    .unwrap();
 }
 
 #[test]
