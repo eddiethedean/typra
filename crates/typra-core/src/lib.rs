@@ -8,6 +8,7 @@
 pub mod catalog;
 pub mod checksum;
 pub mod config;
+pub use config::{OpenOptions, RecoveryMode};
 pub mod db;
 pub mod error;
 pub mod file_format;
@@ -20,12 +21,15 @@ pub mod schema;
 pub mod segments;
 pub mod storage;
 pub mod superblock;
+pub mod txn;
 pub mod validation;
 
 pub use catalog::{Catalog, CatalogRecord, CollectionInfo};
 pub use db::Database;
 pub use error::DbError;
+pub use error::FormatError;
 pub use error::SchemaError;
+pub use error::TransactionError;
 pub use error::ValidationError;
 pub use record::RowValue;
 pub use record::ScalarValue;

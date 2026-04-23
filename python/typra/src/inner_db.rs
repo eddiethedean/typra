@@ -111,4 +111,25 @@ impl InnerDb {
             InnerDb::Mem(d) => Ok(d.snapshot_bytes()),
         }
     }
+
+    pub(crate) fn begin_transaction(&mut self) -> Result<(), typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.begin_transaction(),
+            InnerDb::Mem(d) => d.begin_transaction(),
+        }
+    }
+
+    pub(crate) fn commit_transaction(&mut self) -> Result<(), typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.commit_transaction(),
+            InnerDb::Mem(d) => d.commit_transaction(),
+        }
+    }
+
+    pub(crate) fn rollback_transaction(&mut self) {
+        match self {
+            InnerDb::File(d) => d.rollback_transaction(),
+            InnerDb::Mem(d) => d.rollback_transaction(),
+        }
+    }
 }

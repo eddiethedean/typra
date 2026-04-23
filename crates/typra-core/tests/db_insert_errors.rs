@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::fs;
 
 use typra_core::error::{DbError, FormatError, SchemaError};
-use typra_core::file_format::{decode_header, FILE_HEADER_SIZE, FORMAT_MINOR};
+use typra_core::file_format::{decode_header, FILE_HEADER_SIZE};
 use typra_core::record::{RowValue, ScalarValue};
 use typra_core::schema::{FieldDef, FieldPath, Type};
 use typra_core::CollectionId;
@@ -124,7 +124,7 @@ fn lazy_header_v4_to_v5_on_first_record_write() {
             .unwrap();
         let bytes = fs::read(&path).unwrap();
         let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
-        assert_eq!(h.format_minor, 4);
+        assert_eq!(h.format_minor, typra_core::file_format::FORMAT_MINOR_V6);
 
         let mut row = BTreeMap::new();
         row.insert("title".into(), RowValue::String("Rust".into()));
@@ -133,15 +133,15 @@ fn lazy_header_v4_to_v5_on_first_record_write() {
     }
     let bytes = fs::read(&path).unwrap();
     let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
-    assert_eq!(h.format_minor, 5);
+    assert_eq!(h.format_minor, typra_core::file_format::FORMAT_MINOR_V6);
 }
 
 #[test]
-fn new_database_starts_at_format_minor_5() {
+fn new_database_starts_at_format_minor_6() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("new.typra");
     let _db = Database::open(&path).unwrap();
     let bytes = fs::read(&path).unwrap();
     let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
-    assert_eq!(h.format_minor, FORMAT_MINOR);
+    assert_eq!(h.format_minor, typra_core::file_format::FORMAT_MINOR_V6);
 }

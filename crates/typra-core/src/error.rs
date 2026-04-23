@@ -20,6 +20,8 @@ pub enum DbError {
     Schema(SchemaError),
     /// Row value failed type or constraint checks before persistence.
     Validation(ValidationError),
+    /// Transaction nesting or API misuse (0.8+).
+    Transaction(TransactionError),
     /// Requested capability is not implemented in this release (e.g. nested field paths in rows).
     NotImplemented,
 }
@@ -63,6 +65,21 @@ pub enum FormatError {
     UnknownRecordPayloadVersion { got: u16 },
     /// Extra bytes after a decoded record payload.
     TrailingRecordPayload,
+    /// Transaction marker segment payload was malformed.
+    InvalidTxnPayload { message: String },
+    /// On-disk log ends with an incomplete transaction or torn write; strict open refuses to modify.
+    UncleanLogTail {
+        /// First byte offset that may be discarded to reach a committed prefix (truncate target).
+        safe_end: u64,
+        reason: &'static str,
+    },
+}
+
+/// Transaction session errors (0.8+).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransactionError {
+    /// `Database::transaction` was called while a transaction is already active.
+    NestedTransaction,
 }
 
 /// Schema and row-level validation errors (catalog replay, registration, insert/get).
@@ -142,7 +159,18 @@ impl fmt::Display for DbError {
             DbError::Format(e) => write!(f, "format error: {e}"),
             DbError::Schema(e) => write!(f, "schema error: {e}"),
             DbError::Validation(e) => write!(f, "{e}"),
+            DbError::Transaction(e) => write!(f, "transaction error: {e}"),
             DbError::NotImplemented => write!(f, "not implemented"),
+        }
+    }
+}
+
+impl fmt::Display for TransactionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TransactionError::NestedTransaction => {
+                write!(f, "nested transactions are not supported")
+            }
         }
     }
 }
@@ -208,6 +236,15 @@ impl fmt::Display for FormatError {
                 write!(f, "unknown record payload version {got}")
             }
             FormatError::TrailingRecordPayload => write!(f, "trailing bytes in record payload"),
+            FormatError::InvalidTxnPayload { message } => {
+                write!(f, "invalid transaction marker payload: {message}")
+            }
+            FormatError::UncleanLogTail { safe_end, reason } => {
+                write!(
+                    f,
+                    "unclean log tail (strict open): {reason}; safe truncate end offset {safe_end}"
+                )
+            }
         }
     }
 }
@@ -274,6 +311,7 @@ impl std::error::Error for DbError {
             DbError::Format(_) => None,
             DbError::Schema(_) => None,
             DbError::Validation(_) => None,
+            DbError::Transaction(_) => None,
             DbError::NotImplemented => None,
         }
     }

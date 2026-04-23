@@ -22,6 +22,10 @@ impl Store for FailingStore {
     fn sync(&mut self) -> Result<(), DbError> {
         Ok(())
     }
+
+    fn truncate(&mut self, _len: u64) -> Result<(), DbError> {
+        Ok(())
+    }
 }
 
 #[test]
@@ -63,6 +67,10 @@ impl<S: Store> Store for FailOnce<S> {
             return Err(DbError::NotImplemented);
         }
         self.inner.sync()
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+        self.inner.truncate(len)
     }
 }
 

@@ -20,6 +20,10 @@ impl<S: Store> Store for FailLenStore<S> {
     fn sync(&mut self) -> Result<(), DbError> {
         self.inner.sync()
     }
+
+    fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+        self.inner.truncate(len)
+    }
 }
 
 struct FailReadOnNthStore<S: Store> {
@@ -44,6 +48,10 @@ impl<S: Store> Store for FailReadOnNthStore<S> {
     }
     fn sync(&mut self) -> Result<(), DbError> {
         self.inner.sync()
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+        self.inner.truncate(len)
     }
 }
 

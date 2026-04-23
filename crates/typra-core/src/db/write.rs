@@ -42,68 +42,64 @@ pub(crate) fn ensure_header_v0_5<S: Store>(
     Ok(())
 }
 
-pub(crate) fn append_schema_segment_and_publish<S: Store>(
+pub(crate) fn ensure_header_v0_6<S: Store>(
     store: &mut S,
-    segment_start: u64,
     format_minor: &mut u16,
-    payload: &[u8],
 ) -> Result<(), DbError> {
     ensure_header_v0_4(store, format_minor)?;
+    ensure_header_v0_5(store, format_minor)?;
+    if *format_minor >= crate::file_format::FORMAT_MINOR_V6 {
+        return Ok(());
+    }
+    let mut buf = [0u8; FILE_HEADER_SIZE];
+    store.read_exact_at(0, &mut buf)?;
+    let mut h = decode_header(&buf)?;
+    h.format_minor = crate::file_format::FORMAT_MINOR_V6;
+    store.write_all_at(0, &h.encode())?;
+    *format_minor = crate::file_format::FORMAT_MINOR_V6;
+    store.sync()?;
+    Ok(())
+}
+
+/// Append several segments then publish manifest + superblock once and [`Store::sync`].
+pub(crate) fn commit_segment_batch<S: Store>(
+    store: &mut S,
+    segment_start: u64,
+    format_minor: &mut u16,
+    segments: &[(SegmentType, &[u8])],
+) -> Result<(), DbError> {
+    ensure_header_v0_6(store, format_minor)?;
     let file_len = store.len()?;
     let mut writer = SegmentWriter::new(store, file_len.max(segment_start));
-    writer.append(
-        SegmentHeader {
-            segment_type: SegmentType::Schema,
-            payload_len: 0,
-            payload_crc32c: 0,
-        },
-        payload,
-    )?;
+    for (segment_type, payload) in segments {
+        writer.append(
+            SegmentHeader {
+                segment_type: *segment_type,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            payload,
+        )?;
+    }
     let _ = append_manifest_and_publish(store, segment_start)?;
     store.sync()?;
     Ok(())
 }
 
-pub(crate) fn append_record_segment_and_publish<S: Store>(
+/// Wrap `body` with matching `TxnBegin` / `TxnCommit` markers using `txn_id`.
+pub(crate) fn commit_write_txn_v6<S: Store>(
     store: &mut S,
     segment_start: u64,
     format_minor: &mut u16,
-    payload: &[u8],
+    txn_id: u64,
+    body: &[(SegmentType, &[u8])],
 ) -> Result<(), DbError> {
-    ensure_header_v0_5(store, format_minor)?;
-    let file_len = store.len()?;
-    let mut writer = SegmentWriter::new(store, file_len.max(segment_start));
-    writer.append(
-        SegmentHeader {
-            segment_type: SegmentType::Record,
-            payload_len: 0,
-            payload_crc32c: 0,
-        },
-        payload,
-    )?;
-    let _ = append_manifest_and_publish(store, segment_start)?;
-    store.sync()?;
-    Ok(())
+    let begin = crate::txn::encode_txn_payload_v0(txn_id);
+    let commit = crate::txn::encode_txn_payload_v0(txn_id);
+    let mut batch: Vec<(SegmentType, &[u8])> = Vec::with_capacity(2 + body.len());
+    batch.push((SegmentType::TxnBegin, begin.as_slice()));
+    batch.extend_from_slice(body);
+    batch.push((SegmentType::TxnCommit, commit.as_slice()));
+    commit_segment_batch(store, segment_start, format_minor, &batch)
 }
 
-pub(crate) fn append_index_segment_and_publish<S: Store>(
-    store: &mut S,
-    segment_start: u64,
-    format_minor: &mut u16,
-    payload: &[u8],
-) -> Result<(), DbError> {
-    ensure_header_v0_5(store, format_minor)?;
-    let file_len = store.len()?;
-    let mut writer = SegmentWriter::new(store, file_len.max(segment_start));
-    writer.append(
-        SegmentHeader {
-            segment_type: SegmentType::Index,
-            payload_len: 0,
-            payload_crc32c: 0,
-        },
-        payload,
-    )?;
-    let _ = append_manifest_and_publish(store, segment_start)?;
-    store.sync()?;
-    Ok(())
-}

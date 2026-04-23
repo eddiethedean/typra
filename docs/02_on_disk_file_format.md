@@ -230,27 +230,34 @@ Deletes write a tombstone event:
 Readers resolve latest visible version. Tombstone wins over older inserts/replaces.
 
 ## Transactions On Disk
-A transaction appends:
-1. mutation events
-2. transaction commit record
+As of **0.8.0**, format minor **6** uses **transaction marker segments** in the append-only log:
 
-Commit record contains:
-- transaction ID
-- commit timestamp
-- count of mutation records
-- start/end offsets or LSN bounds
-- checksum
+- `SegmentType::TxnBegin` (start marker)
+- `SegmentType::TxnCommit` (commit marker)
+- `SegmentType::TxnAbort` (optional explicit rollback marker)
 
-Only transactions with valid commit records are visible after recovery.
+### Marker payload
+
+All three marker segments use the same fixed-size payload (`TxnPayloadV0`):
+
+- `payload_version: u16` (currently `0`)
+- `txn_id: u64`
+- `reserved: [u8; 8]` (zeros)
+- `crc32c: u32` (over the first 18 bytes)
+- padding to 24 bytes (zeros)
+
+### Visibility rule
+
+Only segments **between** a matching `TxnBegin(txn_id)` and `TxnCommit(txn_id)` are visible at replay.
+Any tail content after a `TxnBegin` without a matching `TxnCommit` is treated as **uncommitted**.
 
 ## Recovery Rules
 On open:
 1. choose active superblock
 2. scan manifests and recent record segments
-3. locate last durable commit
-4. ignore partial trailing writes without valid commit record
-5. reconcile indexes if index manifest lags
-6. open database at latest consistent snapshot
+3. detect torn trailing segments or an incomplete transaction tail
+4. **auto-truncate** (default) to the last safe committed prefix, or **fail** in strict mode
+5. replay the committed prefix (schema → indexes → records)
 
 ## Index Persistence
 Indexes may be persisted in dedicated segments.

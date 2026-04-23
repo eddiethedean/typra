@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-22
+
+### Added
+
+- **Transactions (Rust)**: `SegmentType::TxnBegin` / `TxnCommit` / `TxnAbort` with versioned payloads; **`Database::transaction`**, **`begin_transaction`**, **`commit_transaction`**, **`rollback_transaction`**; multi-insert / schema+data batches are one durable commit; **read-your-writes** inside a transaction via shadow catalog/index/latest maps.
+- **Format minor 6**: new databases use **6**; lazy upgrade from **5** on first transactional write; **replay v6** applies segments chronologically with txn framing; **legacy replay** unchanged for minors **≤ 5**.
+- **Recovery**: **`Store::truncate`**; **`OpenOptions`** / **`RecoveryMode`** (`AutoTruncate` default, **`Strict`**); tail scan tolerates torn last segment; uncommitted txn tails truncate to last **`TxnBegin`** (auto) or error (strict). See [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md).
+- **Python**: **`with db.transaction():`** context manager mapping to Rust commit/rollback.
+
+### Changed
+
+- **Durability**: autocommit **`insert`** and **`register_*`** emit a single **`TxnBegin` … `TxnCommit`** group with **one** manifest rotation + **`sync`** per logical operation (fixes index/record split across crashes on new writes after upgrade to minor **6**).
+
+### Notes
+
+- **0.7.x → 0.8.0**: existing files remain readable; new writes may upgrade header to minor **6**; see [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md).
+
 ## [0.7.0] - 2026-04-22
 
 ### Added
@@ -115,3 +132,4 @@ See [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md).
 [0.5.1]: https://github.com/eddiethedean/typra/releases/tag/v0.5.1
 [0.6.0]: https://github.com/eddiethedean/typra/releases/tag/v0.6.0
 [0.7.0]: https://github.com/eddiethedean/typra/releases/tag/v0.7.0
+[0.8.0]: https://github.com/eddiethedean/typra/releases/tag/v0.8.0

@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use typra_core::error::{FormatError, SchemaError, ValidationError};
+use typra_core::error::{FormatError, SchemaError, TransactionError, ValidationError};
 use typra_core::DbError;
 
 #[test]
@@ -104,6 +104,23 @@ fn format_error_display_variants() {
 
     let e = DbError::Format(FormatError::TrailingRecordPayload);
     assert!(e.to_string().contains("trailing"));
+
+    let e = DbError::Format(FormatError::InvalidTxnPayload {
+        message: "bad".into(),
+    });
+    assert!(e.to_string().contains("transaction marker"));
+
+    let e = DbError::Format(FormatError::UncleanLogTail {
+        safe_end: 12,
+        reason: "torn_tail",
+    });
+    assert!(e.to_string().contains("strict open"));
+}
+
+#[test]
+fn transaction_error_display() {
+    let e = DbError::Transaction(TransactionError::NestedTransaction);
+    assert!(e.to_string().contains("nested"));
 }
 
 #[test]

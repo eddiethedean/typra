@@ -36,6 +36,44 @@ pub(crate) fn collection_info(inner: &Mutex<InnerDb>, name: &str) -> PyResult<Co
         .ok_or_else(|| PyValueError::new_err("collection missing after resolve"))
 }
 
+/// Context manager returned by ``Database.transaction()`` (``with`` / ``__enter__`` / ``__exit__``).
+#[pyclass(name = "Transaction")]
+pub struct PyTransaction {
+    db: Py<Database>,
+}
+
+#[pymethods]
+impl PyTransaction {
+    fn __enter__(&self, py: Python<'_>) -> PyResult<()> {
+        {
+            let db = self.db.bind(py).borrow();
+            let mut g = lock_inner(&db.inner)?;
+            g.begin_transaction().map_err(db_error_to_py)?;
+        }
+        Ok(())
+    }
+
+    #[pyo3(signature = (exc_type=None, _exc_value=None, _traceback=None))]
+    fn __exit__(
+        &self,
+        py: Python<'_>,
+        exc_type: Option<&Bound<'_, PyAny>>,
+        _exc_value: Option<&Bound<'_, PyAny>>,
+        _traceback: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<bool> {
+        {
+            let db = self.db.bind(py).borrow();
+            let mut g = lock_inner(&db.inner)?;
+            if exc_type.is_none() {
+                g.commit_transaction().map_err(db_error_to_py)?;
+            } else {
+                g.rollback_transaction();
+            }
+        }
+        Ok(false)
+    }
+}
+
 #[pymethods]
 impl Database {
     /// Open or create an on-disk database at the given path.
@@ -236,5 +274,13 @@ impl Database {
         let g = lock_inner(&self.inner)?;
         let v = g.snapshot_bytes()?;
         Ok(PyBytes::new_bound(py, &v).unbind())
+    }
+
+    /// Return a context manager for a multi-write transaction (commits on success, rolls back on exception).
+    #[pyo3(name = "transaction")]
+    fn py_transaction(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyTransaction>> {
+        let any: Py<PyAny> = slf.into_py(py);
+        let db: Py<Database> = any.bind(py).downcast::<Database>()?.clone().unbind();
+        Py::new(py, PyTransaction { db })
     }
 }

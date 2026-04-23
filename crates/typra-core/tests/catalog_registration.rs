@@ -129,7 +129,8 @@ fn lazy_header_bump_from_v0_3_to_v0_4_on_register() {
         .unwrap();
     let bytes = fs::read(&path).unwrap();
     let h2 = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
-    assert_eq!(h2.format_minor, 4);
+    // First catalog write runs the full header upgrade chain (through format minor 6 for txn framing).
+    assert_eq!(h2.format_minor, typra_core::file_format::FORMAT_MINOR_V6);
 }
 
 #[test]

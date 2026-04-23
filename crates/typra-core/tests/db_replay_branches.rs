@@ -189,6 +189,17 @@ fn open_rejects_record_segment_with_short_payload_body() {
     let mut store = FileStore::new(file);
     let len = store.len().unwrap();
     let mut w = SegmentWriter::new(&mut store, len);
+    // Format minor 6 uses transaction framing; wrap the invalid record bytes in a committed txn.
+    let begin = typra_core::txn::encode_txn_payload_v0(999);
+    w.append(
+        SegmentHeader {
+            segment_type: SegmentType::TxnBegin,
+            payload_len: 0,
+            payload_crc32c: 0,
+        },
+        begin.as_slice(),
+    )
+    .unwrap();
     w.append(
         SegmentHeader {
             segment_type: SegmentType::Record,
@@ -196,6 +207,16 @@ fn open_rejects_record_segment_with_short_payload_body() {
             payload_crc32c: 0,
         },
         &[1, 2, 3],
+    )
+    .unwrap();
+    let commit = typra_core::txn::encode_txn_payload_v0(999);
+    w.append(
+        SegmentHeader {
+            segment_type: SegmentType::TxnCommit,
+            payload_len: 0,
+            payload_crc32c: 0,
+        },
+        commit.as_slice(),
     )
     .unwrap();
     drop(store);

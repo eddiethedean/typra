@@ -13,8 +13,10 @@ pub const FILE_MAGIC: [u8; 4] = *b"TDB0";
 pub const FORMAT_MAJOR: u16 = 0;
 /// Format minor for catalog-only databases (0.4.x).
 pub const FORMAT_MINOR_V4: u16 = 4;
-/// Current on-disk minor for newly created databases (records + catalog).
+/// On-disk minor for 0.7.x files (records + catalog + indexes; no transaction markers).
 pub const FORMAT_MINOR: u16 = 5;
+/// Format minor 6+ uses `TxnBegin` / `TxnCommit` / `TxnAbort` segment framing (0.8.0+).
+pub const FORMAT_MINOR_V6: u16 = 6;
 /// Legacy `0.3` format (superblocks + segments; catalog may be empty until upgraded).
 pub const FORMAT_MINOR_V3: u16 = 3;
 
@@ -57,6 +59,16 @@ impl FileHeader {
         }
     }
 
+    /// Header for new databases in 0.8.0+ (transaction-framed writes).
+    pub fn new_v0_8() -> Self {
+        Self {
+            format_major: FORMAT_MAJOR,
+            format_minor: FORMAT_MINOR_V6,
+            header_size: FILE_HEADER_SIZE as u32,
+            flags: 0,
+        }
+    }
+
     pub fn encode(self) -> [u8; FILE_HEADER_SIZE] {
         let mut buf = [0u8; FILE_HEADER_SIZE];
         buf[0..4].copy_from_slice(&FILE_MAGIC);
@@ -84,7 +96,7 @@ pub fn decode_header(bytes: &[u8]) -> Result<FileHeader, DbError> {
 
     let format_major = u16::from_le_bytes([bytes[4], bytes[5]]);
     let format_minor = u16::from_le_bytes([bytes[6], bytes[7]]);
-    if format_major != FORMAT_MAJOR || !(2..=5).contains(&format_minor) {
+    if format_major != FORMAT_MAJOR || !(2..=6).contains(&format_minor) {
         return Err(DbError::Format(FormatError::UnsupportedVersion {
             major: format_major,
             minor: format_minor,

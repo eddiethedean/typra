@@ -5,6 +5,7 @@
 
 mod helpers;
 mod open;
+mod recover;
 mod replay;
 mod write;
 
@@ -13,7 +14,8 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
-use crate::error::{DbError, FormatError, SchemaError};
+use crate::config::OpenOptions;
+use crate::error::{DbError, FormatError, SchemaError, TransactionError};
 use crate::index::IndexState;
 use crate::index::{encode_index_payload, IndexEntry};
 use crate::record::{encode_record_payload_v2, non_pk_defs_in_order, RowValue, ScalarValue};
@@ -22,6 +24,109 @@ use crate::storage::{FileStore, Store, VecStore};
 use crate::validation;
 
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
+
+fn plan_insert_row(
+    catalog: &Catalog,
+    collection_id: CollectionId,
+    mut row: BTreeMap<String, RowValue>,
+) -> Result<(Vec<u8>, (Vec<u8>, BTreeMap<String, RowValue>), Vec<IndexEntry>), DbError> {
+    let col = catalog
+        .get(collection_id)
+        .ok_or(DbError::Schema(SchemaError::UnknownCollection {
+            id: collection_id.0,
+        }))?;
+    for f in &col.fields {
+        if f.path.0.len() != 1 {
+            return Err(DbError::NotImplemented);
+        }
+    }
+    let pk_name =
+        col.primary_field
+            .as_deref()
+            .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                collection_id: collection_id.0,
+            }))?;
+    let pk_def = col
+        .fields
+        .iter()
+        .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
+        .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+            name: pk_name.to_string(),
+        }))?;
+    let pk_ty = &pk_def.ty;
+    validation::ensure_pk_type_primitive(pk_ty)?;
+    let mut pk_path = vec![pk_name.to_string()];
+    let pk_cell = row
+        .get(pk_name)
+        .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
+            name: pk_name.to_string(),
+        }))?;
+    validation::validate_value(&mut pk_path, pk_ty, &pk_def.constraints, pk_cell)?;
+    validation::validate_top_level_row(&col.fields, pk_name, &row)?;
+
+    let pk_val = row
+        .remove(pk_name)
+        .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
+            name: pk_name.to_string(),
+        }))?;
+    let pk_scalar = pk_val.clone().into_scalar()?;
+
+    let non_pk_defs = non_pk_defs_in_order(&col.fields, pk_name);
+    let mut non_pk: Vec<(FieldDef, RowValue)> = Vec::with_capacity(non_pk_defs.len());
+    for def in &non_pk_defs {
+        let seg = def.path.0[0].as_ref();
+        let v = match row.remove(seg) {
+            Some(x) => x,
+            None if validation::allows_absent_root(&def.ty) => RowValue::None,
+            None => {
+                return Err(DbError::Schema(SchemaError::RowMissingField {
+                    name: seg.to_string(),
+                }));
+            }
+        };
+        non_pk.push(((*def).clone(), v));
+    }
+    if let Some(name) = row.keys().next().cloned() {
+        return Err(DbError::Schema(SchemaError::RowUnknownField { name }));
+    }
+
+    let payload = encode_record_payload_v2(
+        collection_id.0,
+        col.current_version.0,
+        &pk_scalar,
+        pk_ty,
+        &non_pk,
+    )?;
+    let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();
+    full_map.insert(pk_name.to_string(), pk_val);
+    for (def, v) in &non_pk {
+        full_map.insert(def.path.0[0].to_string(), v.clone());
+    }
+    let mut index_entries: Vec<IndexEntry> = Vec::new();
+    for idx in &col.indexes {
+        let Some(v) = scalar_at_path(&full_map, &idx.path) else {
+            continue;
+        };
+        index_entries.push(IndexEntry {
+            collection_id: collection_id.0,
+            index_name: idx.name.clone(),
+            kind: idx.kind,
+            index_key: v.canonical_key_bytes(),
+            pk_key: pk_scalar.canonical_key_bytes(),
+        });
+    }
+    let pk_key = pk_scalar.canonical_key_bytes();
+    Ok((payload, (pk_key, full_map), index_entries))
+}
+
+/// Staged writes while [`Database::transaction`] is executing.
+pub(crate) struct TxnStaging {
+    pub(crate) txn_id: u64,
+    pub(crate) shadow_catalog: Catalog,
+    pub(crate) shadow_latest: LatestMap,
+    pub(crate) shadow_indexes: IndexState,
+    pub(crate) pending: Vec<(crate::segments::header::SegmentType, Vec<u8>)>,
+}
 
 /// Opened Typra database: generic over a [`Store`] ([`FileStore`] on disk, [`VecStore`] in memory).
 pub struct Database<S: Store = FileStore> {
@@ -38,11 +143,119 @@ pub struct Database<S: Store = FileStore> {
     latest: LatestMap,
     /// Secondary indexes rebuilt from replayed `Index` segments.
     indexes: IndexState,
+    /// Monotonic id for transaction marker segments (format minor 6+).
+    txn_seq: u64,
+    /// When set, [`insert`] / [`register_collection`] append to this batch instead of autocommit.
+    txn_staging: Option<TxnStaging>,
 }
 
 impl<S: Store> Database<S> {
-    fn open_with_store(path: PathBuf, store: S) -> Result<Self, DbError> {
-        open::open_with_store(path, store)
+    pub(crate) fn open_with_store(path: PathBuf, store: S, opts: OpenOptions) -> Result<Self, DbError> {
+        open::open_with_store(path, store, opts)
+    }
+
+    fn next_txn_id(&mut self) -> u64 {
+        self.txn_seq = self.txn_seq.saturating_add(1);
+        if self.txn_seq == 0 {
+            self.txn_seq = 1;
+        }
+        self.txn_seq
+    }
+
+    /// Run `f` inside a multi-write transaction: durable segments are written on success.
+    ///
+    /// On error, staged work is discarded and nothing new is appended to the log.
+    pub fn transaction<R>(&mut self, f: impl FnOnce(&mut Self) -> Result<R, DbError>) -> Result<R, DbError> {
+        self.begin_transaction()?;
+        match f(self) {
+            Ok(v) => {
+                self.commit_transaction()?;
+                Ok(v)
+            }
+            Err(e) => {
+                self.rollback_transaction();
+                Err(e)
+            }
+        }
+    }
+
+    /// Start a transaction (for bindings that cannot use the closure API). Pairs with
+    /// [`Self::commit_transaction`] or [`Self::rollback_transaction`].
+    pub fn begin_transaction(&mut self) -> Result<(), DbError> {
+        if self.txn_staging.is_some() {
+            return Err(DbError::Transaction(TransactionError::NestedTransaction));
+        }
+        let tid = self.next_txn_id();
+        self.txn_staging = Some(TxnStaging {
+            txn_id: tid,
+            shadow_catalog: self.catalog.clone(),
+            shadow_latest: self.latest.clone(),
+            shadow_indexes: self.indexes.clone(),
+            pending: Vec::new(),
+        });
+        Ok(())
+    }
+
+    /// Commit the active transaction started with [`Self::begin_transaction`].
+    pub fn commit_transaction(&mut self) -> Result<(), DbError> {
+        self.commit_txn_staging()
+    }
+
+    /// Discard the active transaction without writing to the log.
+    pub fn rollback_transaction(&mut self) {
+        self.txn_staging = None;
+    }
+
+    fn commit_txn_staging(&mut self) -> Result<(), DbError> {
+        let Some(st) = self.txn_staging.take() else {
+            return Ok(());
+        };
+        if st.pending.is_empty() {
+            self.catalog = st.shadow_catalog;
+            self.latest = st.shadow_latest;
+            self.indexes = st.shadow_indexes;
+            return Ok(());
+        }
+        let batch: Vec<(crate::segments::header::SegmentType, &[u8])> = st
+            .pending
+            .iter()
+            .map(|(t, b)| (*t, b.as_slice()))
+            .collect();
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            st.txn_id,
+            &batch,
+        )?;
+        self.catalog = st.shadow_catalog;
+        self.latest = st.shadow_latest;
+        self.indexes = st.shadow_indexes;
+        Ok(())
+    }
+
+    fn catalog_for_read(&self) -> &Catalog {
+        if let Some(ref st) = self.txn_staging {
+            &st.shadow_catalog
+        } else {
+            &self.catalog
+        }
+    }
+
+    fn indexes_for_read(&self) -> &IndexState {
+        if let Some(ref st) = self.txn_staging {
+            &st.shadow_indexes
+        } else {
+            &self.indexes
+        }
+    }
+
+    fn latest_for_read(&self) -> &LatestMap {
+        if let Some(ref st) = self.txn_staging {
+            &st.shadow_latest
+        } else {
+            &self.latest
+        }
     }
 
     /// Path passed to [`Database::open`](Database::<FileStore>::open), or `":memory:"` for [`VecStore`].
@@ -52,17 +265,17 @@ impl<S: Store> Database<S> {
 
     /// Read-only view of the schema catalog built from `Schema` segments.
     pub fn catalog(&self) -> &Catalog {
-        &self.catalog
+        self.catalog_for_read()
     }
 
     /// All registered collection names in lexicographic order.
     pub fn collection_names(&self) -> Vec<String> {
-        self.catalog.collection_names()
+        self.catalog_for_read().collection_names()
     }
 
     /// Read-only access to the in-memory secondary index state (rebuilt from `Index` segments).
     pub fn index_state(&self) -> &IndexState {
-        &self.indexes
+        self.indexes_for_read()
     }
 
     /// Execute a query against the current in-memory snapshot of the database.
@@ -70,12 +283,17 @@ impl<S: Store> Database<S> {
         &self,
         q: &crate::query::Query,
     ) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
-        crate::query::execute_query(&self.catalog, &self.indexes, &self.latest, q)
+        crate::query::execute_query(
+            self.catalog_for_read(),
+            self.indexes_for_read(),
+            self.latest_for_read(),
+            q,
+        )
     }
 
     /// Return a human-readable explanation of the chosen plan for `q`.
     pub fn explain_query(&self, q: &crate::query::Query) -> Result<String, DbError> {
-        crate::query::explain_query(&self.catalog, q)
+        crate::query::explain_query(self.catalog_for_read(), q)
     }
 
     /// Lazy iterator over query rows (same semantics as [`Self::query`]).
@@ -86,7 +304,12 @@ impl<S: Store> Database<S> {
         &self,
         q: &crate::query::Query,
     ) -> Result<crate::query::QueryRowIter<'_>, DbError> {
-        crate::query::execute_query_iter(&self.catalog, &self.indexes, &self.latest, q)
+        crate::query::execute_query_iter(
+            self.catalog_for_read(),
+            self.indexes_for_read(),
+            self.latest_for_read(),
+            q,
+        )
     }
 
     /// Register the collection schema defined by `T` (schema version 1).
@@ -106,7 +329,7 @@ impl<S: Store> Database<S> {
         &'a self,
     ) -> Result<Collection<'a, S, T>, DbError> {
         let cid = self.collection_id_named(T::collection_name())?;
-        validate_subset_model::<T>(self.catalog.get(cid).ok_or(DbError::Schema(
+        validate_subset_model::<T>(self.catalog_for_read().get(cid).ok_or(DbError::Schema(
             SchemaError::UnknownCollection { id: cid.0 },
         ))?)?;
         Ok(Collection {
@@ -120,7 +343,7 @@ impl<S: Store> Database<S> {
     ///
     /// Returns [`SchemaError::UnknownCollectionName`] when the name is not registered.
     pub fn collection_id_named(&self, name: &str) -> Result<CollectionId, DbError> {
-        self.catalog
+        self.catalog_for_read()
             .lookup_name(name)
             .ok_or(DbError::Schema(SchemaError::UnknownCollectionName {
                 name: name.trim().to_string(),
@@ -157,6 +380,22 @@ impl<S: Store> Database<S> {
                 name: pk.to_string(),
             }));
         }
+        if let Some(st) = &mut self.txn_staging {
+            let id = st.shadow_catalog.next_collection_id().0;
+            let wire = CatalogRecordWire::CreateCollection {
+                collection_id: id,
+                name: name.clone(),
+                schema_version: 1,
+                fields,
+                indexes,
+                primary_field: Some(pk.to_string()),
+            };
+            let payload = encode_catalog_payload(&wire);
+            st.shadow_catalog.apply_record(wire)?;
+            st.pending
+                .push((crate::segments::header::SegmentType::Schema, payload));
+            return Ok((CollectionId(id), SchemaVersion(1)));
+        }
         let id = self.catalog.next_collection_id().0;
         let wire = CatalogRecordWire::CreateCollection {
             collection_id: id,
@@ -167,11 +406,13 @@ impl<S: Store> Database<S> {
             primary_field: Some(pk.to_string()),
         };
         let payload = encode_catalog_payload(&wire);
-        write::append_schema_segment_and_publish(
+        let tid = self.next_txn_id();
+        write::commit_write_txn_v6(
             &mut self.store,
             self.segment_start,
             &mut self.format_minor,
-            &payload,
+            tid,
+            &[(crate::segments::header::SegmentType::Schema, payload.as_slice())],
         )?;
         self.catalog.apply_record(wire)?;
         Ok((CollectionId(id), SchemaVersion(1)))
@@ -195,7 +436,7 @@ impl<S: Store> Database<S> {
         indexes: Vec<crate::schema::IndexDef>,
     ) -> Result<SchemaVersion, DbError> {
         let current = self
-            .catalog
+            .catalog_for_read()
             .get(id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
         let next_v = current
@@ -210,11 +451,19 @@ impl<S: Store> Database<S> {
             indexes,
         };
         let payload = encode_catalog_payload(&wire);
-        write::append_schema_segment_and_publish(
+        if let Some(st) = &mut self.txn_staging {
+            st.shadow_catalog.apply_record(wire.clone())?;
+            st.pending
+                .push((crate::segments::header::SegmentType::Schema, payload));
+            return Ok(SchemaVersion(next_v));
+        }
+        let tid = self.next_txn_id();
+        write::commit_write_txn_v6(
             &mut self.store,
             self.segment_start,
             &mut self.format_minor,
-            &payload,
+            tid,
+            &[(crate::segments::header::SegmentType::Schema, payload.as_slice())],
         )?;
         self.catalog.apply_record(wire)?;
         Ok(SchemaVersion(next_v))
@@ -227,103 +476,16 @@ impl<S: Store> Database<S> {
     pub fn insert(
         &mut self,
         collection_id: CollectionId,
-        mut row: BTreeMap<String, RowValue>,
+        row: BTreeMap<String, RowValue>,
     ) -> Result<(), DbError> {
         write::ensure_header_v0_5(&mut self.store, &mut self.format_minor)?;
-        let (payload, full, index_entries) = {
-            let col = self.catalog.get(collection_id).ok_or(DbError::Schema(
-                SchemaError::UnknownCollection {
-                    id: collection_id.0,
-                },
-            ))?;
-            for f in &col.fields {
-                if f.path.0.len() != 1 {
-                    return Err(DbError::NotImplemented);
-                }
-            }
-            let pk_name =
-                col.primary_field
-                    .as_deref()
-                    .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
-                        collection_id: collection_id.0,
-                    }))?;
-            let pk_def = col
-                .fields
-                .iter()
-                .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-                .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-                    name: pk_name.to_string(),
-                }))?;
-            let pk_ty = &pk_def.ty;
-            validation::ensure_pk_type_primitive(pk_ty)?;
-            let mut pk_path = vec![pk_name.to_string()];
-            let pk_cell =
-                row.get(pk_name)
-                    .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
-                        name: pk_name.to_string(),
-                    }))?;
-            validation::validate_value(&mut pk_path, pk_ty, &pk_def.constraints, pk_cell)?;
-            validation::validate_top_level_row(&col.fields, pk_name, &row)?;
-
-            let pk_val =
-                row.remove(pk_name)
-                    .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
-                        name: pk_name.to_string(),
-                    }))?;
-            let pk_scalar = pk_val.clone().into_scalar()?;
-
-            let non_pk_defs = non_pk_defs_in_order(&col.fields, pk_name);
-            let mut non_pk: Vec<(FieldDef, RowValue)> = Vec::with_capacity(non_pk_defs.len());
-            for def in &non_pk_defs {
-                let seg = def.path.0[0].as_ref();
-                let v = match row.remove(seg) {
-                    Some(x) => x,
-                    None if validation::allows_absent_root(&def.ty) => RowValue::None,
-                    None => {
-                        return Err(DbError::Schema(SchemaError::RowMissingField {
-                            name: seg.to_string(),
-                        }));
-                    }
-                };
-                non_pk.push(((*def).clone(), v));
-            }
-            if let Some(name) = row.keys().next().cloned() {
-                return Err(DbError::Schema(SchemaError::RowUnknownField { name }));
-            }
-
-            let payload = encode_record_payload_v2(
-                collection_id.0,
-                col.current_version.0,
-                &pk_scalar,
-                pk_ty,
-                &non_pk,
-            )?;
-            let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();
-            full_map.insert(pk_name.to_string(), pk_val);
-            for (def, v) in &non_pk {
-                full_map.insert(def.path.0[0].to_string(), v.clone());
-            }
-            let mut index_entries: Vec<IndexEntry> = Vec::new();
-            for idx in &col.indexes {
-                let Some(v) = scalar_at_path(&full_map, &idx.path) else {
-                    continue;
-                };
-                index_entries.push(IndexEntry {
-                    collection_id: collection_id.0,
-                    index_name: idx.name.clone(),
-                    kind: idx.kind,
-                    index_key: v.canonical_key_bytes(),
-                    pk_key: pk_scalar.canonical_key_bytes(),
-                });
-            }
-            let pk_key = pk_scalar.canonical_key_bytes();
-            (payload, (pk_key, full_map), index_entries)
-        };
+        let (payload, full, index_entries) =
+            plan_insert_row(self.catalog_for_read(), collection_id, row)?;
         for e in &index_entries {
             if e.kind == crate::schema::IndexKind::Unique {
-                if let Some(existing) =
-                    self.indexes
-                        .unique_lookup(e.collection_id, &e.index_name, &e.index_key)
+                if let Some(existing) = self
+                    .indexes_for_read()
+                    .unique_lookup(e.collection_id, &e.index_name, &e.index_key)
                 {
                     if existing != e.pk_key.as_slice() {
                         return Err(DbError::Schema(SchemaError::UniqueIndexViolation));
@@ -331,20 +493,40 @@ impl<S: Store> Database<S> {
                 }
             }
         }
-        if !index_entries.is_empty() {
-            let bytes = encode_index_payload(&index_entries);
-            write::append_index_segment_and_publish(
-                &mut self.store,
-                self.segment_start,
-                &mut self.format_minor,
-                &bytes,
-            )?;
+        if let Some(st) = &mut self.txn_staging {
+            if !index_entries.is_empty() {
+                let b = encode_index_payload(&index_entries);
+                st.pending
+                    .push((crate::segments::header::SegmentType::Index, b));
+            }
+            st.pending.push((
+                crate::segments::header::SegmentType::Record,
+                payload.clone(),
+            ));
+            st.shadow_latest
+                .insert((collection_id.0, full.0.clone()), full.1.clone());
+            for e in index_entries {
+                st.shadow_indexes.apply(e)?;
+            }
+            return Ok(());
         }
-        write::append_record_segment_and_publish(
+        let tid = self.next_txn_id();
+        let index_bytes = if index_entries.is_empty() {
+            None
+        } else {
+            Some(encode_index_payload(&index_entries))
+        };
+        let mut batch: Vec<(crate::segments::header::SegmentType, &[u8])> = Vec::new();
+        if let Some(ref b) = index_bytes {
+            batch.push((crate::segments::header::SegmentType::Index, b.as_slice()));
+        }
+        batch.push((crate::segments::header::SegmentType::Record, payload.as_slice()));
+        write::commit_write_txn_v6(
             &mut self.store,
             self.segment_start,
             &mut self.format_minor,
-            &payload,
+            tid,
+            &batch,
         )?;
         self.latest.insert((collection_id.0, full.0), full.1);
         for e in index_entries {
@@ -361,7 +543,7 @@ impl<S: Store> Database<S> {
         collection_id: CollectionId,
         pk: &ScalarValue,
     ) -> Result<Option<BTreeMap<String, RowValue>>, DbError> {
-        let col = self.catalog.get(collection_id).ok_or(DbError::Schema(
+        let col = self.catalog_for_read().get(collection_id).ok_or(DbError::Schema(
             SchemaError::UnknownCollection {
                 id: collection_id.0,
             },
@@ -384,7 +566,7 @@ impl<S: Store> Database<S> {
             return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
         }
         let key = (collection_id.0, pk.canonical_key_bytes());
-        Ok(self.latest.get(&key).cloned())
+        Ok(self.latest_for_read().get(&key).cloned())
     }
 }
 
@@ -596,6 +778,14 @@ impl Database<FileStore> {
     ///
     /// Creates parent directories as needed via the OS; the file is opened read/write.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, DbError> {
+        Self::open_with_options(path, crate::config::OpenOptions::default())
+    }
+
+    /// Open with recovery and other options (see [`crate::config::OpenOptions`]).
+    pub fn open_with_options(
+        path: impl AsRef<Path>,
+        opts: crate::config::OpenOptions,
+    ) -> Result<Self, DbError> {
         let path = path.as_ref().to_path_buf();
         let file = std::fs::OpenOptions::new()
             .read(true)
@@ -604,19 +794,28 @@ impl Database<FileStore> {
             .truncate(false)
             .open(&path)?;
         let store = FileStore::new(file);
-        Self::open_with_store(path, store)
+        Self::open_with_store(path, store, opts)
     }
 }
 
 impl Database<VecStore> {
     /// New empty in-memory database (same on-disk layout as a new file image in a [`VecStore`]).
     pub fn open_in_memory() -> Result<Self, DbError> {
-        Self::open_with_store(PathBuf::from(":memory:"), VecStore::new())
+        Self::open_in_memory_with_options(crate::config::OpenOptions::default())
+    }
+
+    /// In-memory open with [`crate::config::OpenOptions`].
+    pub fn open_in_memory_with_options(opts: crate::config::OpenOptions) -> Result<Self, DbError> {
+        Self::open_with_store(PathBuf::from(":memory:"), VecStore::new(), opts)
     }
 
     /// Deserialize a full database image from bytes (e.g. from [`into_snapshot_bytes`](Self::into_snapshot_bytes)).
     pub fn from_snapshot_bytes(bytes: Vec<u8>) -> Result<Self, DbError> {
-        Self::open_with_store(PathBuf::from(":memory:"), VecStore::from_vec(bytes))
+        Self::open_with_store(
+            PathBuf::from(":memory:"),
+            VecStore::from_vec(bytes),
+            crate::config::OpenOptions::default(),
+        )
     }
 
     /// Consume `self` and return the owned byte buffer backing the store.
@@ -803,11 +1002,12 @@ mod tests {
                 index_key: b"Hello".to_vec(),
                 pk_key: b"Hello".to_vec(),
             }]);
-            write::append_index_segment_and_publish(
+            write::commit_write_txn_v6(
                 &mut db.store,
                 db.segment_start,
                 &mut db.format_minor,
-                &payload,
+                2,
+                &[(crate::segments::header::SegmentType::Index, payload.as_slice())],
             )
             .unwrap();
         }

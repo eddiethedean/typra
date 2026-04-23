@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::config::{OpenOptions, RecoveryMode};
 use crate::error::{DbError, FormatError};
 use crate::file_format::{decode_header, FileHeader, FILE_HEADER_SIZE};
 use crate::manifest::decode_manifest_v0;
@@ -12,6 +13,7 @@ use crate::segments::reader::read_segment_header_at;
 use crate::storage::Store;
 use crate::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
 
+use super::recover;
 use super::replay;
 use super::Database;
 
@@ -68,6 +70,7 @@ pub(crate) fn read_manifest(store: &mut impl Store, sb: &Superblock) -> Result<(
 pub(crate) fn open_with_store<S: Store>(
     path: PathBuf,
     mut store: S,
+    opts: OpenOptions,
 ) -> Result<Database<S>, DbError> {
     let len = store.len()?;
     let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
@@ -75,7 +78,7 @@ pub(crate) fn open_with_store<S: Store>(
     let format_minor: u16;
 
     if len == 0 {
-        let header = FileHeader::new_v0_5();
+        let header = FileHeader::new_v0_8();
         format_minor = header.format_minor;
         store.write_all_at(0, &header.encode())?;
         init_superblocks(&mut store, segment_start)?;
@@ -105,7 +108,11 @@ pub(crate) fn open_with_store<S: Store>(
                     minor: header.format_minor,
                 }));
             }
-        } else if header.format_minor == 3 || header.format_minor == 4 || header.format_minor == 5 {
+        } else if header.format_minor == 3
+            || header.format_minor == 4
+            || header.format_minor == 5
+            || header.format_minor == 6
+        {
             if len < segment_start {
                 return Err(DbError::Format(FormatError::TruncatedSuperblock {
                     got: len as usize,
@@ -117,6 +124,29 @@ pub(crate) fn open_with_store<S: Store>(
                 read_manifest(&mut store, &selected)?;
             }
             format_minor = header.format_minor;
+
+            let (truncate_to, reason) =
+                recover::truncate_end_for_recovery(&mut store, segment_start, format_minor)?;
+            match opts.recovery {
+                RecoveryMode::Strict => {
+                    if let Some(reason) = reason {
+                        let flen = store.len()?;
+                        if truncate_to < flen {
+                            return Err(DbError::Format(FormatError::UncleanLogTail {
+                                safe_end: truncate_to,
+                                reason,
+                            }));
+                        }
+                    }
+                }
+                RecoveryMode::AutoTruncate => {
+                    let flen = store.len()?;
+                    if truncate_to < flen {
+                        store.truncate(truncate_to)?;
+                        store.sync()?;
+                    }
+                }
+            }
         } else {
             return Err(DbError::Format(FormatError::UnsupportedVersion {
                 major: header.format_major,
@@ -132,7 +162,7 @@ pub(crate) fn open_with_store<S: Store>(
             crate::index::IndexState::default(),
         )
     } else {
-        replay::load_catalog_latest_and_indexes(&mut store, segment_start)?
+        replay::load_catalog_latest_and_indexes(&mut store, segment_start, format_minor)?
     };
 
     let db = Database {
@@ -143,6 +173,8 @@ pub(crate) fn open_with_store<S: Store>(
         format_minor,
         latest,
         indexes,
+        txn_seq: 0,
+        txn_staging: None,
     };
     Ok(db)
 }

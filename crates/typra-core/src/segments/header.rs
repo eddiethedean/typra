@@ -13,6 +13,12 @@ pub enum SegmentType {
     Manifest = 3,
     Checkpoint = 4,
     Index = 5,
+    /// Start of a transaction batch (format minor 6+).
+    TxnBegin = 6,
+    /// Commit all segments since matching [`SegmentType::TxnBegin`].
+    TxnCommit = 7,
+    /// Explicitly discard staged segments since matching begin (optional on disk).
+    TxnAbort = 8,
 }
 
 impl SegmentType {
@@ -23,6 +29,9 @@ impl SegmentType {
             3 => SegmentType::Manifest,
             4 => SegmentType::Checkpoint,
             5 => SegmentType::Index,
+            6 => SegmentType::TxnBegin,
+            7 => SegmentType::TxnCommit,
+            8 => SegmentType::TxnAbort,
             _ => return None,
         })
     }

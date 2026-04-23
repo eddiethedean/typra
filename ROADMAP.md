@@ -2,9 +2,9 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.7.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **Current release**: `0.8.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
-- **Next milestone**: `0.8.0` — **multi-write transactions**, **commit/rollback** on the append-only log, and **crash-safe recovery** (beyond replay + manifest as today); **not** “add indexes/queries” (those shipped in **0.7.0**). Details under **0.8.0** in [Roadmap by release](#roadmap-by-release).
+- **Next milestone**: `0.9.0` — schema evolution / compaction / migration tooling (see roadmap by release). **`0.8.0`** (transactions + recovery) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -26,7 +26,7 @@ In addition, Typra should support **multiple storage/compute modes** (SQLite-lik
 Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
-- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0) · [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md) (**`RowValue`**, validation, record/catalog encodings in 0.6.0) · [`docs/migration_0.6_to_0.7.md`](docs/migration_0.6_to_0.7.md) (indexes, queries, subset projection in 0.7.0)
+- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0) · [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md) (**`RowValue`**, validation, record/catalog encodings in 0.6.0) · [`docs/migration_0.6_to_0.7.md`](docs/migration_0.6_to_0.7.md) (indexes, queries, subset projection in 0.7.0) · [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md) (transactions, format minor 6, recovery in 0.8.0)
 - **Queries & indexes (Python)**: [`docs/guide_python.md`](docs/guide_python.md) (including [realistic on-disk workflow](docs/guide_python.md#realistic-workflow-indexed-queries-on-disk))
 
 Primary design references:
@@ -41,27 +41,29 @@ Primary design references:
 
 ## Near-term focus
 
-**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints) and **`0.7.0`** (secondary indexes, minimal queries, subset projection) are **delivered**. The next milestone is **`0.8.0`**, focused on **atomic write batches** and **recovery** (see [Roadmap by release](#roadmap-by-release)). **`0.9.0`** / **`1.0.0`** sections below call out **what is already partially done** vs **what remains** so planning matches the repo’s actual baseline.
+**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints), **`0.7.0`** (secondary indexes, minimal queries, subset projection), and **`0.8.0`** (transactions, format minor 6, recovery) are **delivered**. The next milestone is **`0.9.0`** (see [Roadmap by release](#roadmap-by-release)). **`1.0.0`** sections below call out **what is already partially done** vs **what remains** so planning matches the repo’s actual baseline.
 
 ```mermaid
 flowchart LR
   v060["0.6.0 validation ✓"]
   v070["0.7.0 indexes ✓"]
-  v080["0.8.0 transactions"]
-  v060 --> v070 --> v080
+  v080["0.8.0 transactions ✓"]
+  v090["0.9.0 migrations"]
+  v060 --> v070 --> v080 --> v090
 ```
 
-## Status snapshot (current: 0.7.x)
+## Status snapshot (current: 0.8.x)
 
 **Implemented today:**
-- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints** and **v4** **index definitions** on new registrations / schema versions, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, minimal **query AST** and execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Rust**: `Database::open` / **`open_with_options`** (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints** and **v4** **index definitions** on new registrations / schema versions, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, minimal **query AST** and execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; **transactions** (`TxnBegin` / `TxnCommit` / `TxnAbort`), **`Database::transaction`**, **read-your-writes** inside a txn, **`RecoveryMode`** on open; last-write-wins replay (legacy minor ≤5; chronological txn replay for minor **6**); **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **6** for new DBs, with lazy upgrades from older minors (see [`CHANGELOG.md`](CHANGELOG.md)).
 - **Rust workspace policy**: root [`Cargo.toml`](Cargo.toml) sets **`unsafe_code = forbid`** via **`[workspace.lints.rust]`** (no `unsafe` in workspace crates).
-- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field, indexes_json=None)`**, **`insert`**, **`get`**, **`db.collection(name).where(...).and_where(...).limit(...).explain()`**, **`all()`** / **`all(fields=[...])`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
+- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field, indexes_json=None)`**, **`insert`**, **`get`**, **`with db.transaction():`**, **`db.collection(name).where(...).and_where(...).limit(...).explain()`**, **`all()`** / **`all(fields=[...])`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
 - **CI / coverage**: multi-OS Rust and Python CI; **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from **`cargo run -p typra --example open`** and the embedded Python snippets matches the documented **`text`** output blocks (root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`**, **`python/typra/README.md`**).
 
-**Not yet:** multi-statement **transactions**, crash-safe **checkpoints**, SQL text / DB-API—see [Roadmap by release](#roadmap-by-release).
+**Not yet:** crash-safe **checkpoints** / compaction, SQL text / DB-API—see [Roadmap by release](#roadmap-by-release).
 
 **Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
+- **`0.8.0`**: **TxnBegin** / **TxnCommit** / **TxnAbort** segments, format minor **6**, **`Database::transaction`** + staged read-your-writes, **`OpenOptions` / `RecoveryMode`**, **`Store::truncate`**, Python **`with db.transaction():`**; autocommit **insert** / **register** use single txn batch + one **sync**.
 - **`0.7.0`**: Secondary **indexes** (unique + non-unique), persisted **`SegmentType::Index`** payloads, minimal **query** planner (`Predicate::Eq` / `And`), **`limit`**, heuristic **`explain`**, **`Database::query_iter`**, **`row_subset_by_field_defs`** / nested merge projections; Python **`indexes_json`**, **`collection(...).where` / `and_where` / `limit` / `explain` / `all`**, **`all(fields=[...])`**; Criterion **`make bench`** query microbench.
 - **`0.6.0`**: **Validation** engine, **`RowValue`**, record payload **v2**, catalog **v3** constraints, **`DbError::Validation`**.
 - **`0.5.1`**: Internal `Database` split into `db/` submodules; removed unused **`StorageEngine`** placeholder; public API unchanged.
@@ -253,31 +255,34 @@ Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec
 
 ### 0.8.0 — Transactions v1 (single-writer) + crash-safe durability
 
-**Status:** **Next** (not started). This phase assumes **0.7.0** is on disk: **Schema** / **Record** / **Index** segments, **MANIFEST** + **superblock** publication, **catalog v4** (constraints + index defs), **last-write-wins** replay, **minimal queries** + **`query_iter`**, and **insert-only** index maintenance.
+**Status:** **Delivered** in **0.8.0** (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md)). This phase assumes **0.7.0** is on disk: **Schema** / **Record** / **Index** segments, **MANIFEST** + **superblock** publication, **catalog v4** (constraints + index defs), **last-write-wins** replay, **minimal queries** + **`query_iter`**, and **insert-only** index maintenance.
 
 **Goal:** **Atomic multi-write batches** and a **defined recovery story** after crash or partial write—beyond today’s “append segments in order and replay all.”
 
 **Already in place (0.2–0.7 — do not re-implement as 0.8 deliverables)**  
 Append-only segments + checksums, dual superblocks, manifest pointer, schema + record + **index** replay, **`insert` / `get`**, **validation**, **secondary indexes** + **unique** enforcement on insert, **Python** `indexes_json` + **query builder**, **Criterion** query microbench.
 
-**Rust — remaining work**
-- **Transaction framing in the log**: `BEGIN` / `COMMIT` / `ROLLBACK` (or equivalent op codes) so multiple record/index/catalog appends form **one atomic unit** at replay.
-- **Single-writer policy** (process-local) and documented interaction with readers (e.g. snapshot reads vs writer).
-- **Recovery**: on open, detect **torn or incomplete** transaction tails; either truncate to last **COMMIT** boundary or refuse open with a clear error (policy TBD and documented).
-- **Checkpoints / generations**: tighten how **MANIFEST** + superblock generations relate to **committed** state (today’s publishing is not yet a full transactional WAL + checkpoint story).
-- **Index + record atomicity**: ensure index segment batches and record payloads for a txn **commit or roll back together** (no orphaned index keys after failed batch).
+**Rust — implemented in 0.8.0**
+- **Transaction framing in the log**: `TxnBegin` / `TxnCommit` / `TxnAbort` segment markers so multiple record/index/catalog appends form **one atomic unit** at replay.
+- **Single-writer policy** (process-local): `Database::transaction` enforces non-nested transactions; Python bindings serialize via the database mutex.
+- **Recovery**: on open, detect **torn** tails or **incomplete** transaction tails; default is **auto-truncate** to last committed prefix, with `Strict` mode that refuses open and returns a clear error.
+- **Index + record atomicity**: autocommit insert writes index+record in one committed batch (no orphaned index keys after crash for format minor 6 writes).
+
+**Still future work (not required for 0.8.0 v1)**\n+- **Checkpoints / generations**: the manifest + superblock publication is still minimal (not a full checkpoint / compaction story).
 
 **Explicit deferrals (not gating 0.8.0 v1)**  
 - **Buffer pool / pager** and **hybrid buffered reads**: groundwork for large files and **bounded-memory operators**—target **0.8.x / 0.9+** unless a tiny read cache is strictly required for txn IO (see [In-memory, hybrid, and streaming execution](#in-memory-hybrid-and-streaming-execution-refined-plan)).
 - **Async storage path**: keep interfaces **compatible** with future async; **no** requirement to ship `tokio`/runtime integration in 0.8.0.
 
-**Python — remaining work**
-- **`with db.transaction(): ...`** (or equivalent) mapping to Rust txn boundaries; **exception → abort** of the in-flight batch.
-- **DB-API 2.0 (PEP 249)**: optional **opt-in** module (e.g. `typra.dbapi`) **after** txn semantics exist—**skeleton** + connection/transaction mapping is enough for 0.8.x if full cursor semantics slip.
+**Python — implemented in 0.8.0**
+- **`with db.transaction(): ...`** maps to Rust txn boundaries; **exception → rollback** (no durable commit).
 
-**Definition of done**
-- **Crash / partial-write tests** with deterministic recovery (or deterministic failure) after simulated kills mid-batch.
-- **Docs**: transaction semantics, durability guarantees vs today, concurrency model, interaction with **indexes** and **queries**.
+**Deferred / optional follow-ups (0.8.x+)**
+- **DB-API 2.0 (PEP 249)**: optional **opt-in** module (e.g. `typra.dbapi`) after txn semantics exist.
+
+**Definition of done** *(met for 0.8.0 scope)*
+- **Crash / partial-write tests**: deterministic recovery behavior for incomplete transaction tails (auto-truncate) and deterministic failure in strict mode.
+- **Docs**: transaction semantics, durability guarantees vs 0.7, concurrency model, interaction with **indexes** and **queries**.
 
 Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`](docs/02_on_disk_file_format.md)
 

@@ -20,6 +20,7 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<database::Database>()?;
+    m.add_class::<database::PyTransaction>()?;
     m.add_class::<query::Collection>()?;
     m.add_class::<query::QueryBuilder>()?;
     Ok(())

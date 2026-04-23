@@ -85,3 +85,29 @@ def test_database_register_collection_roundtrip(tmp_path) -> None:
 
     db2 = typra.Database.open(str(path))
     assert db2.collection_names() == ["books"]
+
+
+def test_transaction_context_manager_commits(tmp_path) -> None:
+    path = tmp_path / "txnctx.typra"
+    db = typra.Database.open(str(path))
+    fields = '[{"path": ["title"], "type": "string"}]'
+    db.register_collection("books", fields, "title")
+    with db.transaction():
+        db.insert("books", {"title": "one"})
+        db.insert("books", {"title": "two"})
+    db3 = typra.Database.open(str(path))
+    assert db3.get("books", "one") == {"title": "one"}
+    assert db3.get("books", "two") == {"title": "two"}
+
+
+def test_transaction_context_manager_rolls_back_on_exception(tmp_path) -> None:
+    path = tmp_path / "txnabort.typra"
+    db = typra.Database.open(str(path))
+    fields = '[{"path": ["title"], "type": "string"}]'
+    db.register_collection("books", fields, "title")
+    with pytest.raises(RuntimeError):
+        with db.transaction():
+            db.insert("books", {"title": "gone"})
+            raise RuntimeError("user abort")
+    db4 = typra.Database.open(str(path))
+    assert db4.get("books", "gone") is None

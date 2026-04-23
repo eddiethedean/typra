@@ -15,6 +15,8 @@ pub trait Store {
     fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError>;
     fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError>;
     fn sync(&mut self) -> Result<(), DbError>;
+    /// Shrink or grow the logical file to `len` bytes (used for crash recovery truncation).
+    fn truncate(&mut self, len: u64) -> Result<(), DbError>;
 }
 
 // In 0.2.x this is intentionally internal scaffolding.
@@ -48,6 +50,11 @@ impl Store for FileStore {
 
     fn sync(&mut self) -> Result<(), DbError> {
         self.file.sync_all()?;
+        Ok(())
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+        self.file.set_len(len)?;
         Ok(())
     }
 }
@@ -113,6 +120,11 @@ impl Store for VecStore {
     }
 
     fn sync(&mut self) -> Result<(), DbError> {
+        Ok(())
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+        self.buf.truncate(len as usize);
         Ok(())
     }
 }
