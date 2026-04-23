@@ -4,7 +4,7 @@ This document is the **project roadmap** for Typra: a typed, embedded, single-fi
 
 - **Current release**: `0.7.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
-- **Next milestone**: `0.8.0` — transactions and crash-safe checkpoints (see [Roadmap by release](#roadmap-by-release)).
+- **Next milestone**: `0.8.0` — **multi-write transactions**, **commit/rollback** on the append-only log, and **crash-safe recovery** (beyond replay + manifest as today); **not** “add indexes/queries” (those shipped in **0.7.0**). Details under **0.8.0** in [Roadmap by release](#roadmap-by-release).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -41,7 +41,7 @@ Primary design references:
 
 ## Near-term focus
 
-**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints) and **`0.7.0`** (secondary indexes, minimal queries, subset projection) are **delivered**. The next milestone is **`0.8.0`** (transactions and crash-safe checkpoints). Full scope for each is in [Roadmap by release](#roadmap-by-release).
+**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints) and **`0.7.0`** (secondary indexes, minimal queries, subset projection) are **delivered**. The next milestone is **`0.8.0`**, focused on **atomic write batches** and **recovery** (see [Roadmap by release](#roadmap-by-release)). **`0.9.0`** / **`1.0.0`** sections below call out **what is already partially done** vs **what remains** so planning matches the repo’s actual baseline.
 
 ```mermaid
 flowchart LR
@@ -251,91 +251,102 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/t
 
 Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 
-### 0.8.0 — Transactions v1 (single-writer) + crash safety checkpoints
+### 0.8.0 — Transactions v1 (single-writer) + crash-safe durability
 
-**Goal**: add atomicity/durability semantics beyond “best effort append.”
+**Status:** **Next** (not started). This phase assumes **0.7.0** is on disk: **Schema** / **Record** / **Index** segments, **MANIFEST** + **superblock** publication, **catalog v4** (constraints + index defs), **last-write-wins** replay, **minimal queries** + **`query_iter`**, and **insert-only** index maintenance.
 
-- **Rust**
-  - Introduce transaction boundaries and commit markers in the log.
-  - Implement a single-writer lock and multi-reader semantics (within a process).
-  - Implement checkpointing / manifest updates using a crash-safe approach (A/B superblock strategy).
-  - Recovery on open: choose last valid checkpoint; replay or validate trailing segments.
-  - Introduce a real **buffer pool / pager** for the file-backed database so data can be pulled into RAM on demand and written back when dirty (hybrid buffered execution groundwork).
-  - Add an **async-capable storage path** (initially internal/optional): make the IO boundary and buffer pool design compatible with true async IO and background flush tasks.
-- **Python**
-  - Expose `with db.transaction(): ...` (or similar) for batching writes.
-  - Ensure exceptions correctly abort/rollback the in-progress transaction.
-  - Start a Python **DB-API 2.0** compatibility layer (PEP 249) behind an explicit opt-in module (e.g. `typra.dbapi`) once transaction boundaries exist.
-- **Definition of done**
-  - Crash-simulation tests (kill mid-write / partial segment) with recovery correctness.
-  - Document transaction semantics and concurrency expectations for v1.
+**Goal:** **Atomic multi-write batches** and a **defined recovery story** after crash or partial write—beyond today’s “append segments in order and replay all.”
+
+**Already in place (0.2–0.7 — do not re-implement as 0.8 deliverables)**  
+Append-only segments + checksums, dual superblocks, manifest pointer, schema + record + **index** replay, **`insert` / `get`**, **validation**, **secondary indexes** + **unique** enforcement on insert, **Python** `indexes_json` + **query builder**, **Criterion** query microbench.
+
+**Rust — remaining work**
+- **Transaction framing in the log**: `BEGIN` / `COMMIT` / `ROLLBACK` (or equivalent op codes) so multiple record/index/catalog appends form **one atomic unit** at replay.
+- **Single-writer policy** (process-local) and documented interaction with readers (e.g. snapshot reads vs writer).
+- **Recovery**: on open, detect **torn or incomplete** transaction tails; either truncate to last **COMMIT** boundary or refuse open with a clear error (policy TBD and documented).
+- **Checkpoints / generations**: tighten how **MANIFEST** + superblock generations relate to **committed** state (today’s publishing is not yet a full transactional WAL + checkpoint story).
+- **Index + record atomicity**: ensure index segment batches and record payloads for a txn **commit or roll back together** (no orphaned index keys after failed batch).
+
+**Explicit deferrals (not gating 0.8.0 v1)**  
+- **Buffer pool / pager** and **hybrid buffered reads**: groundwork for large files and **bounded-memory operators**—target **0.8.x / 0.9+** unless a tiny read cache is strictly required for txn IO (see [In-memory, hybrid, and streaming execution](#in-memory-hybrid-and-streaming-execution-refined-plan)).
+- **Async storage path**: keep interfaces **compatible** with future async; **no** requirement to ship `tokio`/runtime integration in 0.8.0.
+
+**Python — remaining work**
+- **`with db.transaction(): ...`** (or equivalent) mapping to Rust txn boundaries; **exception → abort** of the in-flight batch.
+- **DB-API 2.0 (PEP 249)**: optional **opt-in** module (e.g. `typra.dbapi`) **after** txn semantics exist—**skeleton** + connection/transaction mapping is enough for 0.8.x if full cursor semantics slip.
+
+**Definition of done**
+- **Crash / partial-write tests** with deterministic recovery (or deterministic failure) after simulated kills mid-batch.
+- **Docs**: transaction semantics, durability guarantees vs today, concurrency model, interaction with **indexes** and **queries**.
 
 Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`](docs/02_on_disk_file_format.md)
 
 ### 0.9.0 — Schema evolution & migrations (safe changes), plus compaction prototype
 
-**Goal**: make it maintainable for real apps: evolve schemas safely and keep files healthy.
+**Status:** **Planned** after **0.8.0**. **Baseline:** transactional commit boundaries (**0.8**), plus today’s **`register_schema_version`** (catalog events exist, but **no** user migration tooling, **no** compatibility classifier, **no** compaction).
 
-- **Rust**
-  - Add schema compatibility rules (safe vs breaking changes) and enforce them on schema update.
-  - Provide a migration mechanism:
-    - record schema version history
-    - support “read old, write new” strategies where feasible
-  - Add compaction prototype (rewrite segments, rebuild indexes) with a basic policy.
-  - Implement first **bounded-memory operators** needed for large-than-RAM workloads:
-    - external sort (if required for groupby/order-by paths)
-    - hash aggregation with spill (where feasible)
-    - join strategy that can spill (e.g. grace hash join) for large inputs
-- **Python**
-  - Provide migration ergonomics and clear user guidance (“what changed, what breaks, what’s safe”).
-  - Add admin-style utilities (compact/vacuum, inspect, stats).
-- **Definition of done**
-  - Migration tests on representative schemas (add optional field, add enum value, add index).
-  - Compaction correctness tests (no data loss; indexes rebuilt).
-  - Large-than-RAM query tests in CI using constrained memory settings (best-effort, platform dependent).
+**Goal:** safe **schema evolution** in real apps, **file health** (compaction / rebuild), and **optional** first steps toward **large-than-RAM** execution—without collapsing all query-engine work into this single minor.
+
+**Already in place (partial — 0.4–0.7)**  
+- **`register_schema_version`** persists a new schema version in the catalog; engine validates **inserts** against the **current** version.
+- **Indexes** persist as **append-only** `Index` segments (no online **rebuild** / **compact** yet).
+
+**Rust — remaining work**
+- **Compatibility rules**: classify schema diffs as safe vs breaking; enforce on **`register_schema_version`** (and document escape hatches).
+- **Migrations**: user-facing plans (e.g. backfill, dual-read) and optional **data rewrite** helpers—not only “bump version number.”
+- **Compaction prototype**: rewrite tail or whole file policy; **rebuild `IndexState`** from compacted record + index history; reclaim space.
+- **Query / execution expansion (optional in 0.9 vs follow-up minor)**  
+  - **Still missing after 0.7:** **`order_by`**, **range** predicates, **`OR`**, **replace/delete** record ops, **update** path for indexes.  
+  - **Bounded-memory operators** (external sort, spillable hash agg/join) depend on **pager / streaming** groundwork—**schedule only after** compaction + txn stories are stable; may land as **0.9.x** or **0.10** if 0.9 is migration-heavy.
+
+**Python — remaining work**
+- Migration UX: “what changed / what breaks / what’s safe” guides and helpers aligned with Rust rules.
+- Admin-style tooling: **compact** / **inspect** / stats (may start as **CLI** in `typra-cli` story or thin Python wrappers).
+
+**Definition of done**
+- Migration tests (e.g. add optional field, add enum variant, add index) with explicit **allowed** vs **rejected** outcomes.
+- Compaction tests: **no data loss**, **indexes** consistent with records after compact.
+- If bounded-memory work ships in 0.9: at least one **CI**-friendly “constrained memory” scenario (otherwise defer criteria to the minor that lands spill).
 
 Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
 
 ### 1.0.0 — Stable public API + format guarantees
 
-**Goal**: commit to stability: “you can ship this in applications” with documented guarantees.
+**Status:** **Planned** after **0.9.x** stabilizes migrations + compaction (+ any agreed query/durability follow-ups). **Baseline:** **0.8** transactions/recovery and **0.9** migration/compaction story **shipped**; **0.7** query/index subset is **not** “1.0 complete” by itself—1.0 is about **policy + hardening + documented guarantees**, not only feature count.
 
-- **Rust**
-  - Stabilize the public API surface (`typra` facade + `typra-core`) and feature flags.
-  - Guarantee file format compatibility policy (what is forward/back compatible).
-  - Establish a clear “supported types” matrix and behavior for nullability/optionality.
-  - Hardening: fuzzing targets for decoding, property tests for index invariants, benchmark suite.
-  - Security hardening and guarantees:
-    - define supported threat model for local embedded usage
-    - robust corruption handling (no panics/UB on malformed files)
-    - document integrity guarantees (checksums, detection vs recovery)
-  - Clearly documented **mode semantics**:
-    - in-memory (ephemeral) vs in-memory-with-snapshot (explicit save/load)
-    - on-disk (durable)
-    - hybrid/streaming (what is guaranteed to work beyond RAM, and what may still require memory)
-  - Decide and document **true async support**:
-    - Whether the public API is **sync-only**, **async-only**, or **dual** (sync core + async wrappers).
-    - If async is supported, define the runtime policy (e.g. `tokio` behind a feature, runtime-agnostic traits, etc.).
-- **Python**
-  - Stabilize the Python API surface and type hints/stubs.
-  - Guarantee compatibility policy for the Python package vs the underlying file format.
-  - Provide “good defaults” for local app usage patterns.
-  - Document streaming/hybrid behavior and trade-offs (performance, temporary disk usage, determinism).
-  - Provide a documented, tested **DB-API 2.0 (PEP 249)** compatibility module suitable for SQLAlchemy-style usage.
-    - Note: this does not imply “full SQL support”; it defines a connection/cursor interface and parameter binding semantics.
-    - If SQLAlchemy support is desired, evaluate an official integration path (e.g. a SQLAlchemy dialect or shim) once query capabilities are sufficient.
-- **Definition of done**
-  - End-to-end story works: register schema → insert → get/query → reopen → migrate → compact.
-  - Documentation: “Getting Started”, “Schema”, “Queries”, “Migrations”, “Operational tooling”, “Failure modes”.
+**Goal:** “Safe to ship in production apps”: semver + **file-format compatibility policy**, security posture, and **operational** docs.
+
+**Already in place (seed for 1.0 hardening)**  
+- **`make check-full`**, **`RUSTDOCFLAGS=-D warnings`**, **`verify-doc-examples`**, **`typra-core` line-coverage gate**, **Criterion** `make bench` for **get / indexed eq / scan**.
+
+**Rust — remaining work**
+- **API + format stability**: explicit compatibility matrix (forward read / write policy per minor), feature-flag policy for `typra` / `typra-core`.
+- **Types matrix**: supported **`Type`** / **`RowValue`** / **constraints** / **indexes**—including multi-segment schema paths if implemented by then.
+- **Hardening beyond today:** dedicated **fuzz** targets (header, catalog, record, **index** payloads), **property tests** (index invariants, replay idempotence), broader bench coverage (txn, compaction when they exist).
+- **Security**: threat model for **local embedded** + corrupt-file handling; disclosure process (may start earlier, but **documented** by 1.0).
+- **Modes doc**: in-memory vs snapshot vs on-disk vs hybrid—what is **guaranteed** vs best-effort.
+- **Async decision**: sync-only public API vs dual sync/async—**decide and document** (implementation may stay minimal if sync-only).
+
+**Python — remaining work**
+- Stable **`typra`** API + **`typra.pyi`** / typing story; compatibility policy vs **on-disk** minors.
+- **DB-API 2.0** module: **documented + tested** for the subset of operations Typra supports (parameters, transactions, errors)—**not** “full SQL.”
+- SQLAlchemy path: **evaluate** official dialect/shim **only if** query + txn surfaces justify it.
+
+**Definition of done**
+- End-to-end **documented** journey: register → insert → **index/query** → **txn batch** → reopen → **migrate** → **compact** → recover from controlled corruption tests.
+- Doc set: Getting Started, Schema, Queries, Transactions, Migrations, Operations, Failure modes.
+
+**Non-goals (unchanged for 1.0 unless explicitly revisited)**  
+Same as the **Non-goals** section at the end of this file: still **no** distributed replica, **no** full SQL server, **no** FTS/vector/DuckDB-style analytics as **shipping** commitments.
 
 ## Cross-cutting initiatives (land throughout 0.2–1.0)
 
 - **Testing**
-  - File-format roundtrips; corruption detection; crash recovery simulations.
-  - Invariant testing: uniqueness indexes, record visibility, schema compatibility.
+  - File-format roundtrips; corruption detection; **crash recovery simulations** (still weak until **0.8** transactional replay semantics land).
+  - Invariant testing: **unique indexes** and **index vs scan** consistency have **started** in `typra-core` / Python tests—**expand** for txn boundaries, compaction, and multi-version schemas (**0.8+**).
 - **Security**
   - Threat model document (local attacker, malicious/corrupt file, untrusted input).
-  - Fuzz the file-format decode surface (header/segments/record decode) and treat crashes/panics as bugs.
+  - Fuzz the file-format decode surface (header/segments/**record**/**catalog**/**index** decode) and treat crashes/panics as bugs (**no** dedicated fuzz harness in-tree yet—see **Open questions** below).
   - The workspace forbids **`unsafe`** (root [`Cargo.toml`](Cargo.toml) **`[workspace.lints.rust]`**); keep fuzzing and property tests on decoding/index invariants as those surfaces expand.
   - Security disclosure process (private reporting channel + coordinated release notes).
 - **Tooling**
@@ -381,6 +392,7 @@ From the architecture spec’s v1 non-goals:
 - **Python model story**: Pydantic-first vs lightweight models vs engine-first validation.
 - **Index physical layout**: **0.7.0** uses **append-only index segments** (replay into `IndexState`); compaction / full rebuild / embedded-in-record strategies remain open for **0.9+** compaction work.
 - **Encryption / secrets**: whether to support optional at-rest encryption (and key management) for on-disk databases.
+- **Transactional log design** (**0.8**): how **BEGIN/COMMIT/ROLLBACK** (or equivalent) map to segment payloads; how **record** + **index** appends share an **atomic** boundary at replay; whether **partial segments** are truncated or rejected on open.
 - **Deferred hardening (not scheduled)**: optional **`cargo-deny`**, file-format **fuzz** targets, **property tests** for decode/index invariants, and stricter **clippy** tiers — revisit as APIs and persistence paths grow (no dedicated fuzz harness in-tree today).
 
 ## In-memory, hybrid, and streaming execution (refined plan)
@@ -406,7 +418,7 @@ This section refines the roadmap to ensure Typra can operate **in memory and on 
   - Provide at least two store implementations:
     - `FileStore`: segment/page IO over a `.typra` file.
     - `VecStore`: an in-memory byte image with the same **`Store`** semantics (used by **`Database::open_in_memory`** today; naming may evolve toward a pager-friendly `MemStore`).
-- **BufferPool/Pager** (for `FileStore`):
+- **BufferPool/Pager** (for `FileStore`) — **not** part of **0.7**; **deferred** past **0.8.0 v1** (see **0.8.0** under [Roadmap by release](#roadmap-by-release); segment-append IO stays until hybrid work is scheduled):
   - Cache unit: segments or pages (decision to lock down early).
   - Eviction policy: LRU/clock with dirty tracking.
   - Configurable memory limit; deterministic flush behavior.
