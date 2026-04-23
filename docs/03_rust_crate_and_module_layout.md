@@ -35,7 +35,7 @@ Design docs may refer to **`typra-storage`**, **`typra-schema`**, **`typra-query
 ## Crate Responsibilities
 
 ### `typra-core`
-Public engine façade and shared primitives: **`Database<S: Store>`**, persisted **catalog** (decode **v1–v3**; new registrations write **v3** with optional per-field **constraints**), **record** payload **v1 + v2** (decode both; new inserts use **v2**), **segment** I/O, **superblock** / **manifest** publication, **`validation`** (types + constraints before write), and **error** types. **`config`** remains a small placeholder for future engine configuration ([`ROADMAP.md`](../ROADMAP.md)).
+Public engine façade and shared primitives: **`Database<S: Store>`**, persisted **catalog** (decode **v1–v4**; new registrations write **v4** with per-field **constraints** and optional **`indexes`**), **record** payload **v1 + v2** (decode both; new inserts use **v2**), **`SegmentType::Index`** append + replay into **`IndexState`**, minimal **`query`** AST + **planner** + **`query_iter`**, **segment** I/O, **superblock** / **manifest** publication, **`validation`** (types + constraints before write), and **error** types. **`config`** remains a small placeholder for future engine configuration ([`ROADMAP.md`](../ROADMAP.md)).
 
 ### `typra-storage`
 Low-level storage engine.
@@ -88,7 +88,7 @@ Contains:
 - Python module entrypoint
 - model registration bridge
 - dict/model conversion
-- query builder wrappers
+- **query** builder wrappers (`collection`, `where`, …)
 - exception mapping
 
 ### `typra-cli`
@@ -113,7 +113,7 @@ Contains:
 
 ### `typra-core` (current `src/` layout)
 
-The engine is organized around **`db/`** (open, replay, append writes), **`catalog/`**, **`record/`**, **`segments/`**, plus shared **`storage`**, **`file_format`**, **`superblock`**, **`manifest`**, and **`publish`**.
+The engine is organized around **`db/`** (open, replay, append writes), **`catalog/`**, **`record/`**, **`query/`**, **`segments/`**, plus **`index.rs`**, and shared **`storage`**, **`file_format`**, **`superblock`**, **`manifest`**, and **`publish`**.
 
 ```text
 src/
@@ -128,6 +128,10 @@ src/
 │   ├── mod.rs
 │   ├── codec.rs
 │   └── state.rs
+├── query/
+│   ├── mod.rs
+│   ├── ast.rs          # Query, Predicate
+│   └── planner.rs      # plan_query, execute_query, execute_query_iter, explain
 ├── record/
 │   ├── mod.rs
 │   ├── payload_v1.rs
@@ -136,11 +140,12 @@ src/
 │   └── scalar.rs
 ├── segments/
 │   ├── mod.rs
-│   ├── header.rs
+│   ├── header.rs       # SegmentType includes Index (0.7.0+)
 │   ├── reader.rs
 │   └── writer.rs
+├── index.rs            # IndexState, index segment payload codec (0.7.0+)
 ├── storage.rs          # Store trait, FileStore, VecStore
-├── schema.rs           # CollectionSchema, FieldDef, DbModel marker, …
+├── schema.rs           # FieldDef, IndexDef, DbModel marker, …
 ├── error.rs
 ├── file_format.rs
 ├── superblock.rs
@@ -157,10 +162,11 @@ src/
 - **`Store`**, **`FileStore`**, **`VecStore`**
 - **`Catalog`**, **`CollectionInfo`**, catalog replay records
 - **`DbError`**, **`SchemaError`**, **`ValidationError`** (**`DbError::Validation`**), format/manifest/superblock errors as in **`error.rs`**
-- **`ScalarValue`**, **`RowValue`**, **`Constraint`**, **`CollectionSchema`**, **`FieldDef`**, **`Type`**, **`SchemaVersion`**, **`CollectionId`**
+- **`ScalarValue`**, **`RowValue`**, **`Constraint`**, **`CollectionSchema`**, **`FieldDef`**, **`IndexDef`**, **`Type`**, **`SchemaVersion`**, **`CollectionId`**
+- **`Query`**, **`Predicate`**, **`QueryRowIter`**, **`IndexState`**, **`row_subset_by_field_defs`**
 - **`DbModel`** marker trait (derive lives in **`typra-derive`**)
 
-Not yet in the public API: **`Transaction`**, typed **`CollectionHandle<T>`**, SQL/query builders (see [`ROADMAP.md`](../ROADMAP.md)).
+Not yet in the public API: **`Transaction`**, typed **`CollectionHandle<T>`**, **SQL** text, **`order_by`**, range predicates, **`OR`**, full **DB-API** (see [`ROADMAP.md`](../ROADMAP.md)). Minimal **non-SQL** queries and **secondary indexes** **are** shipped (**0.7.0**).
 
 ### `typra-storage`
 ```text

@@ -142,7 +142,7 @@ Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.tom
 ## Next implementation steps (high level)
 
 1. ~~Validation engine and constraint errors~~ (**delivered in `0.6.0`**).
-2. Secondary indexes and simple filters (`0.7.x`).
+2. ~~Secondary indexes and simple filters~~ (**delivered in `0.7.0`**).
 3. Transactions and crash-safe checkpoints (`0.8.x`).
 
 See [`ROADMAP.md`](../ROADMAP.md) for the full release breakdown.
@@ -163,3 +163,5 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 **`0.5.1`** is an internal **Rust-only** refactor: the `Database` implementation lives under **`crates/typra-core/src/db/`** (`open`, `replay`, `write`, `helpers`); the public **`Database`** API and on-disk format are unchanged (see [`CHANGELOG.md`](../CHANGELOG.md)).
 
 **`0.6.0`** adds **validation**, **`RowValue`**, **record payload v2**, and **catalog payload v3** (constraints). See [`07_record_encoding_v2.md`](07_record_encoding_v2.md) and [`migration_0.5_to_0.6.md`](migration_0.5_to_0.6.md).
+
+**`0.7.0`** adds **secondary indexes** (catalog **v4** carries `indexes` on create / new schema version), **`SegmentType::Index`** segments, a minimal **query** planner and **`Database::query_iter`**, and Python **`indexes_json`** + **`collection(...).where` / `all(fields=[...])`**. See [`CHANGELOG.md`](../CHANGELOG.md) and [`docs/guide_python.md`](guide_python.md).

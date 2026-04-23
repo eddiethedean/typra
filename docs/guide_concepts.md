@@ -9,7 +9,7 @@ A **database** is a single embedded unit you open in your application.
 - **On-disk**: a `.typra` file (single file, zero-admin deployment)
 - **In-memory** (current releases): same logical API backed by RAM; use **`open_in_memory`** (Rust/Python) with **explicit snapshot** export/import to persist
 
-On open, `Database::open(path)` (or **`open_in_memory`**) creates or opens storage, validates the header, replays the **persisted schema catalog** from **Schema** segments, rebuilds the **latest row map** from **Record** segments (**v1** and **v2** payloads), and exposes **`register_collection`** / **`register_schema_version`**, **`insert`**, and **`get`** (primary-key lookup) for collections that declare a **primary field**. Inserts run **type + constraint validation** before a durable write (**0.6.0+**).
+On open, `Database::open(path)` (or **`open_in_memory`**) creates or opens storage, validates the header, replays the **persisted schema catalog** from **Schema** segments, rebuilds the **latest row map** from **Record** segments (**v1** and **v2** payloads), replays **secondary index** state from **`SegmentType::Index`** segments (**0.7.0+**), and exposes **`register_collection`** / **`register_schema_version`**, **`insert`**, and **`get`** (primary-key lookup) for collections that declare a **primary field**. Inserts run **type + constraint validation** (and **index uniqueness** checks where applicable) before a durable write (**0.6.0+** constraints, **0.7.0+** indexes).
 
 ## Collections
 
@@ -36,7 +36,7 @@ Typra uses **models** (Rust structs / Python classes) as the ergonomic way for d
 - In **Rust**, models are intended to be derived via `#[derive(DbModel)]`.
 - In **Python**, models are expected to be defined with a typed model system (likely Pydantic-compatible), then registered with the database.
 
-Models can also be used as **subset models / projections** (planned): a model that declares only some fields of a larger collection schema for more convenient reads.
+Models can also be used as **subset models / projections**: **0.7.0** ships **field-path projections** on query results (Python **`all(fields=[...])`**, Rust **`row_subset_by_field_defs`** / iterator APIs). **Typed** subset handles (e.g. a smaller **`DbModel`** or Pydantic class mapped to a subset of fields) remain **planned**—see [`guide_models_and_collections.md`](guide_models_and_collections.md).
 
 ## Validation (write-time correctness)
 
@@ -45,19 +45,17 @@ Models can also be used as **subset models / projections** (planned): a model th
 - **Types** (including nested objects, lists, enums, and optionals)
 - **Constraints** declared on fields (min/max numerics, string length, regex, email/url heuristics, nonempty, etc.—see [`CHANGELOG.md`](../CHANGELOG.md) and [`docs/04_schema_dsl_spec.md`](04_schema_dsl_spec.md))
 
-Still **planned**: uniqueness and secondary-index-backed constraints (see [`ROADMAP.md`](../ROADMAP.md)).
+**As of 0.7.0**, **secondary indexes** (non-unique and **unique**) are declared on collections, maintained on **insert**, persisted in the log, and used for **equality** lookups in the minimal query planner (see [`ROADMAP.md`](../ROADMAP.md) and [`guide_python.md`](guide_python.md)). **Update/delete** row ops, **compound** indexes, and rich **constraint ↔ index** integration beyond uniqueness are still **planned**.
 
 Invalid writes fail with structured **`ValidationError`** information in Rust (**`DbError::Validation`**) and map to **`ValueError`** in Python, including **nested field paths** and **expected vs actual** where applicable.
 
 ## Queries (typed, non-SQL in v1)
 
-The design aims for typed query building rather than SQL parsing in v1:
+The design aims for typed query building rather than SQL parsing in v1.
 
-- `get(pk)`
-- equality filters on fields and nested paths
-- `order_by`, `limit`, and later richer predicates
+**Shipped in 0.7.0:** primary-key **`get`**, **conjunctive equality** filters (**`Predicate::Eq`** / **`And`**), **`limit`**, heuristic **`explain`**, pull-based **`Database::query_iter`** (Rust), and the Python **`db.collection(...).where(...).and_where(...).limit(...)`** builder (see [`guide_python.md`](guide_python.md)).
 
-For query planning/execution design, see [`05_query_planner_and_execution_spec.md`](05_query_planner_and_execution_spec.md).
+**Still planned:** **`order_by`**, inequality / range predicates, joins, aggregations, and **SQL** text (see [`05_query_planner_and_execution_spec.md`](05_query_planner_and_execution_spec.md)).
 
 ## File format (single-file, versioned)
 
@@ -69,7 +67,7 @@ Typra is a **single-file** database format. The on-disk format is designed to be
 
 The design spec includes a header, **dual superblocks**, checksummed **append-only segments**, indexes, and checkpoints. See [`02_on_disk_file_format.md`](02_on_disk_file_format.md).
 
-As of `0.3.0`, Typra publishes a minimal **MANIFEST** pointer by alternating superblocks, so open can follow the newest manifest generation (with a safe scan fallback if the pointer is invalid). As of **`0.4.0`**, **schema catalog** entries are persisted in **Schema** segments and replayed on open. As of **`0.5.0`**, **record** payloads use **`SegmentType::Record`** (primitive **v1** encoding in [`06_record_encoding_v1.md`](06_record_encoding_v1.md)). As of **`0.6.0`**, **record payload v2** supports full nested rows (see [`07_record_encoding_v2.md`](07_record_encoding_v2.md)); new databases use format minor **5**, with lazy upgrades from older minors.
+As of `0.3.0`, Typra publishes a minimal **MANIFEST** pointer by alternating superblocks, so open can follow the newest manifest generation (with a safe scan fallback if the pointer is invalid). As of **`0.4.0`**, **schema catalog** entries are persisted in **Schema** segments and replayed on open. As of **`0.5.0`**, **record** payloads use **`SegmentType::Record`** (primitive **v1** encoding in [`06_record_encoding_v1.md`](06_record_encoding_v1.md)). As of **`0.6.0`**, **record payload v2** supports full nested rows (see [`07_record_encoding_v2.md`](07_record_encoding_v2.md)); new databases use format minor **5**, with lazy upgrades from older minors. As of **`0.7.0`**, **index** batches are written as **`SegmentType::Index`** payloads and replayed into in-memory index maps (see [`02_on_disk_file_format.md`](02_on_disk_file_format.md)); the catalog wire includes **index definitions** on **`CATALOG_PAYLOAD_VERSION_V4`** creates / new schema versions.
 
 ## Storage modes (disk, memory, hybrid/streaming)
 

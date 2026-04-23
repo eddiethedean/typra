@@ -27,6 +27,7 @@ Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
 - **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0) · [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md) (**`RowValue`**, validation, record/catalog encodings in 0.6.0)
+- **Queries & indexes (Python)**: [`docs/guide_python.md`](docs/guide_python.md) (including [realistic on-disk workflow](docs/guide_python.md#realistic-workflow-indexed-queries-on-disk))
 
 Primary design references:
 - [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
@@ -35,6 +36,7 @@ Primary design references:
 - [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 - [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md) (record payload v1, 0.5.0+)
 - [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md) (record payload v2, 0.6.0+)
+- [`docs/guide_python.md`](docs/guide_python.md) (Python API: registration, **indexes**, **queries**, subset rows)
 - [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
 
 ## Near-term focus
@@ -52,7 +54,7 @@ flowchart LR
 ## Status snapshot (current: 0.7.x)
 
 **Implemented today:**
-- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints**, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, minimal **query AST** and execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints** and **v4** **index definitions** on new registrations / schema versions, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, minimal **query AST** and execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
 - **Rust workspace policy**: root [`Cargo.toml`](Cargo.toml) sets **`unsafe_code = forbid`** via **`[workspace.lints.rust]`** (no `unsafe` in workspace crates).
 - **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field, indexes_json=None)`**, **`insert`**, **`get`**, **`db.collection(name).where(...).and_where(...).limit(...).explain()`**, **`all()`** / **`all(fields=[...])`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
 - **CI / coverage**: multi-OS Rust and Python CI; **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from **`cargo run -p typra --example open`** and the embedded Python snippets matches the documented **`text`** output blocks (root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`**, **`python/typra/README.md`**).
@@ -60,6 +62,8 @@ flowchart LR
 **Not yet:** multi-statement **transactions**, crash-safe **checkpoints**, SQL text / DB-API—see [Roadmap by release](#roadmap-by-release).
 
 **Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
+- **`0.7.0`**: Secondary **indexes** (unique + non-unique), persisted **`SegmentType::Index`** payloads, minimal **query** planner (`Predicate::Eq` / `And`), **`limit`**, heuristic **`explain`**, **`Database::query_iter`**, **`row_subset_by_field_defs`** / nested merge projections; Python **`indexes_json`**, **`collection(...).where` / `and_where` / `limit` / `explain` / `all`**, **`all(fields=[...])`**; Criterion **`make bench`** query microbench.
+- **`0.6.0`**: **Validation** engine, **`RowValue`**, record payload **v2**, catalog **v3** constraints, **`DbError::Validation`**.
 - **`0.5.1`**: Internal `Database` split into `db/` submodules; removed unused **`StorageEngine`** placeholder; public API unchanged.
 - **`0.5.0`**: Record payload v1, **primary_field** on catalog create, **`insert` / `get`**, **`VecStore`** / snapshots, format minor **5** (see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)).
 - **`0.4.0`**: Persisted **schema catalog** in **Schema** segments, **`register_collection` / `register_schema_version`**, format minor **4** (lazy **0.3 → 0.4** on first catalog write).
@@ -224,28 +228,26 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/t
 
 **Status:** **Delivered** in v0.7.0 (see [`CHANGELOG.md`](CHANGELOG.md)).
 
-**Goal**: make real queries practical: equality filters on indexed fields and nested paths.
+**Goal**: make practical lookups beyond primary key: equality filters backed by indexes, small conjunctive queries, and row projections.
 
-- **Rust**
-  - Implement secondary index definitions in schema catalog (`@unique`, `@index`).
-  - Add index maintenance on insert (and later update/delete).
-  - Implement a minimal query AST and execution for:
-    - `get(pk)`
-    - equality filter on scalar field
-    - equality filter on nested scalar path
-    - `limit`
-  - Add an “explain plan” output (even if heuristic).
-  - Start the **streaming execution** shape for scans and filters (iterator-based or pull-based operators) so later joins/aggregations can spill.
-  - Introduce **subset models / projections** (UX feature): allow users to define a model that is a *subset* of an existing collection schema, and have query results materialize into that subset type.
-- **Python**
-  - Introduce a first query builder API (non-SQL) aligned to the spec (`where(...)`, `limit(...)`, `all()`).
-  - Ensure nested-path querying feels natural in Python.
-  - Add a Python-facing story for subset models (e.g. defining a model with fewer fields than the registered collection) so large/nested collections are less cumbersome to work with.
-  - Define the **DB-API / SQLAlchemy compatibility strategy** (design + scope), even if implementation lands later.
-- **Definition of done**
-  - Index correctness tests (unique constraint enforcement, index lookup matches scan).
-  - Performance sanity checks/benchmarks for `get` and indexed equality.
-  - Subset projection tests: querying the same records into a “full” model vs a subset model yields consistent values for shared fields, and subset materialization does not require decoding unused fields.
+**What shipped in v0.7.0**
+
+- **Rust (`typra-core`)**
+  - **`IndexDef`** on create / new schema version; catalog wire **v4** carries **`indexes`**; replay builds **`IndexState`** from **`SegmentType::Index`** segments.
+  - **Insert-time** index maintenance (append index segment batch with each insert); **unique** enforcement across primary keys.
+  - **`Query`** / **`Predicate`** (`Eq`, `And`), **`plan_query`**, **`execute_query`** / **`execute_query_iter`**, **`Database::query_iter`**; **`limit`**; string **`explain`** (heuristic: index lookup vs scan + residual).
+  - **`row_subset_by_field_defs`** (nested path merge for projected dicts) used for subset materialization; tests for index replay, planner residual, subset consistency.
+  - **Criterion** bench [`crates/typra-core/benches/query.rs`](crates/typra-core/benches/query.rs) and **`make bench`** (`get` vs indexed equality vs scan).
+- **Python (`typra`)**
+  - Optional **`indexes_json`** on **`register_collection`**; **`db.collection(name)`** with **`where`**, **`and_where`**, **`limit`**, **`explain`**, **`all()`**, **`all(fields=[...])`** (catalog-validated path allowlist).
+  - Docs: **[`docs/guide_python.md`](docs/guide_python.md)** (queries, indexes, DB-API/SQLAlchemy **design** note); verified examples in **`scripts/verify-doc-examples.sh`**; integration tests under **`python/typra/tests/`**.
+
+**Deferred / later** (still aligns with [Subset models / projections](#subset-models--projections-ui-ergonomics), **0.8+**, or broader query work)
+
+- **Index maintenance**: no **update**/logical **delete** ops yet—indexes reflect **insert** / replace-by-PK only (same as rows).
+- **Schema paths**: collection **`FieldDef.path`** is still **single-segment** for inserts (`NotImplemented` for multi-segment schema paths); index and predicate **`FieldPath`** can target scalars under top-level **`Object`** values where data and indexes agree.
+- **Typed subset `DbModel` handles** on the facade and **Pydantic-class subset models** in Python—ergonomics beyond dict projection are still roadmap, not required API in 0.7.
+- **Operators**: no inequality, sort, join, or aggregation; **SQL** string and **DB-API** implementation wait on **0.8.0** transaction boundaries (design text for DB-API/SQLAlchemy scope is in the Python guide).
 
 Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 
@@ -338,7 +340,7 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
   - Security disclosure process (private reporting channel + coordinated release notes).
 - **Tooling**
   - “Inspect”/debug dump of file structures (header, superblocks, segments).
-  - Benchmarks and profiling harness for `get(pk)` and indexed equality queries.
+  - Benchmarks: **Criterion** query bench (**`make bench`**) compares **`get(pk)`**, indexed equality, and collection scan; broader profiling harness still informal.
   - **Rustdoc quality gate**: **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, CI) so broken or missing docs fail checks.
   - **Doc drift checks**: `scripts/verify-doc-examples.sh` keeps README / getting-started / **`guide_python`** command output aligned with **`cargo run -p typra --example open`** and the embedded Python snippets (see **`Makefile`** **`verify-doc-examples`**).
 - **Docs**
@@ -377,7 +379,7 @@ From the architecture spec’s v1 non-goals:
 - **Record encoding**: v1 is implemented (see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)); confirm **long-term evolution** (new payload versions, replace/delete, MVCC).
 - **Optionality semantics**: required vs nullable vs defaulted (keep v1 simple as per spec).
 - **Python model story**: Pydantic-first vs lightweight models vs engine-first validation.
-- **Index physical layout**: embedded in record log vs separate index segments and rebuild strategies.
+- **Index physical layout**: **0.7.0** uses **append-only index segments** (replay into `IndexState`); compaction / full rebuild / embedded-in-record strategies remain open for **0.9+** compaction work.
 - **Encryption / secrets**: whether to support optional at-rest encryption (and key management) for on-disk databases.
 - **Deferred hardening (not scheduled)**: optional **`cargo-deny`**, file-format **fuzz** targets, **property tests** for decode/index invariants, and stricter **clippy** tiers — revisit as APIs and persistence paths grow (no dedicated fuzz harness in-tree today).
 
@@ -409,7 +411,7 @@ This section refines the roadmap to ensure Typra can operate **in memory and on 
   - Eviction policy: LRU/clock with dirty tracking.
   - Configurable memory limit; deterministic flush behavior.
 - **Streaming operator model** (execution engine):
-  - Use a pull-based pipeline (iterator-like operators) so scans/filters/limits can stream.
+  - Use a pull-based pipeline (iterator-like operators) so scans/filters/limits can stream. **`Database::query_iter`** (0.7.0) is the first **pull-based** consumer of planned query results over the latest row map; generalized operators, spill, and joins remain future work.
   - Later add bounded-memory implementations for:
     - groupby/aggregations (hash agg with spill; external sort where needed)
     - joins (spillable hash join / grace hash join strategies)
@@ -445,6 +447,8 @@ Python mirrors **`open_in_memory`**, **`open_snapshot_bytes`**, and **`snapshot_
 ## Subset models / projections (UI ergonomics)
 
 For developer ergonomics—especially for collections with large, deeply nested schemas—Typra should support **subset models** (also known as projections or views).
+
+**As of 0.7.0 (partial delivery):** the engine supports **field-path projections** on row maps—Rust **`row_subset_by_field_defs`** / query execution with declared field lists, and Python **`all(fields=[...])`** on query results. Typed **collection handles** (`db.collection::<Summary>()`) and Python **class-shaped** subset models remain to be designed (see **Deferred** under **0.7.0** in [Roadmap by release](#roadmap-by-release)).
 
 ### What it means
 

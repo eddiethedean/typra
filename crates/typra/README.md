@@ -3,7 +3,7 @@
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
 
-User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get).
+User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get, secondary indexes, minimal typed queries).
 
 ## Status (v0.7.x)
 
@@ -13,7 +13,7 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
-| **User guides** | [Getting started](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guide_concepts.md) · [Rust module layout](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+| **User guides** | [Getting started](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guide_concepts.md) · [Python](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md) · [Rust module layout](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
 
 ## Install
 

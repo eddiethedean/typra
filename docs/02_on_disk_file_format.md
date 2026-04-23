@@ -163,6 +163,8 @@ A schema version is immutable once written. New versions supersede old ones.
 
 **Implemented layouts** for `SegmentType::Record` payloads: primitive **v1** in **[06_record_encoding_v1.md](06_record_encoding_v1.md)** (0.5.0+); nested **v2** rows in **[07_record_encoding_v2.md](07_record_encoding_v2.md)** (0.6.0+). Replay accepts **both**; new inserts use **v2**.
 
+**Implemented in 0.7.0+** for `SegmentType::Index`: append-only batches of index entries (unique and non-unique) emitted on **insert**; replay rebuilds in-memory index maps used for lookups and query planning. Compaction / index snapshot formats remain future work.
+
 Each logical record mutation is an event:
 - `insert`
 - `replace`

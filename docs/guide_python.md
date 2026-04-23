@@ -1,6 +1,6 @@
 # Typra User Guide: Python
 
-This guide covers the **`typra`** PyPI package: installation, the **`Database`** API, the **`fields_json`** schema format, error behavior, and local development.
+This guide covers the **`typra`** PyPI package: installation, the **`Database`** API, optional **`indexes_json`**, the **query** builder on **`db.collection(...)`** (`where`, `and_where`, `limit`, `explain`, `all`, subset **`all(fields=[...])`**), the **`fields_json`** schema format, error behavior, and local development.
 
 For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust-first usage, see [`guide_getting_started.md`](guide_getting_started.md). For how the engine is organized in Rust, see [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
 

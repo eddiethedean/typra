@@ -13,9 +13,9 @@ It combines the ease of SQLite with **strict schemas, validation, and nested dat
 
 | Surface | What ships today |
 |---------|------------------|
-| **Rust** | Same as 0.6.x, plus **secondary indexes**, minimal **query** execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, and **subset row projection** |
-| **Python** | Same as 0.6.x, plus optional **`indexes_json`**, **`db.collection(...).where` / `and_where` / `limit` / `explain` / `all`**, and subset **`all(fields=[...])`** |
-| **Format** | Catalog payload **v3** (constraints); record payload **v1 + v2** (replay reads both; new inserts use **v2**); file format minor **5** as in 0.5.x |
+| **Rust** | Persisted **catalog** (create + schema versions; **constraints** + **index definitions**), **`insert` / `get`**, **`RowValue`** + validation, **`open_in_memory`** + snapshots, **secondary indexes** + **`SegmentType::Index`** replay, minimal **queries** (**equality**, **`And`**, **`limit`**, **`explain`**), **`Database::query_iter`**, **subset row projection**, **`#[derive(DbModel)]`** |
+| **Python** | **`Database.open`**, **`register_collection`** (optional **`constraints`** / **`indexes_json`**), **`insert` / `get`**, **`db.collection(...).where` / `and_where` / `limit` / `explain` / `all`** and **`all(fields=[...])`**, in-memory + snapshot helpers, **`collection_names()`** |
+| **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2**; **index** segment batches (**0.7.0+**); file format minor **5** (lazy upgrades from older minors) |
 
 **SQL** text and **DB-API** layers remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
