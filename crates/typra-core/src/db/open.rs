@@ -121,7 +121,14 @@ pub(crate) fn open_with_store<S: Store>(
             }
             let selected = read_and_select_superblock(&mut store)?;
             if selected.manifest_offset != 0 {
-                read_manifest(&mut store, &selected)?;
+                if let Err(e) = read_manifest(&mut store, &selected) {
+                    match opts.recovery {
+                        RecoveryMode::Strict => return Err(e),
+                        // Auto-truncation can recover from a torn manifest pointer/payload by
+                        // scanning and truncating the log to a safe committed prefix.
+                        RecoveryMode::AutoTruncate => {}
+                    }
+                }
             }
             format_minor = header.format_minor;
 

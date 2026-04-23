@@ -1,9 +1,10 @@
 use typra_core::db::Database;
 use typra_core::file_format::FILE_HEADER_SIZE;
 use typra_core::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
+use typra_core::{OpenOptions, RecoveryMode};
 
 #[test]
-fn corrupt_manifest_pointer_fails_open() {
+fn corrupt_manifest_pointer_strict_fails_open_autotruncate_opens() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.typra");
     let _db = Database::open(&path).unwrap();
@@ -44,5 +45,12 @@ fn corrupt_manifest_pointer_fails_open() {
     f.seek(std::io::SeekFrom::Start(target_offset)).unwrap();
     f.write_all(&corrupted.encode()).unwrap();
 
-    assert!(Database::open(&path).is_err());
+    // Strict open surfaces the manifest corruption rather than mutating the file.
+    let strict = OpenOptions {
+        recovery: RecoveryMode::Strict,
+    };
+    assert!(Database::open_with_options(&path, strict).is_err());
+
+    // Default open auto-recovers by scanning/truncating the log to a safe prefix.
+    assert!(Database::open(&path).is_ok());
 }

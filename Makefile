@@ -13,6 +13,7 @@ MATURIN ?= $(PYTHON) -m maturin
 
 .PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples bench
 .PHONY: coverage coverage-rust coverage-python
+.PHONY: coverage-rust-core
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-doc rust-test
 
@@ -88,6 +89,14 @@ coverage: coverage-rust coverage-python
 # Minimum line coverage for `typra-core` (practical gate; raise as tests improve).
 COVERAGE_TYPRA_CORE_LINES ?= 92
 
+# "Core logic" coverage gates.
+# We compute this from the LCOV output and exclude format/corruption/error-injection-heavy modules.
+# Current realistic baselines (raise over time).
+COVERAGE_CORE_DB_LINES ?= 84
+COVERAGE_CORE_QUERY_LINES ?= 94
+COVERAGE_CORE_INDEX_LINES ?= 94
+COVERAGE_CORE_VALIDATION_LINES ?= 91
+
 coverage-rust:
 	@mkdir -p target/coverage
 	@CI=1 cargo llvm-cov --workspace --all-features \
@@ -95,6 +104,16 @@ coverage-rust:
 		--lcov --output-path target/coverage/rust.lcov
 	@CI=1 cargo llvm-cov -p typra-core --all-features \
 		--fail-under-lines $(COVERAGE_TYPRA_CORE_LINES) --summary-only
+
+coverage-rust-core:
+	@mkdir -p target/coverage
+	@CI=1 cargo llvm-cov -p typra-core --all-features \
+		--lcov --output-path target/coverage/typra-core.lcov
+	@$(PYTHON) scripts/coverage_core.py target/coverage/typra-core.lcov \
+		--db-min-lines $(COVERAGE_CORE_DB_LINES) \
+		--query-min-lines $(COVERAGE_CORE_QUERY_LINES) \
+		--index-min-lines $(COVERAGE_CORE_INDEX_LINES) \
+		--validation-min-lines $(COVERAGE_CORE_VALIDATION_LINES)
 
 coverage-python: python-develop
 	@mkdir -p target/coverage

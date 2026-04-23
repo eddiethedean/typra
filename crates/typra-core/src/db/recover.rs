@@ -45,10 +45,7 @@ pub(crate) fn scan_segments_allow_tail_tear(
             return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum));
         }
 
-        out.push(SegmentMeta {
-            offset,
-            header,
-        });
+        out.push(SegmentMeta { offset, header });
         offset = payload_end;
     }
 
@@ -130,8 +127,8 @@ pub(crate) fn truncate_end_for_recovery(
         }
     }
 
-    if txn_base.is_some() {
-        return Ok((txn_base.unwrap(), Some("uncommitted_transaction")));
+    if let Some(base) = txn_base {
+        return Ok((base, Some("uncommitted_transaction")));
     }
     if safe_prefix_end < file_len {
         return Ok((safe_prefix_end, Some("torn_tail")));

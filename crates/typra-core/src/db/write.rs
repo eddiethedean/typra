@@ -102,4 +102,3 @@ pub(crate) fn commit_write_txn_v6<S: Store>(
     batch.push((SegmentType::TxnCommit, commit.as_slice()));
     commit_segment_batch(store, segment_start, format_minor, &batch)
 }
-

@@ -25,16 +25,23 @@ use crate::validation;
 
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
 
+type PlannedInsert = (
+    Vec<u8>,
+    (Vec<u8>, BTreeMap<String, RowValue>),
+    Vec<IndexEntry>,
+);
+
 fn plan_insert_row(
     catalog: &Catalog,
     collection_id: CollectionId,
     mut row: BTreeMap<String, RowValue>,
-) -> Result<(Vec<u8>, (Vec<u8>, BTreeMap<String, RowValue>), Vec<IndexEntry>), DbError> {
-    let col = catalog
-        .get(collection_id)
-        .ok_or(DbError::Schema(SchemaError::UnknownCollection {
-            id: collection_id.0,
-        }))?;
+) -> Result<PlannedInsert, DbError> {
+    let col =
+        catalog
+            .get(collection_id)
+            .ok_or(DbError::Schema(SchemaError::UnknownCollection {
+                id: collection_id.0,
+            }))?;
     for f in &col.fields {
         if f.path.0.len() != 1 {
             return Err(DbError::NotImplemented);
@@ -150,7 +157,11 @@ pub struct Database<S: Store = FileStore> {
 }
 
 impl<S: Store> Database<S> {
-    pub(crate) fn open_with_store(path: PathBuf, store: S, opts: OpenOptions) -> Result<Self, DbError> {
+    pub(crate) fn open_with_store(
+        path: PathBuf,
+        store: S,
+        opts: OpenOptions,
+    ) -> Result<Self, DbError> {
         open::open_with_store(path, store, opts)
     }
 
@@ -165,7 +176,10 @@ impl<S: Store> Database<S> {
     /// Run `f` inside a multi-write transaction: durable segments are written on success.
     ///
     /// On error, staged work is discarded and nothing new is appended to the log.
-    pub fn transaction<R>(&mut self, f: impl FnOnce(&mut Self) -> Result<R, DbError>) -> Result<R, DbError> {
+    pub fn transaction<R>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<R, DbError>,
+    ) -> Result<R, DbError> {
         self.begin_transaction()?;
         match f(self) {
             Ok(v) => {
@@ -216,11 +230,8 @@ impl<S: Store> Database<S> {
             self.indexes = st.shadow_indexes;
             return Ok(());
         }
-        let batch: Vec<(crate::segments::header::SegmentType, &[u8])> = st
-            .pending
-            .iter()
-            .map(|(t, b)| (*t, b.as_slice()))
-            .collect();
+        let batch: Vec<(crate::segments::header::SegmentType, &[u8])> =
+            st.pending.iter().map(|(t, b)| (*t, b.as_slice())).collect();
         write::commit_write_txn_v6(
             &mut self.store,
             self.segment_start,
@@ -412,7 +423,10 @@ impl<S: Store> Database<S> {
             self.segment_start,
             &mut self.format_minor,
             tid,
-            &[(crate::segments::header::SegmentType::Schema, payload.as_slice())],
+            &[(
+                crate::segments::header::SegmentType::Schema,
+                payload.as_slice(),
+            )],
         )?;
         self.catalog.apply_record(wire)?;
         Ok((CollectionId(id), SchemaVersion(1)))
@@ -463,7 +477,10 @@ impl<S: Store> Database<S> {
             self.segment_start,
             &mut self.format_minor,
             tid,
-            &[(crate::segments::header::SegmentType::Schema, payload.as_slice())],
+            &[(
+                crate::segments::header::SegmentType::Schema,
+                payload.as_slice(),
+            )],
         )?;
         self.catalog.apply_record(wire)?;
         Ok(SchemaVersion(next_v))
@@ -483,10 +500,11 @@ impl<S: Store> Database<S> {
             plan_insert_row(self.catalog_for_read(), collection_id, row)?;
         for e in &index_entries {
             if e.kind == crate::schema::IndexKind::Unique {
-                if let Some(existing) = self
-                    .indexes_for_read()
-                    .unique_lookup(e.collection_id, &e.index_name, &e.index_key)
-                {
+                if let Some(existing) = self.indexes_for_read().unique_lookup(
+                    e.collection_id,
+                    &e.index_name,
+                    &e.index_key,
+                ) {
                     if existing != e.pk_key.as_slice() {
                         return Err(DbError::Schema(SchemaError::UniqueIndexViolation));
                     }
@@ -520,7 +538,10 @@ impl<S: Store> Database<S> {
         if let Some(ref b) = index_bytes {
             batch.push((crate::segments::header::SegmentType::Index, b.as_slice()));
         }
-        batch.push((crate::segments::header::SegmentType::Record, payload.as_slice()));
+        batch.push((
+            crate::segments::header::SegmentType::Record,
+            payload.as_slice(),
+        ));
         write::commit_write_txn_v6(
             &mut self.store,
             self.segment_start,
@@ -543,11 +564,12 @@ impl<S: Store> Database<S> {
         collection_id: CollectionId,
         pk: &ScalarValue,
     ) -> Result<Option<BTreeMap<String, RowValue>>, DbError> {
-        let col = self.catalog_for_read().get(collection_id).ok_or(DbError::Schema(
-            SchemaError::UnknownCollection {
+        let col = self
+            .catalog_for_read()
+            .get(collection_id)
+            .ok_or(DbError::Schema(SchemaError::UnknownCollection {
                 id: collection_id.0,
-            },
-        ))?;
+            }))?;
         let pk_name =
             col.primary_field
                 .as_deref()
@@ -1007,7 +1029,10 @@ mod tests {
                 db.segment_start,
                 &mut db.format_minor,
                 2,
-                &[(crate::segments::header::SegmentType::Index, payload.as_slice())],
+                &[(
+                    crate::segments::header::SegmentType::Index,
+                    payload.as_slice(),
+                )],
             )
             .unwrap();
         }

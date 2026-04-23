@@ -22,7 +22,11 @@ pub fn encode_txn_payload_v0(txn_id: u64) -> [u8; TXN_PAYLOAD_V0_LEN] {
 pub fn decode_txn_payload_v0(payload: &[u8]) -> Result<u64, DbError> {
     if payload.len() != TXN_PAYLOAD_V0_LEN {
         return Err(DbError::Format(FormatError::InvalidTxnPayload {
-            message: format!("expected {} bytes, got {}", TXN_PAYLOAD_V0_LEN, payload.len()),
+            message: format!(
+                "expected {} bytes, got {}",
+                TXN_PAYLOAD_V0_LEN,
+                payload.len()
+            ),
         }));
     }
     let ver = u16::from_le_bytes([payload[0], payload[1]]);
@@ -31,9 +35,7 @@ pub fn decode_txn_payload_v0(payload: &[u8]) -> Result<u64, DbError> {
             message: format!("unsupported txn payload version {ver}"),
         }));
     }
-    let got_crc = u32::from_le_bytes([
-        payload[18], payload[19], payload[20], payload[21],
-    ]);
+    let got_crc = u32::from_le_bytes([payload[18], payload[19], payload[20], payload[21]]);
     let want_crc = crc32c(&payload[0..18]);
     if got_crc != want_crc {
         return Err(DbError::Format(FormatError::InvalidTxnPayload {

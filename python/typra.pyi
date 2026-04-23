@@ -1,29 +1,18 @@
-from collections.abc import Mapping
+from __future__ import annotations
 
-__doc__: str
+from typing import Any, ContextManager, overload
+
 __version__: str
+__doc__: str
 
-class Collection:
-    def where(self, path: str | tuple[str, ...], value: object) -> Query: ...
-    def all(
+class Transaction(ContextManager[None]):
+    def __enter__(self) -> None: ...
+    def __exit__(
         self,
-        fields: list[str | tuple[str, ...]]
-        | tuple[str | tuple[str, ...], ...]
-        | str
-        | None = None,
-    ) -> list[dict[str, object]]: ...
-
-class Query:
-    def limit(self, n: int) -> Query: ...
-    def and_where(self, path: str | tuple[str, ...], value: object) -> Query: ...
-    def explain(self) -> str: ...
-    def all(
-        self,
-        fields: list[str | tuple[str, ...]]
-        | tuple[str | tuple[str, ...], ...]
-        | str
-        | None = None,
-    ) -> list[dict[str, object]]: ...
+        exc_type: type[BaseException] | None = ...,
+        exc_value: BaseException | None = ...,
+        traceback: Any | None = ...,
+    ) -> bool: ...
 
 class Database:
     @staticmethod
@@ -33,15 +22,51 @@ class Database:
     @staticmethod
     def open_snapshot_bytes(data: bytes) -> Database: ...
     def path(self) -> str: ...
+    @overload
     def register_collection(
         self,
         name: str,
         fields_json: str,
         primary_field: str,
-        indexes_json: str | None = None,
+        indexes_json: None = ...,
+    ) -> tuple[int, int]: ...
+    @overload
+    def register_collection(
+        self,
+        name: str,
+        fields_json: str,
+        primary_field: str,
+        indexes_json: str,
     ) -> tuple[int, int]: ...
     def collection_names(self) -> list[str]: ...
     def collection(self, name: str) -> Collection: ...
-    def insert(self, collection_name: str, row: Mapping[str, object]) -> None: ...
-    def get(self, collection_name: str, pk: object) -> dict[str, object] | None: ...
+    def insert(self, collection_name: str, row: dict[str, Any]) -> None: ...
+    def get(self, collection_name: str, pk: Any) -> dict[str, Any] | None: ...
     def snapshot_bytes(self) -> bytes: ...
+    def transaction(self) -> Transaction: ...
+
+class Collection:
+    def where(self, path: str | tuple[str, ...], value: Any) -> Query: ...
+    def all(
+        self,
+        *,
+        fields: list[str | tuple[str, ...]]
+        | tuple[str | tuple[str, ...], ...]
+        | str
+        | tuple[str, ...]
+        | None = ...,
+    ) -> list[dict[str, Any]]: ...
+
+class Query:
+    def and_where(self, path: str | tuple[str, ...], value: Any) -> Query: ...
+    def limit(self, n: int) -> Query: ...
+    def explain(self) -> str: ...
+    def all(
+        self,
+        *,
+        fields: list[str | tuple[str, ...]]
+        | tuple[str | tuple[str, ...], ...]
+        | str
+        | tuple[str, ...]
+        | None = ...,
+    ) -> list[dict[str, Any]]: ...

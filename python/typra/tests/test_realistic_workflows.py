@@ -92,6 +92,23 @@ def test_unique_index_enforced_across_distinct_primary_keys() -> None:
         db.insert("accounts", {"id": 2, "email": "a@example.test"})
 
 
+def test_unique_index_violation_inside_transaction_rolls_back(tmp_path: Path) -> None:
+    path = tmp_path / "txn_unique.typra"
+    db = typra.Database.open(str(path))
+    fields = (
+        '[{"path": ["id"], "type": "int64"}, {"path": ["email"], "type": "string"}]'
+    )
+    indexes = '[{"name": "email_u", "path": ["email"], "kind": "unique"}]'
+    db.register_collection("accounts", fields, "id", indexes)
+    with pytest.raises(ValueError):
+        with db.transaction():
+            db.insert("accounts", {"id": 1, "email": "a@example.test"})
+            db.insert("accounts", {"id": 2, "email": "a@example.test"})
+    db2 = typra.Database.open(str(path))
+    assert db2.get("accounts", 1) is None
+    assert db2.get("accounts", 2) is None
+
+
 def test_limit_applies_after_predicate_on_collection_scan() -> None:
     """`limit` is on the query builder (after `where`); full collection scans use `all()` on `collection`."""
     db = typra.Database.open_in_memory()

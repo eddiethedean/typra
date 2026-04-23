@@ -116,7 +116,7 @@ fn load_catalog_latest_and_indexes_v6<S: Store>(
                         message: "TxnCommit txn_id mismatch in replay".into(),
                     }));
                 }
-                committed.extend(staged.drain(..));
+                committed.append(&mut staged);
                 in_txn = false;
                 pending_txn_id = None;
             }
