@@ -164,4 +164,4 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 
 **`0.6.0`** adds **validation**, **`RowValue`**, **record payload v2**, and **catalog payload v3** (constraints). See [`07_record_encoding_v2.md`](07_record_encoding_v2.md) and [`migration_0.5_to_0.6.md`](migration_0.5_to_0.6.md).
 
-**`0.7.0`** adds **secondary indexes** (catalog **v4** carries `indexes` on create / new schema version), **`SegmentType::Index`** segments, a minimal **query** planner and **`Database::query_iter`**, and Python **`indexes_json`** + **`collection(...).where` / `all(fields=[...])`**. See [`CHANGELOG.md`](../CHANGELOG.md) and [`docs/guide_python.md`](guide_python.md).
+**`0.7.0`** adds **secondary indexes** (catalog **v4** carries `indexes` on create / new schema version), **`SegmentType::Index`** segments, a minimal **query** planner and **`Database::query_iter`**, and Python **`indexes_json`** + **`collection(...).where` / `all(fields=[...])`**. See [`CHANGELOG.md`](../CHANGELOG.md), [`docs/migration_0.6_to_0.7.md`](migration_0.6_to_0.7.md), and [`docs/guide_python.md`](guide_python.md).

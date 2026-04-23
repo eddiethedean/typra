@@ -26,7 +26,7 @@ In addition, Typra should support **multiple storage/compute modes** (SQLite-lik
 Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
-- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0) · [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md) (**`RowValue`**, validation, record/catalog encodings in 0.6.0)
+- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0) · [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md) (**`RowValue`**, validation, record/catalog encodings in 0.6.0) · [`docs/migration_0.6_to_0.7.md`](docs/migration_0.6_to_0.7.md) (indexes, queries, subset projection in 0.7.0)
 - **Queries & indexes (Python)**: [`docs/guide_python.md`](docs/guide_python.md) (including [realistic on-disk workflow](docs/guide_python.md#realistic-workflow-indexed-queries-on-disk))
 
 Primary design references:

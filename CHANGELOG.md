@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Benchmarks**: Criterion bench **`crates/typra-core/benches/query.rs`** (`make bench`); compares **`get(pk)`**, indexed equality, and scan.
 - **Docs**: Python guide sections for queries, indexes, subset projection, and **DB-API / SQLAlchemy scope** (design-only for 0.7).
 
+### Notes
+
+- **0.6.x → 0.7.0** is **additive** for typical `insert` / `get` usage; see [`docs/migration_0.6_to_0.7.md`](docs/migration_0.6_to_0.7.md). Publishing **`typra-core`** to crates.io before **`typra-derive`** / **`typra`** / **`typra-python`** is required (see [`scripts/publish-crates.sh`](scripts/publish-crates.sh)).
+
 ## [0.6.0] - 2026-04-21
 
 ### Added
