@@ -9,20 +9,20 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-## Status (v0.7.x)
+## Status (v0.8.x)
 
 | Surface | What ships today |
 |---------|------------------|
 | **Rust** | Persisted **catalog** (create + schema versions; **constraints** + **index definitions**), **`insert` / `get`**, **`RowValue`** + validation, **`open_in_memory`** + snapshots, **secondary indexes** + **`SegmentType::Index`** replay, minimal **queries** (**equality**, **`And`**, **`limit`**, **`explain`**), **`Database::query_iter`**, **subset row projection**, **`#[derive(DbModel)]`** |
-| **Python** | **`Database.open`**, **`register_collection`** (optional **`constraints`** / **`indexes_json`**), **`insert` / `get`**, **`db.collection(...).where` / `and_where` / `limit` / `explain` / `all`** and **`all(fields=[...])`**, in-memory + snapshot helpers, **`collection_names()`** |
-| **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2**; **index** segment batches (**0.7.0+**); file format minor **5** (lazy upgrades from older minors) |
+| **Python** | **`Database.open`**, **`register_collection`** (optional **`constraints`** / **`indexes_json`**), **`insert` / `get`**, **`with db.transaction():`**, **`db.collection(...).where` / `and_where` / `limit` / `explain` / `all`** and **`all(fields=[...])`**, in-memory + snapshot helpers, **`collection_names()`** |
+| **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2**; **index** segment batches (**0.7.0+**); **transaction markers** (**0.8.0+**); file format minor **6** (lazy upgrades from older minors) |
 
 **SQL** text and **DB-API** layers remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
 | Resource | Link |
 |----------|------|
 | **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) · [Record encoding v2](docs/07_record_encoding_v2.md) |
-| **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) · [0.5.x → 0.6.x](docs/migration_0.5_to_0.6.md) · [0.6.x → 0.7.x](docs/migration_0.6_to_0.7.md) |
+| **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) · [0.5.x → 0.6.x](docs/migration_0.5_to_0.6.md) · [0.6.x → 0.7.x](docs/migration_0.6_to_0.7.md) · [0.7.x → 0.8.x](docs/migration_0.7_to_0.8.md) |
 | **Contributing** | [docs/contributing.md](docs/contributing.md) |
 
 ---
@@ -86,11 +86,11 @@ Output:
 
 ```text
 {'title': 'Hello'}
-0.7.0
+0.8.0
 ```
 
 ```bash
-pip install "typra>=0.7.0,<0.8"
+pip install "typra>=0.8.0,<0.9"
 ```
 
 ---
@@ -103,13 +103,13 @@ Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(D
 
 ```toml
 [dependencies]
-typra = "0.7"
+typra = "0.8"
 ```
 
 Without proc-macros (engine only):
 
 ```toml
-typra = { version = "0.7", default-features = false }
+typra = { version = "0.8", default-features = false }
 ```
 
 ### Lower-level crates

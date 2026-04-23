@@ -166,7 +166,7 @@ src/
 - **`Query`**, **`Predicate`**, **`QueryRowIter`**, **`IndexState`**, **`row_subset_by_field_defs`**
 - **`DbModel`** marker trait (derive lives in **`typra-derive`**)
 
-Not yet in the public API: **`Transaction`**, typed **`CollectionHandle<T>`**, **SQL** text, **`order_by`**, range predicates, **`OR`**, full **DB-API** (see [`ROADMAP.md`](../ROADMAP.md)). Minimal **non-SQL** queries and **secondary indexes** **are** shipped (**0.7.0**).
+Not yet in the public API: typed **`CollectionHandle<T>`**, **SQL** text, **`order_by`**, range predicates, **`OR`**, full **DB-API** (see [`ROADMAP.md`](../ROADMAP.md)). Minimal **non-SQL** queries and **secondary indexes** **are** shipped (**0.7.0**); multi-write **transactions** ship in **0.8.0**.
 
 ### `typra-storage`
 ```text

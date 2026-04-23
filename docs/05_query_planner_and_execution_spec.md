@@ -1,6 +1,6 @@
 # Typed Embedded Database – Query Planner and Execution Specification
 
-## Implementation status (as of **0.7.0**)
+## Implementation status (as of **0.8.0**)
 
 The **`typra-core`** crate includes a minimal **AST** (`Query`, `Predicate::Eq` / `And`), **heuristic planning** (prefer a matching **unique** index, else **non-unique** index, else **collection scan** with optional **residual** predicates), **`execute_query`** / **`execute_query_iter`**, string **`explain`**, and **`limit`**. **Python** exposes a small builder on **`collection(...)`** (`where`, `and_where`, `limit`, `explain`, `all`, `all(fields=[...])`). This spec still describes the **full** target model; **order_by**, **offset**, **range** filters, and **OR** are **not** implemented yet.
 

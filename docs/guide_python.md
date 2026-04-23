@@ -9,7 +9,7 @@ For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
 
 ```bash
-pip install "typra>=0.7.0,<0.8"
+pip install "typra>=0.8.0,<0.9"
 ```
 
 Pin the minor range you test against; pre-1.0 minors may include API or format changes.
@@ -197,9 +197,9 @@ For **ephemeral** integration tests (CI, notebooks), prefer a temp file as above
 
 ## DB-API 2.0 (PEP 249) and SQLAlchemy
 
-Typra does **not** ship a DB-API or SQLAlchemy integration in 0.7.x. Planned direction:
+Typra does **not** ship a DB-API or SQLAlchemy integration in 0.8.x. Planned direction:
 
-- **DB-API 2.0** belongs after **transaction boundaries** land (see [`ROADMAP.md`](../ROADMAP.md) **0.8.0**): a `typra.dbapi`-style module would expose connection/cursor semantics over the native **`Database`** API, not over arbitrary SQL text.
+- **DB-API 2.0** belongs after **transaction boundaries** (delivered in **0.8.0**) stabilize: a `typra.dbapi`-style module would expose connection/cursor semantics over the native **`Database`** API, not over arbitrary SQL text.
 - **SQLAlchemy** would require a dialect or shim once queries and transactions are far enough along; Typra remains **non-SQL** first—use **`collection(...).where(...)`** for structured filters.
 
 ## `fields_json` (schema descriptor)

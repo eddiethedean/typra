@@ -4,7 +4,7 @@ This guide explains how application models map to collections, how collection na
 
 ## Current status (important)
 
-As of **`0.7.x`**, Typra persists a **schema catalog** (append-only schema segments; **v3**+ catalogs store per-field **constraints**; **v4** adds **`indexes`** on create / new schema version) and **records** (**v1** primitive segments and **v2** nested rows; replay reads both). You can **`register_collection`** / **`register_schema_version`** from Rust, and **`Database.register_collection(..., primary_field, indexes_json=...)`** with **`insert`** / **`get`** and **`db.collection(...).where(...).all()`** from Python using **`fields_json`** (see [`python/typra/README.md`](../python/typra/README.md) and [`guide_python.md`](guide_python.md)). **Typed subset models** (ORM-style) are still planned; **subset row dicts** via **`all(fields=[...])`** already exist—see [`ROADMAP.md`](../ROADMAP.md). This guide also describes **intended** longer-term behavior (subset models, naming defaults, etc.).
+As of **`0.8.x`**, Typra persists a **schema catalog** (append-only schema segments; **v3**+ catalogs store per-field **constraints**; **v4** adds **`indexes`** on create / new schema version) and **records** (**v1** primitive segments and **v2** nested rows; replay reads both), and supports **transaction framing** (atomic multi-write batches + recovery). You can **`register_collection`** / **`register_schema_version`** from Rust, and **`Database.register_collection(..., primary_field, indexes_json=...)`** with **`insert`** / **`get`**, **`with db.transaction():`**, and **`db.collection(...).where(...).all()`** from Python using **`fields_json`** (see [`python/typra/README.md`](../python/typra/README.md) and [`guide_python.md`](guide_python.md)). **Typed subset models** (ORM-style) are still planned; **subset row dicts** via **`all(fields=[...])`** already exist—see [`ROADMAP.md`](../ROADMAP.md). This guide also describes **intended** longer-term behavior (subset models, naming defaults, etc.).
 
 ## Collection identity vs name
 
@@ -40,7 +40,7 @@ Typra should support explicit naming to avoid accidental renames:
 
 ## Registering models and schema compatibility
 
-**Today (0.7.x)**, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection(..., primary_field)`** (Python, with a **`fields_json`** descriptor—see [`python/typra/README.md`](../python/typra/README.md)).
+**Today (0.8.x)**, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection(..., primary_field)`** (Python, with a **`fields_json`** descriptor—see [`python/typra/README.md`](../python/typra/README.md)).
 
 Longer term, the database should also support ergonomic registration from model types:
 

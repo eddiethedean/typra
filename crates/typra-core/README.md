@@ -5,7 +5,7 @@
 
 Core engine for **Typra**: typed, embedded storage with a persisted schema catalog and record payload encoding (v1 + v2).
 
-## Status (v0.7.x)
+## Status (v0.8.x)
 
 `Database<S: Store>` with default on-disk **`FileStore`** and in-memory **`VecStore`**; replayed **schema catalog** (including **`primary_field`** and **constraints**); **`insert` / `get`** with **`RowValue`** and validation; **secondary indexes** and minimal **query** execution (**equality**, **`limit`**, **`explain`**), **`Database::query_iter`**, subset projections; snapshot bytes; **`DbError`** / **`ValidationError`**. SQL and DB-API layers are **not** implemented yet.
 
@@ -19,7 +19,7 @@ Core engine for **Typra**: typed, embedded storage with a persisted schema catal
 
 ```toml
 [dependencies]
-typra-core = "0.7"
+typra-core = "0.8"
 ```
 
 ## Notes

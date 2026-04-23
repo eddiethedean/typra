@@ -38,7 +38,7 @@ CI runs the same Rust and Python checks via [`.github/workflows/ci.yml`](../.git
 
 ## Versioning
 
-Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.7.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.8.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Coverage (practical 100%)
 
@@ -143,11 +143,11 @@ Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.tom
 
 1. ~~Validation engine and constraint errors~~ (**delivered in `0.6.0`**).
 2. ~~Secondary indexes and simple filters~~ (**delivered in `0.7.0`**).
-3. Transactions and crash-safe checkpoints (`0.8.x`).
+3. Transactions (`0.8.0`) and later crash-safe checkpoints / compaction (see `0.9+`).
 
 See [`ROADMAP.md`](../ROADMAP.md) for the full release breakdown.
 
-### File format notes (0.3.x–0.7.x)
+### File format notes (0.3.x–0.8.x)
 
 Starting with the `0.3.x` on-disk format work, the database file layout includes reserved **Superblock A/B** regions (for crash-safe metadata publication later) and checksummed **append-only segments**. This scaffolding is still internal, but it changes on-disk compatibility behavior:
 
@@ -165,3 +165,5 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 **`0.6.0`** adds **validation**, **`RowValue`**, **record payload v2**, and **catalog payload v3** (constraints). See [`07_record_encoding_v2.md`](07_record_encoding_v2.md) and [`migration_0.5_to_0.6.md`](migration_0.5_to_0.6.md).
 
 **`0.7.0`** adds **secondary indexes** (catalog **v4** carries `indexes` on create / new schema version), **`SegmentType::Index`** segments, a minimal **query** planner and **`Database::query_iter`**, and Python **`indexes_json`** + **`collection(...).where` / `all(fields=[...])`**. See [`CHANGELOG.md`](../CHANGELOG.md), [`docs/migration_0.6_to_0.7.md`](migration_0.6_to_0.7.md), and [`docs/guide_python.md`](guide_python.md).
+
+**`0.8.0`** adds **transaction framing** (txn marker segments), multi-write **`Database::transaction`**, and crash-tail recovery options (`OpenOptions` / `RecoveryMode`); Python adds **`with db.transaction():`**. See [`docs/migration_0.7_to_0.8.md`](migration_0.7_to_0.8.md).

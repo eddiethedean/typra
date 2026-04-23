@@ -24,9 +24,9 @@ Use this doc when you work **in or under `python/`**. End users installing from 
 
 The Rust workspace lists **`python/typra`** as a member so **`cargo check -p typra-python`** and release versioning stay aligned with **`crates/`**.
 
-## What the extension exposes (v0.7.x)
+## What the extension exposes (v0.8.x)
 
-- **`typra.Database`**: `open`, `open_in_memory`, `open_snapshot_bytes`, `path`, `register_collection` (optional **`indexes_json`**), `insert`, `get`, `collection`, `collection_names`, `snapshot_bytes`
+- **`typra.Database`**: `open`, `open_in_memory`, `open_snapshot_bytes`, `path`, `register_collection` (optional **`indexes_json`**), `insert`, `get`, `transaction`, `collection`, `collection_names`, `snapshot_bytes`
 - **`typra.__version__`**: matches the workspace / crates release
 
 **`register_schema_version`** and **SQL** text are **not** exposed from Python yet; see **[`ROADMAP.md`](../ROADMAP.md)**.

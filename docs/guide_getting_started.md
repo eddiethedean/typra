@@ -4,9 +4,9 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 ## Current status (important)
 
-As of **v0.7.x+**, Typra ships a **persisted schema catalog** (per-field **constraints** on catalog **v3**; **index definitions** on catalog **v4**), **secondary indexes** and minimal **queries** (equality, `limit`, `explain`), **record insert/get** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **in-memory** databases and snapshots, alongside earlier on-disk foundations:
+As of **v0.8.x+**, Typra ships a **persisted schema catalog** (per-field **constraints** on catalog **v3**; **index definitions** on catalog **v4**), **secondary indexes** and minimal **queries** (equality, `limit`, `explain`), **record insert/get** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **transactions** (`with db.transaction()` in Python / `Database::transaction` in Rust), **in-memory** databases and snapshots, alongside earlier on-disk foundations:
 
-- **Rust**: `Database::open`, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get`** with **`RowValue`**, **`Database::open_in_memory`**, typed **queries**, **secondary indexes**, and `#[derive(DbModel)]` (see [`ROADMAP.md`](../ROADMAP.md) **0.7.0**).
+- **Rust**: `Database::open`, **`open_with_options`**, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get`** with **`RowValue`**, **`Database::open_in_memory`**, `Database::transaction`, typed **queries**, **secondary indexes**, and `#[derive(DbModel)]` (see [`ROADMAP.md`](../ROADMAP.md)).
 - **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(..., indexes_json=...)`** (optional **`constraints`** in `fields_json`), **`insert`**, **`get`**, **`db.collection(name).where(...).all()`** (plus **`and_where`**, **`limit`**, **`explain`**, subset **`all(fields=[...])`**), **`snapshot_bytes`**, **`collection_names()`**, and `__version__`. A **disk + indexes** walkthrough is in **[`guide_python.md` — Realistic workflow](guide_python.md#realistic-workflow-indexed-queries-on-disk)**.
 - **Not yet**: arbitrary **SQL** text, **DB-API / SQLAlchemy**—see [`ROADMAP.md`](../ROADMAP.md).
 
@@ -18,7 +18,7 @@ In your application `Cargo.toml`:
 
 ```toml
 [dependencies]
-typra = "0.7"
+typra = "0.8"
 ```
 
 ## Minimal Rust example
@@ -70,7 +70,7 @@ registered collection id=1 version=1
 ## Install (Python)
 
 ```bash
-pip install "typra>=0.7.0,<0.8"
+pip install "typra>=0.8.0,<0.9"
 ```
 
 ## Minimal Python example
@@ -123,7 +123,7 @@ Output (the **`typra`** version line tracks the workspace / PyPI release):
 ```text
 registered collection_id= 1 schema_version= 1
 get: {'title': 'Hello'}
-typra 0.7.0
+typra 0.8.0
 ```
 
 ## Development quickstart (repo contributors)
