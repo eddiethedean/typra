@@ -67,6 +67,7 @@ The **`typra`** package on PyPI is a native extension. **`fields_json`** is a JS
 - **Wheels:** `cp39-abi3` (one wheel per platform)
 
 ```python
+# Setup: module, in-memory DB, and `books` collection (PK `title`).
 import typra
 
 db = typra.Database.open_in_memory()
@@ -75,6 +76,7 @@ _, _ = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: insert and read one row; print version.
 db.insert("books", {"title": "Hello"})
 print(db.get("books", "Hello"))
 print(typra.__version__)
@@ -126,8 +128,10 @@ use typra::Type;
 use typra::schema::FieldPath;
 
 fn main() -> Result<(), DbError> {
+    // Setup: in-memory database (no file on disk).
     let mut db = Database::open_in_memory()?;
     println!("opened: {}", db.path().display());
+    // Example: register a `books` collection with a string primary key `title`.
     let (id, ver) = db.register_collection(
         "books",
         vec![FieldDef {

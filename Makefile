@@ -31,7 +31,7 @@ help:
 	@echo ""
 	@echo "Tests:"
 	@echo "  test            maturin develop --release + pytest (python/typra)"
-	@echo "  verify-doc-examples  Assert README + guide_python + getting_started output matches snippets"
+	@echo "  verify-doc-examples  Assert README + guides output matches all verified Python/Rust snippets"
 	@echo "  bench           Criterion benchmarks for typra-core (optional; not part of check-full)"
 
 venv:

@@ -38,6 +38,7 @@ Pin the minor range you test against; pre-1.0 releases may still change APIs or 
 ## Quick start
 
 ```python
+# Setup: module, in-memory DB, and `books` collection (PK `title`).
 import typra
 
 db = typra.Database.open_in_memory()
@@ -46,6 +47,7 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: insert one row, read it back, print package version.
 print("registered", cid, ver)
 db.insert("books", {"title": "Typra"})
 print(db.get("books", "Typra"))
@@ -65,12 +67,22 @@ On disk, use **`Database.open("app.typra")`** instead; registrations are **persi
 ### Indexed query (sketch)
 
 ```python
+# Setup: in-memory DB, indexed collection, one row.
+import typra
+
 db = typra.Database.open_in_memory()
 fields = '[{"path": ["id"], "type": "int64"}, {"path": ["sku"], "type": "string"}]'
 indexes = '[{"name": "sku_idx", "path": ["sku"], "kind": "index"}]'
 db.register_collection("items", fields, "id", indexes)
 db.insert("items", {"id": 1, "sku": "abc"})
+# Example: equality query on indexed `sku`.
 print(db.collection("items").where("sku", "abc").all())
+```
+
+Output:
+
+```text
+[{'id': 1, 'sku': 'abc'}]
 ```
 
 See **[`docs/guide_python.md`](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md)** for `and_where`, `limit`, `explain`, and subset projections.
@@ -111,22 +123,46 @@ For behavior details (errors, edge cases, development), see the **[Python user g
 ### Example (nested)
 
 ```python
+# Setup: in-memory DB and a collection whose PK uses an optional int field.
+import typra
+
+db = typra.Database.open_in_memory()
 db.register_collection(
     "items",
     '[{"path": ["x"], "type": {"optional": "int64"}}]',
     "x",
 )
+# Example: confirm registration.
+print("nested:", db.collection_names())
+```
+
+Output:
+
+```text
+nested: ['items']
 ```
 
 ### Example (multiple fields)
 
 ```python
+# Setup: in-memory DB and a multi-field `books` schema (PK `title`).
+import typra
+
+db = typra.Database.open_in_memory()
 schema = """[
   {"path": ["title"], "type": "string"},
   {"path": ["year"], "type": "int64"},
   {"path": ["tags"], "type": {"list": "string"}}
 ]"""
 db.register_collection("books", schema, "title")
+# Example: confirm registration.
+print("multi:", db.collection_names())
+```
+
+Output:
+
+```text
+multi: ['books']
 ```
 
 ## Exceptions

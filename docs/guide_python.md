@@ -19,6 +19,7 @@ Pin the minor range you test against; pre-1.0 minors may include API or format c
 In-memory (repeatable; no file). To use a file instead, replace `open_in_memory()` with `open("/path/to/app.typra")`.
 
 ```python
+# Setup: module, in-memory DB, and one collection.
 import typra
 
 db = typra.Database.open_in_memory()
@@ -27,12 +28,13 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: show path, registration ids, and registered names.
 print("path:", db.path())
 print("collection_id:", cid, "schema_version:", ver)
 print("collection_names:", db.collection_names())
 ```
 
-Output (checked by **`scripts/verify-doc-examples.sh`** in CI):
+Output:
 
 ```text
 path: :memory:
@@ -98,9 +100,10 @@ Returns a handle for **non-SQL** queries on `name`. Use **`where(path, value)`**
 
 Design reference: [`docs/05_query_planner_and_execution_spec.md`](05_query_planner_and_execution_spec.md).
 
-### Query example (verified in CI)
+### Query example
 
 ```python
+# Setup: in-memory DB, schema, index, and one row.
 import typra
 
 db = typra.Database.open_in_memory()
@@ -110,13 +113,14 @@ fields = (
 indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
 db.register_collection("books", fields, "title", indexes)
 db.insert("books", {"title": "Hello", "year": 2020})
+# Example: indexed equality query with subset projection.
 explain = db.collection("books").where("title", "Hello").explain()
 rows = db.collection("books").where("title", "Hello").all(fields=["title"])
 print("index_lookup:", "IndexLookup" in explain)
 print("rows:", rows)
 ```
 
-Output (checked by **`scripts/verify-doc-examples.sh`**):
+Output:
 
 ```text
 index_lookup: True
@@ -130,6 +134,7 @@ This pattern matches a small **order line** table: **integer primary key**, **no
 Row order from `all()` is not guaranteed to be sorted; sort in application code when you need a stable listing.
 
 ```python
+# Setup: temp on-disk file, collection with indexes, and sample rows.
 import tempfile
 from pathlib import Path
 
@@ -155,6 +160,7 @@ with tempfile.TemporaryDirectory() as d:
         (3, "SKU-A", 4, "open"),
     ]:
         db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
+    # Example: conjunctive query, subset projection, reopen and `get` by PK.
     q = (
         db.collection("order_lines")
         .where("status", "open")
@@ -177,7 +183,7 @@ with tempfile.TemporaryDirectory() as d:
     print("reopen_qty:", row["qty"] if row else None)
 ```
 
-Output (checked by **`scripts/verify-doc-examples.sh`**):
+Output:
 
 ```text
 indexed: True
@@ -248,12 +254,24 @@ Each variant must be a JSON string.
 ### Example: multiple top-level fields
 
 ```python
+# Setup: in-memory DB and a multi-field `books` schema (PK `title`).
+import typra
+
+db = typra.Database.open_in_memory()
 fields = """[
   {"path": ["title"], "type": "string"},
   {"path": ["year"], "type": "int64"},
   {"path": ["tags"], "type": {"list": "string"}}
 ]"""
-db.register_collection("books", fields, "title")
+cid, ver = db.register_collection("books", fields, "title")
+# Example: show assigned collection and schema version ids.
+print("collection_id:", cid, "schema_version:", ver)
+```
+
+Output:
+
+```text
+collection_id: 1 schema_version: 1
 ```
 
 ## Persistence

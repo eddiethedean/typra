@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Verifies stdout from the minimal Rust and Python snippets shown in README / guides.
 # Covered: root README (Rust + Python), docs/guide_getting_started.md (Rust cmd + Python),
-# docs/guide_python.md (quick start + query + realistic workflow), python/typra/README.md (quick start).
+# docs/guide_python.md (quick start + query + realistic workflow + fields_json example),
+# python/typra/README.md (quick start + indexed sketch + fields_json nested/multi examples).
 # When outputs change intentionally, update the expected heredocs here and the matching ```text blocks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,6 +50,7 @@ typra 0.7.0
 
 EOF
 ACTUAL_PY_GUIDE=$("$PYTHON" <<'PY' | strip_cr
+# Setup: module and in-memory database.
 import typra
 
 db = typra.Database.open_in_memory()
@@ -57,6 +59,7 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: insert one row, read it back, print package version.
 print("registered collection_id=", cid, "schema_version=", ver)
 db.insert("books", {"title": "Hello"})
 print("get:", db.get("books", "Hello"))
@@ -76,6 +79,7 @@ read -r -d '' EXPECT_PY_ROOT <<'EOF' || true
 
 EOF
 ACTUAL_PY_ROOT=$("$PYTHON" <<'PY' | strip_cr
+# Setup: module, in-memory DB, and `books` collection (PK `title`).
 import typra
 
 db = typra.Database.open_in_memory()
@@ -84,6 +88,7 @@ _, _ = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: insert and read one row; print version.
 db.insert("books", {"title": "Hello"})
 print(db.get("books", "Hello"))
 print(typra.__version__)
@@ -103,6 +108,7 @@ registered 1 1
 
 EOF
 ACTUAL_PY_PKG=$("$PYTHON" <<'PY' | strip_cr
+# Setup: module, in-memory DB, and `books` collection (PK `title`).
 import typra
 
 db = typra.Database.open_in_memory()
@@ -111,6 +117,7 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: insert one row, read it back, print package version.
 print("registered", cid, ver)
 db.insert("books", {"title": "Typra"})
 print(db.get("books", "Typra"))
@@ -131,6 +138,7 @@ collection_names: ['books']
 
 EOF
 ACTUAL_PY_GUIDE_PYTHON=$("$PYTHON" <<'PY' | strip_cr
+# Setup: module, in-memory DB, and one collection.
 import typra
 
 db = typra.Database.open_in_memory()
@@ -139,6 +147,7 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: show path, registration ids, and registered names.
 print("path:", db.path())
 print("collection_id:", cid, "schema_version:", ver)
 print("collection_names:", db.collection_names())
@@ -150,13 +159,14 @@ PY
   exit 1
 }
 
-# --- Python: docs/guide_python.md "Query example (verified in CI)" ---
+# --- Python: docs/guide_python.md "Query example" ---
 read -r -d '' EXPECT_PY_GUIDE_QUERY <<'EOF' || true
 index_lookup: True
 rows: [{'title': 'Hello'}]
 
 EOF
 ACTUAL_PY_GUIDE_QUERY=$("$PYTHON" <<'PY' | strip_cr
+# Setup: in-memory DB, schema, index, and one row.
 import typra
 
 db = typra.Database.open_in_memory()
@@ -166,6 +176,7 @@ fields = (
 indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
 db.register_collection("books", fields, "title", indexes)
 db.insert("books", {"title": "Hello", "year": 2020})
+# Example: indexed equality query with subset projection.
 explain = db.collection("books").where("title", "Hello").explain()
 rows = db.collection("books").where("title", "Hello").all(fields=["title"])
 print("index_lookup:", "IndexLookup" in explain)
@@ -188,6 +199,7 @@ reopen_qty: 2
 
 EOF
 ACTUAL_PY_GUIDE_WORKFLOW=$("$PYTHON" <<'PY' | strip_cr
+# Setup: temp on-disk file, collection with indexes, and sample rows.
 import tempfile
 from pathlib import Path
 
@@ -213,6 +225,7 @@ with tempfile.TemporaryDirectory() as d:
         (3, "SKU-A", 4, "open"),
     ]:
         db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
+    # Example: conjunctive query, subset projection, reopen and `get` by PK.
     q = (
         db.collection("order_lines")
         .where("status", "open")
@@ -241,4 +254,105 @@ PY
   exit 1
 }
 
-echo "verify-doc-examples: OK (Rust open + 6 Python snippets)"
+# --- Python: python/typra/README.md "Indexed query (sketch)" ---
+read -r -d '' EXPECT_PY_PKG_INDEXED <<'EOF' || true
+[{'id': 1, 'sku': 'abc'}]
+
+EOF
+ACTUAL_PY_PKG_INDEXED=$("$PYTHON" <<'PY' | strip_cr
+# Setup: in-memory DB, indexed collection, one row.
+import typra
+
+db = typra.Database.open_in_memory()
+fields = '[{"path": ["id"], "type": "int64"}, {"path": ["sku"], "type": "string"}]'
+indexes = '[{"name": "sku_idx", "path": ["sku"], "kind": "index"}]'
+db.register_collection("items", fields, "id", indexes)
+db.insert("items", {"id": 1, "sku": "abc"})
+# Example: equality query on indexed `sku`.
+print(db.collection("items").where("sku", "abc").all())
+PY
+)
+[[ "$ACTUAL_PY_PKG_INDEXED" == "$EXPECT_PY_PKG_INDEXED" ]] || {
+  echo "Python (python/typra/README indexed sketch) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_PKG_INDEXED") <(printf '%s' "$ACTUAL_PY_PKG_INDEXED") >&2 || true
+  exit 1
+}
+
+# --- Python: python/typra/README.md "Example (nested)" ---
+read -r -d '' EXPECT_PY_PKG_FIELDS_NESTED <<'EOF' || true
+nested: ['items']
+
+EOF
+ACTUAL_PY_PKG_FIELDS_NESTED=$("$PYTHON" <<'PY' | strip_cr
+# Setup: in-memory DB and a collection whose PK uses an optional int field.
+import typra
+
+db = typra.Database.open_in_memory()
+db.register_collection(
+    "items",
+    '[{"path": ["x"], "type": {"optional": "int64"}}]',
+    "x",
+)
+# Example: confirm registration.
+print("nested:", db.collection_names())
+PY
+)
+[[ "$ACTUAL_PY_PKG_FIELDS_NESTED" == "$EXPECT_PY_PKG_FIELDS_NESTED" ]] || {
+  echo "Python (python/typra/README fields nested) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_PKG_FIELDS_NESTED") <(printf '%s' "$ACTUAL_PY_PKG_FIELDS_NESTED") >&2 || true
+  exit 1
+}
+
+# --- Python: python/typra/README.md "Example (multiple fields)" ---
+read -r -d '' EXPECT_PY_PKG_FIELDS_MULTI <<'EOF' || true
+multi: ['books']
+
+EOF
+ACTUAL_PY_PKG_FIELDS_MULTI=$("$PYTHON" <<'PY' | strip_cr
+# Setup: in-memory DB and a multi-field `books` schema (PK `title`).
+import typra
+
+db = typra.Database.open_in_memory()
+schema = """[
+  {"path": ["title"], "type": "string"},
+  {"path": ["year"], "type": "int64"},
+  {"path": ["tags"], "type": {"list": "string"}}
+]"""
+db.register_collection("books", schema, "title")
+# Example: confirm registration.
+print("multi:", db.collection_names())
+PY
+)
+[[ "$ACTUAL_PY_PKG_FIELDS_MULTI" == "$EXPECT_PY_PKG_FIELDS_MULTI" ]] || {
+  echo "Python (python/typra/README fields multi) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_PKG_FIELDS_MULTI") <(printf '%s' "$ACTUAL_PY_PKG_FIELDS_MULTI") >&2 || true
+  exit 1
+}
+
+# --- Python: docs/guide_python.md "Example: multiple top-level fields" ---
+read -r -d '' EXPECT_PY_GUIDE_FIELDS <<'EOF' || true
+collection_id: 1 schema_version: 1
+
+EOF
+ACTUAL_PY_GUIDE_FIELDS=$("$PYTHON" <<'PY' | strip_cr
+# Setup: in-memory DB and a multi-field `books` schema (PK `title`).
+import typra
+
+db = typra.Database.open_in_memory()
+fields = """[
+  {"path": ["title"], "type": "string"},
+  {"path": ["year"], "type": "int64"},
+  {"path": ["tags"], "type": {"list": "string"}}
+]"""
+cid, ver = db.register_collection("books", fields, "title")
+# Example: show assigned collection and schema version ids.
+print("collection_id:", cid, "schema_version:", ver)
+PY
+)
+[[ "$ACTUAL_PY_GUIDE_FIELDS" == "$EXPECT_PY_GUIDE_FIELDS" ]] || {
+  echo "Python (guide_python fields example) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_GUIDE_FIELDS") <(printf '%s' "$ACTUAL_PY_GUIDE_FIELDS") >&2 || true
+  exit 1
+}
+
+echo "verify-doc-examples: OK (Rust open + 10 Python snippets)"

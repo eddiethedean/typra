@@ -92,7 +92,7 @@ Rust crates under `crates/` include **`typra`** (application facade), **`typra-c
 make check-full
 ```
 
-That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`** (quick start), and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and the embedded Python snippets (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
+That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`**, and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and every Python snippet that has a paired **text** output block in those files (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
 
 1. Log in: `cargo login` with an API token from [crates.io account settings](https://crates.io/settings/tokens).
 2. Optionally set `repository = "..."` under `[workspace.package]` in the root `Cargo.toml` (recommended).

@@ -34,8 +34,10 @@ use typra::FieldDef;
 use typra::Type;
 
 fn main() -> Result<(), DbError> {
+    // Setup: in-memory database (no file on disk).
     let mut db = Database::open_in_memory()?;
     println!("opened: {}", db.path().display());
+    // Example: register a `books` collection with a string primary key `title`.
     let (id, ver) = db.register_collection(
         "books",
         vec![FieldDef {
@@ -76,6 +78,7 @@ pip install "typra>=0.7.0,<0.8"
 In-memory (repeatable; same idea as the Rust example above):
 
 ```python
+# Setup: module and in-memory database.
 import typra
 
 db = typra.Database.open_in_memory()
@@ -84,6 +87,7 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: insert one row, read it back, print package version.
 print("registered collection_id=", cid, "schema_version=", ver)
 db.insert("books", {"title": "Hello"})
 print("get:", db.get("books", "Hello"))
@@ -97,6 +101,7 @@ Requires **Python 3.9+**. From the repository root, build the extension then run
 ```bash
 make python-develop
 .venv/bin/python <<'PY'
+# Setup: module and in-memory database.
 import typra
 
 db = typra.Database.open_in_memory()
@@ -105,6 +110,7 @@ cid, ver = db.register_collection(
     '[{"path": ["title"], "type": "string"}]',
     "title",
 )
+# Example: insert one row, read it back, print package version.
 print("registered collection_id=", cid, "schema_version=", ver)
 db.insert("books", {"title": "Hello"})
 print("get:", db.get("books", "Hello"))
@@ -134,7 +140,7 @@ This runs:
 - Rust format/clippy/tests
 - Python ruff/ty checks
 - Python tests (via `maturin develop --release` + `pytest`)
-- **`make verify-doc-examples`**: asserts stdout from `cargo run -p typra --example open` and the Python snippets above matches the documented output blocks on this page, in the READMEs, and in **`docs/guide_python.md`** (quick start, query example, and realistic on-disk workflow)
+- **`make verify-doc-examples`**: asserts stdout from `cargo run -p typra --example open` and the embedded Python snippets match each documented **text** output block on this page, the root **`README.md`**, **`docs/guide_python.md`** (quick start, query, workflow, fields example), and **`python/typra/README.md`** (quick start, indexed sketch, **`fields_json`** examples). See **`scripts/verify-doc-examples.sh`** for the exact snippets.
 
 ## Where to go next
 
