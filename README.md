@@ -9,15 +9,15 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-## Status (v0.6.x)
+## Status (v0.7.x)
 
 | Surface | What ships today |
 |---------|------------------|
-| **Rust** | `Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`**), **`insert` / `get`** with **`RowValue`** (primitives + nested optionals/lists/objects/enums), validation + **constraints**, **`open_in_memory`**, snapshot helpers, **`#[derive(DbModel)]`** |
-| **Python** | **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory / snapshot APIs, **`collection_names()`**, optional **`constraints`** in `fields_json` |
+| **Rust** | Same as 0.6.x, plus **secondary indexes**, minimal **query** execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, and **subset row projection** |
+| **Python** | Same as 0.6.x, plus optional **`indexes_json`**, **`db.collection(...).where` / `and_where` / `limit` / `explain` / `all`**, and subset **`all(fields=[...])`** |
 | **Format** | Catalog payload **v3** (constraints); record payload **v1 + v2** (replay reads both; new inserts use **v2**); file format minor **5** as in 0.5.x |
 
-SQL-style queries and secondary indexes are **under development**. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
+**SQL** text and **DB-API** layers remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
 | Resource | Link |
 |----------|------|
@@ -84,11 +84,11 @@ Output:
 
 ```text
 {'title': 'Hello'}
-0.6.0
+0.7.0
 ```
 
 ```bash
-pip install "typra>=0.6.0,<0.7"
+pip install "typra>=0.7.0,<0.8"
 ```
 
 ---
@@ -101,13 +101,13 @@ Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(D
 
 ```toml
 [dependencies]
-typra = "0.6"
+typra = "0.7"
 ```
 
 Without proc-macros (engine only):
 
 ```toml
-typra = { version = "0.6", default-features = false }
+typra = { version = "0.7", default-features = false }
 ```
 
 ### Lower-level crates

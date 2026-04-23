@@ -5,9 +5,9 @@
 
 User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get).
 
-## Status (v0.6.x)
+## Status (v0.7.x)
 
-`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, and **`#[derive(DbModel)]`** (via the default `derive` feature). Secondary indexes and a query engine are **not** implemented yet.
+`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, **`#[derive(DbModel)]`** (via the default `derive` feature), **secondary indexes**, minimal **query** execution (**equality**, **`limit`**, **`explain`**), **`Database::query_iter`**, and **subset projections**. SQL text and DB-API layers are **not** implemented yet.
 
 | Resource | Link |
 |----------|------|
@@ -19,13 +19,13 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 
 ```toml
 [dependencies]
-typra = "0.6"
+typra = "0.7"
 ```
 
 Disable the default `derive` feature if you only need the engine:
 
 ```toml
-typra = { version = "0.6", default-features = false }
+typra = { version = "0.7", default-features = false }
 ```
 
 ## Example

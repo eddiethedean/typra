@@ -9,7 +9,7 @@ For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
 
 ```bash
-pip install "typra>=0.6.0,<0.7"
+pip install "typra>=0.7.0,<0.8"
 ```
 
 Pin the minor range you test against; pre-1.0 minors may include API or format changes.
@@ -122,6 +122,72 @@ Output (checked by **`scripts/verify-doc-examples.sh`**):
 index_lookup: True
 rows: [{'title': 'Hello'}]
 ```
+
+### Realistic workflow: indexed queries on disk
+
+This pattern matches a small **order line** table: **integer primary key**, **non-unique indexes** on `sku` and `status`, several inserts, a conjunctive filter (`where` + `and_where`), **subset projection**, then **reopen** the same file and read back by primary key.
+
+Row order from `all()` is not guaranteed to be sorted; sort in application code when you need a stable listing.
+
+```python
+import tempfile
+from pathlib import Path
+
+import typra
+
+with tempfile.TemporaryDirectory() as d:
+    path = Path(d) / "app.typra"
+    db = typra.Database.open(str(path))
+    fields = """[
+      {"path": ["id"], "type": "int64"},
+      {"path": ["sku"], "type": "string"},
+      {"path": ["qty"], "type": "int64"},
+      {"path": ["status"], "type": "string"}
+    ]"""
+    indexes = """[
+      {"name": "sku_idx", "path": ["sku"], "kind": "index"},
+      {"name": "status_idx", "path": ["status"], "kind": "index"}
+    ]"""
+    db.register_collection("order_lines", fields, "id", indexes)
+    for oid, sku, qty, st in [
+        (1, "SKU-A", 2, "open"),
+        (2, "SKU-B", 1, "shipped"),
+        (3, "SKU-A", 4, "open"),
+    ]:
+        db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
+    q = (
+        db.collection("order_lines")
+        .where("status", "open")
+        .and_where("sku", "SKU-A")
+        .limit(10)
+    )
+    rows = sorted(q.all(), key=lambda r: r["id"])
+    print("indexed:", "IndexLookup" in q.explain())
+    print("matches:", len(rows))
+    print("rows:", rows)
+    short = sorted(
+        db.collection("order_lines").where("status", "open").all(
+            fields=["id", "qty"]
+        ),
+        key=lambda r: r["id"],
+    )
+    print("subset:", short)
+    db2 = typra.Database.open(str(path))
+    row = db2.get("order_lines", 1)
+    print("reopen_qty:", row["qty"] if row else None)
+```
+
+Output (checked by **`scripts/verify-doc-examples.sh`**):
+
+```text
+indexed: True
+matches: 2
+rows: [{'id': 1, 'qty': 2, 'sku': 'SKU-A', 'status': 'open'}, {'id': 3, 'qty': 4, 'sku': 'SKU-A', 'status': 'open'}]
+subset: [{'id': 1, 'qty': 2}, {'id': 3, 'qty': 4}]
+reopen_qty: 2
+```
+
+For **ephemeral** integration tests (CI, notebooks), prefer a temp file as above. For a fixed path in an application, ensure parent directories exist before `open`, and catch **`OSError`** around file creation.
 
 ## DB-API 2.0 (PEP 249) and SQLAlchemy
 

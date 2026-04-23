@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-22
+
 ### Added
 
 - **Secondary indexes (Rust)**: catalog `IndexDef`, insert-time index maintenance, persisted index segments, unique violations, minimal **query AST** (`get` / equality / `limit`), heuristic **`explain`**, **`Database::query_iter`** (pull-based row iterator), **`row_subset_by_field_defs`** for nested path projections.
@@ -108,3 +110,4 @@ See [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md).
 [0.5.0]: https://github.com/eddiethedean/typra/releases/tag/v0.5.0
 [0.5.1]: https://github.com/eddiethedean/typra/releases/tag/v0.5.1
 [0.6.0]: https://github.com/eddiethedean/typra/releases/tag/v0.6.0
+[0.7.0]: https://github.com/eddiethedean/typra/releases/tag/v0.7.0

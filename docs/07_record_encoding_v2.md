@@ -39,4 +39,4 @@ Replay accepts **v1 and v2** segments in one file. New inserts emit **v2** (even
 ## See also
 
 - [06_record_encoding_v1.md](06_record_encoding_v1.md)
-- [ROADMAP.md](../ROADMAP.md) — 0.6.0
+- [ROADMAP.md](../ROADMAP.md) — release milestones

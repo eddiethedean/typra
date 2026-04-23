@@ -5,9 +5,11 @@
 
 Official **CPython** bindings for **Typra** (PyO3 native extension): a typed, embedded database with a Rust core.
 
-## Status (v0.6.x)
+## Status
 
-You get a durable **schema catalog**, **validation**, nested **row values** (record **v2** on insert; **v1** segments still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes. **SQL / rich queries** are still planned—see the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
+You get a durable **schema catalog**, **validation**, nested **row values** (record **v2** on insert; **v1** segments still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes.
+
+**Queries and secondary indexes (0.7+):** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection("name").where("field", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python user guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#realistic-workflow-indexed-queries-on-disk). **SQL** text and **DB-API** layers are still out of scope—see the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 
 | Resource | Link |
 |----------|------|
@@ -28,7 +30,7 @@ You get a durable **schema catalog**, **validation**, nested **row values** (rec
 ## Install
 
 ```bash
-pip install "typra>=0.6.0,<0.7"
+pip install "typra>=0.7.0,<0.8"
 ```
 
 Pin the minor range you test against; pre-1.0 releases may still change APIs or the on-disk format between minors.
@@ -55,10 +57,23 @@ Output (the version line matches the installed wheel):
 ```text
 registered 1 1
 {'title': 'Typra'}
-0.6.0
+0.7.0
 ```
 
 On disk, use **`Database.open("app.typra")`** instead; registrations are **persisted** across process restarts for that path.
+
+### Indexed query (sketch)
+
+```python
+db = typra.Database.open_in_memory()
+fields = '[{"path": ["id"], "type": "int64"}, {"path": ["sku"], "type": "string"}]'
+indexes = '[{"name": "sku_idx", "path": ["sku"], "kind": "index"}]'
+db.register_collection("items", fields, "id", indexes)
+db.insert("items", {"id": 1, "sku": "abc"})
+print(db.collection("items").where("sku", "abc").all())
+```
+
+See **[`docs/guide_python.md`](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md)** for `and_where`, `limit`, `explain`, and subset projections.
 
 ## API overview
 
@@ -67,7 +82,8 @@ On disk, use **`Database.open("app.typra")`** instead; registrations are **persi
 | `typra.__version__` | Package version (matches the Rust workspace release). |
 | `Database.open(path: str)` | Create or open a database file. Raises `OSError` if the path cannot be opened (e.g. missing parent directory, path is a directory). |
 | `db.path() -> str` | Path used to open the database. |
-| `db.register_collection(name, fields_json, primary_field) -> tuple[int, int]` | Register a **new** collection (schema version **1**). **`primary_field`** is the top-level field name for the PK. Returns **`(collection_id, schema_version)`**. Names are trimmed; duplicates or bad `fields_json` raise `ValueError`. |
+| `db.register_collection(name, fields_json, primary_field, indexes_json=None) -> tuple[int, int]` | Register a **new** collection (schema version **1**). Optional **`indexes_json`**: JSON array of `{"name", "path", "kind"}` objects (`"unique"` or `"index"` / `"non_unique"`). Returns **`(collection_id, schema_version)`**. Names are trimmed; duplicates or bad JSON raise `ValueError`. |
+| `db.collection(name) -> Collection` | Query handle: **`where`**, **`and_where`**, **`limit`**, **`explain`**, **`all`** / **`all(fields=[...])`**. |
 | `db.insert(collection_name, row: dict) -> None` | Insert or replace the latest row (required fields + optional keys per schema). |
 | `db.get(collection_name, pk) -> dict \| None` | Latest row or missing. |
 | `Database.open_in_memory()` / `Database.open_snapshot_bytes(data)` / `db.snapshot_bytes()` | In-memory DB and byte snapshots. |
@@ -117,7 +133,7 @@ db.register_collection("books", schema, "title")
 
 - **`ValueError`**: invalid JSON, wrong shape, unknown type, invalid collection name, duplicate collection name, validation failures, or format/schema errors from the engine when registering.
 - **`OSError`**: I/O failures when opening the database file.
-- **`RuntimeError`**: reserved for engine “not implemented” paths (unexpected for supported 0.6.x calls).
+- **`RuntimeError`**: reserved for engine “not implemented” paths (unexpected for supported API paths).
 
 ## Building from source
 

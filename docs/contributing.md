@@ -38,7 +38,7 @@ CI runs the same Rust and Python checks via [`.github/workflows/ci.yml`](../.git
 
 ## Versioning
 
-Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.6.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.7.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Coverage (practical 100%)
 
@@ -147,7 +147,7 @@ Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.tom
 
 See [`ROADMAP.md`](../ROADMAP.md) for the full release breakdown.
 
-### File format notes (0.3.x–0.6.x)
+### File format notes (0.3.x–0.7.x)
 
 Starting with the `0.3.x` on-disk format work, the database file layout includes reserved **Superblock A/B** regions (for crash-safe metadata publication later) and checksummed **append-only segments**. This scaffolding is still internal, but it changes on-disk compatibility behavior:
 

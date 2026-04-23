@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies stdout from the minimal Rust and Python snippets shown in README / guides.
 # Covered: root README (Rust + Python), docs/guide_getting_started.md (Rust cmd + Python),
-# docs/guide_python.md (quick start), python/typra/README.md (quick start).
+# docs/guide_python.md (quick start + query + realistic workflow), python/typra/README.md (quick start).
 # When outputs change intentionally, update the expected heredocs here and the matching ```text blocks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -45,7 +45,7 @@ ACTUAL_RUST=$(cargo run -q -p typra --example open | strip_cr)
 read -r -d '' EXPECT_PY_GUIDE <<'EOF' || true
 registered collection_id= 1 schema_version= 1
 get: {'title': 'Hello'}
-typra 0.6.0
+typra 0.7.0
 
 EOF
 ACTUAL_PY_GUIDE=$("$PYTHON" <<'PY' | strip_cr
@@ -72,7 +72,7 @@ PY
 # --- Python: root README.md (Python section) ---
 read -r -d '' EXPECT_PY_ROOT <<'EOF' || true
 {'title': 'Hello'}
-0.6.0
+0.7.0
 
 EOF
 ACTUAL_PY_ROOT=$("$PYTHON" <<'PY' | strip_cr
@@ -99,7 +99,7 @@ PY
 read -r -d '' EXPECT_PY_PKG <<'EOF' || true
 registered 1 1
 {'title': 'Typra'}
-0.6.0
+0.7.0
 
 EOF
 ACTUAL_PY_PKG=$("$PYTHON" <<'PY' | strip_cr
@@ -178,4 +178,67 @@ PY
   exit 1
 }
 
-echo "verify-doc-examples: OK (Rust open + 5 Python snippets)"
+# --- Python: docs/guide_python.md "Realistic workflow: indexed queries on disk" ---
+read -r -d '' EXPECT_PY_GUIDE_WORKFLOW <<'EOF' || true
+indexed: True
+matches: 2
+rows: [{'id': 1, 'qty': 2, 'sku': 'SKU-A', 'status': 'open'}, {'id': 3, 'qty': 4, 'sku': 'SKU-A', 'status': 'open'}]
+subset: [{'id': 1, 'qty': 2}, {'id': 3, 'qty': 4}]
+reopen_qty: 2
+
+EOF
+ACTUAL_PY_GUIDE_WORKFLOW=$("$PYTHON" <<'PY' | strip_cr
+import tempfile
+from pathlib import Path
+
+import typra
+
+with tempfile.TemporaryDirectory() as d:
+    path = Path(d) / "app.typra"
+    db = typra.Database.open(str(path))
+    fields = """[
+      {"path": ["id"], "type": "int64"},
+      {"path": ["sku"], "type": "string"},
+      {"path": ["qty"], "type": "int64"},
+      {"path": ["status"], "type": "string"}
+    ]"""
+    indexes = """[
+      {"name": "sku_idx", "path": ["sku"], "kind": "index"},
+      {"name": "status_idx", "path": ["status"], "kind": "index"}
+    ]"""
+    db.register_collection("order_lines", fields, "id", indexes)
+    for oid, sku, qty, st in [
+        (1, "SKU-A", 2, "open"),
+        (2, "SKU-B", 1, "shipped"),
+        (3, "SKU-A", 4, "open"),
+    ]:
+        db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
+    q = (
+        db.collection("order_lines")
+        .where("status", "open")
+        .and_where("sku", "SKU-A")
+        .limit(10)
+    )
+    rows = sorted(q.all(), key=lambda r: r["id"])
+    print("indexed:", "IndexLookup" in q.explain())
+    print("matches:", len(rows))
+    print("rows:", rows)
+    short = sorted(
+        db.collection("order_lines").where("status", "open").all(
+            fields=["id", "qty"]
+        ),
+        key=lambda r: r["id"],
+    )
+    print("subset:", short)
+    db2 = typra.Database.open(str(path))
+    row = db2.get("order_lines", 1)
+    print("reopen_qty:", row["qty"] if row else None)
+PY
+)
+[[ "$ACTUAL_PY_GUIDE_WORKFLOW" == "$EXPECT_PY_GUIDE_WORKFLOW" ]] || {
+  echo "Python (guide_python realistic workflow) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_GUIDE_WORKFLOW") <(printf '%s' "$ACTUAL_PY_GUIDE_WORKFLOW") >&2 || true
+  exit 1
+}
+
+echo "verify-doc-examples: OK (Rust open + 6 Python snippets)"

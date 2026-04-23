@@ -2,9 +2,9 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.6.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **Current release**: `0.7.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
-- **Next milestone**: `0.7.0` — secondary indexes and simple filters (see [Roadmap by release](#roadmap-by-release)).
+- **Next milestone**: `0.8.0` — transactions and crash-safe checkpoints (see [Roadmap by release](#roadmap-by-release)).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -39,25 +39,25 @@ Primary design references:
 
 ## Near-term focus
 
-**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints) is **delivered**. The next milestones, in order: **`0.7.0`** secondary indexes and simple filters, then **`0.8.0`** transactions and crash-safe checkpoints. Full scope for each is in [Roadmap by release](#roadmap-by-release).
+**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints) and **`0.7.0`** (secondary indexes, minimal queries, subset projection) are **delivered**. The next milestone is **`0.8.0`** (transactions and crash-safe checkpoints). Full scope for each is in [Roadmap by release](#roadmap-by-release).
 
 ```mermaid
 flowchart LR
   v060["0.6.0 validation ✓"]
-  v070["0.7.0 indexes"]
+  v070["0.7.0 indexes ✓"]
   v080["0.8.0 transactions"]
   v060 --> v070 --> v080
 ```
 
-## Status snapshot (current: 0.6.x)
+## Status snapshot (current: 0.7.x)
 
 **Implemented today:**
-- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints**, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Rust**: `Database::open` (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints**, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, minimal **query AST** and execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; last-write-wins replay; **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **5** for new DBs, with lazy **4 → 5** on first record write and **3 → 4** on first catalog write (see [`CHANGELOG.md`](CHANGELOG.md)).
 - **Rust workspace policy**: root [`Cargo.toml`](Cargo.toml) sets **`unsafe_code = forbid`** via **`[workspace.lints.rust]`** (no `unsafe` in workspace crates).
-- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field)`**, **`insert`**, **`get`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
+- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field, indexes_json=None)`**, **`insert`**, **`get`**, **`db.collection(name).where(...).and_where(...).limit(...).explain()`**, **`all()`** / **`all(fields=[...])`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
 - **CI / coverage**: multi-OS Rust and Python CI; **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from **`cargo run -p typra --example open`** and the embedded Python snippets matches the documented **`text`** output blocks (root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`**, **`python/typra/README.md`**).
 
-**Not yet:** secondary indexes, query engine, transactions—see [Roadmap by release](#roadmap-by-release).
+**Not yet:** multi-statement **transactions**, crash-safe **checkpoints**, SQL text / DB-API—see [Roadmap by release](#roadmap-by-release).
 
 **Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
 - **`0.5.1`**: Internal `Database` split into `db/` submodules; removed unused **`StorageEngine`** placeholder; public API unchanged.
@@ -222,7 +222,7 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/t
 
 ### 0.7.0 — Secondary indexes (unique + non-unique) and simple filters
 
-**Status:** **Delivered** on `main` (Rust engine + Python query/index registration + docs; see [`CHANGELOG.md`](CHANGELOG.md) **Unreleased**).
+**Status:** **Delivered** in v0.7.0 (see [`CHANGELOG.md`](CHANGELOG.md)).
 
 **Goal**: make real queries practical: equality filters on indexed fields and nested paths.
 
