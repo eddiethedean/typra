@@ -103,6 +103,25 @@ impl FieldDef {
     }
 }
 
+/// Kind of secondary index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexKind {
+    /// Enforces a uniqueness constraint: one primary key per indexed value.
+    Unique,
+    /// Non-unique index: many primary keys per indexed value.
+    NonUnique,
+}
+
+/// Secondary index definition for one collection schema.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexDef {
+    /// Stable identifier within a collection schema (e.g. `"email_unique"`).
+    pub name: String,
+    /// Field path whose scalar value is indexed (may be nested, e.g. `["profile","timezone"]`).
+    pub path: FieldPath,
+    pub kind: IndexKind,
+}
+
 /// High-level description of a collection (name, version, fields); used by tooling and derives.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectionSchema {
@@ -116,4 +135,11 @@ pub struct CollectionSchema {
 ///
 /// Implement via `#[derive(DbModel)]` from the optional `typra-derive` crate (re-exported by the
 /// `typra` facade when the **`derive`** feature is enabled).
-pub trait DbModel {}
+pub trait DbModel {
+    fn collection_name() -> &'static str;
+    fn fields() -> Vec<FieldDef>;
+    fn primary_field() -> &'static str;
+    fn indexes() -> Vec<IndexDef> {
+        Vec::new()
+    }
+}

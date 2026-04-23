@@ -150,4 +150,32 @@ PY
   exit 1
 }
 
-echo "verify-doc-examples: OK (Rust open + 4 Python snippets)"
+# --- Python: docs/guide_python.md "Query example (verified in CI)" ---
+read -r -d '' EXPECT_PY_GUIDE_QUERY <<'EOF' || true
+index_lookup: True
+rows: [{'title': 'Hello'}]
+
+EOF
+ACTUAL_PY_GUIDE_QUERY=$("$PYTHON" <<'PY' | strip_cr
+import typra
+
+db = typra.Database.open_in_memory()
+fields = (
+    '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
+)
+indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
+db.register_collection("books", fields, "title", indexes)
+db.insert("books", {"title": "Hello", "year": 2020})
+explain = db.collection("books").where("title", "Hello").explain()
+rows = db.collection("books").where("title", "Hello").all(fields=["title"])
+print("index_lookup:", "IndexLookup" in explain)
+print("rows:", rows)
+PY
+)
+[[ "$ACTUAL_PY_GUIDE_QUERY" == "$EXPECT_PY_GUIDE_QUERY" ]] || {
+  echo "Python (guide_python query example) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_GUIDE_QUERY") <(printf '%s' "$ACTUAL_PY_GUIDE_QUERY") >&2 || true
+  exit 1
+}
+
+echo "verify-doc-examples: OK (Rust open + 5 Python snippets)"

@@ -11,7 +11,7 @@ RUFF ?= $(PYTHON) -m ruff
 TY ?= $(PYTHON) -m ty
 MATURIN ?= $(PYTHON) -m maturin
 
-.PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples
+.PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples bench
 .PHONY: coverage coverage-rust coverage-python
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-doc rust-test
@@ -32,6 +32,7 @@ help:
 	@echo "Tests:"
 	@echo "  test            maturin develop --release + pytest (python/typra)"
 	@echo "  verify-doc-examples  Assert README + guide_python + getting_started output matches snippets"
+	@echo "  bench           Criterion benchmarks for typra-core (optional; not part of check-full)"
 
 venv:
 	@test -x .venv/bin/python || python3 -m venv .venv
@@ -69,6 +70,9 @@ rust-doc:
 
 rust-test:
 	cargo test --workspace --all-features
+
+bench:
+	cargo bench -p typra-core --bench query
 
 python-develop: install-tools
 	cd python/typra && env -u VIRTUAL_ENV $(MATURIN) develop --release

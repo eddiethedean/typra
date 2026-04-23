@@ -125,10 +125,14 @@ pub(crate) fn open_with_store<S: Store>(
         }
     }
 
-    let (catalog, latest) = if len == 0 {
-        (crate::catalog::Catalog::default(), HashMap::new())
+    let (catalog, latest, indexes) = if len == 0 {
+        (
+            crate::catalog::Catalog::default(),
+            HashMap::new(),
+            crate::index::IndexState::default(),
+        )
     } else {
-        replay::load_catalog_and_latest_rows(&mut store, segment_start)?
+        replay::load_catalog_latest_and_indexes(&mut store, segment_start)?
     };
 
     let db = Database {
@@ -138,6 +142,7 @@ pub(crate) fn open_with_store<S: Store>(
         segment_start,
         format_minor,
         latest,
+        indexes,
     };
     Ok(db)
 }

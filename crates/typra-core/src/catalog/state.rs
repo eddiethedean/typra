@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::catalog::codec::{CatalogRecordWire, MAX_COLLECTION_NAME_BYTES};
 use crate::error::{DbError, SchemaError};
-use crate::schema::{CollectionId, FieldDef, SchemaVersion};
+use crate::schema::{CollectionId, FieldDef, IndexDef, SchemaVersion};
 
 /// Snapshot of one registered collection (latest schema version).
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +15,7 @@ pub struct CollectionInfo {
     pub name: String,
     pub current_version: SchemaVersion,
     pub fields: Vec<FieldDef>,
+    pub indexes: Vec<IndexDef>,
     /// Single top-level field name for the primary key (`None` for legacy catalog v1 segments).
     pub primary_field: Option<String>,
 }
@@ -88,13 +89,22 @@ impl Catalog {
                 name,
                 schema_version,
                 fields,
+                indexes,
                 primary_field,
-            } => self.apply_create(collection_id, name, schema_version, fields, primary_field),
+            } => self.apply_create(
+                collection_id,
+                name,
+                schema_version,
+                fields,
+                indexes,
+                primary_field,
+            ),
             CatalogRecordWire::NewSchemaVersion {
                 collection_id,
                 schema_version,
                 fields,
-            } => self.apply_new_version(collection_id, schema_version, fields),
+                indexes,
+            } => self.apply_new_version(collection_id, schema_version, fields, indexes),
         }
     }
 
@@ -114,6 +124,7 @@ impl Catalog {
         name: String,
         schema_version: u32,
         fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
         primary_field: Option<String>,
     ) -> Result<(), DbError> {
         Self::validate_name(&name)?;
@@ -147,6 +158,7 @@ impl Catalog {
             name: name.clone(),
             current_version: SchemaVersion(1),
             fields,
+            indexes,
             primary_field,
         };
         self.by_id.insert(collection_id, info);
@@ -160,6 +172,7 @@ impl Catalog {
         collection_id: u32,
         schema_version: u32,
         fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
     ) -> Result<(), DbError> {
         let col = self.by_id.get_mut(&collection_id).ok_or(DbError::Schema(
             SchemaError::UnknownCollection { id: collection_id },
@@ -180,6 +193,7 @@ impl Catalog {
         }
         col.current_version = SchemaVersion(schema_version);
         col.fields = fields;
+        col.indexes = indexes;
         Ok(())
     }
 }
@@ -204,6 +218,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         };
         c.apply_record(w).unwrap();
@@ -216,6 +231,7 @@ mod tests {
                 ty: Type::Int64,
                 constraints: vec![],
             }],
+            indexes: vec![],
         };
         c.apply_record(w2).unwrap();
         assert_eq!(
@@ -232,6 +248,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         })
         .unwrap();
@@ -240,6 +257,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         });
         assert!(matches!(
@@ -256,6 +274,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         })
         .unwrap();
@@ -263,6 +282,7 @@ mod tests {
             collection_id: 1,
             schema_version: 3,
             fields: vec![],
+            indexes: vec![],
         });
         assert!(matches!(
             err,
@@ -280,6 +300,7 @@ mod tests {
             name: "b".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         };
         let bytes = encode_catalog_payload(&w);
@@ -299,6 +320,7 @@ mod tests {
             name: "z".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         })
         .unwrap();
@@ -316,6 +338,7 @@ mod tests {
             name: "".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         });
         assert!(matches!(
@@ -333,6 +356,7 @@ mod tests {
             name,
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         });
         assert!(matches!(
@@ -349,6 +373,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 2,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         });
         assert!(matches!(
@@ -368,6 +393,7 @@ mod tests {
             name: "a".to_string(),
             schema_version: 1,
             fields: vec![],
+            indexes: vec![],
             primary_field: None,
         });
         assert!(matches!(
@@ -391,6 +417,7 @@ mod tests {
                 ty: Type::Int64,
                 constraints: vec![],
             }],
+            indexes: vec![],
             primary_field: Some("missing".to_string()),
         });
         assert!(matches!(
@@ -411,6 +438,7 @@ mod tests {
                 ty: Type::Int64,
                 constraints: vec![],
             }],
+            indexes: vec![],
             primary_field: Some("id".to_string()),
         })
         .unwrap();
@@ -418,6 +446,7 @@ mod tests {
             collection_id: 1,
             schema_version: 2,
             fields: vec![],
+            indexes: vec![],
         });
         assert!(matches!(
             err,

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Secondary indexes (Rust)**: catalog `IndexDef`, insert-time index maintenance, persisted index segments, unique violations, minimal **query AST** (`get` / equality / `limit`), heuristic **`explain`**, **`Database::query_iter`** (pull-based row iterator), **`row_subset_by_field_defs`** for nested path projections.
+- **Python**: optional **`indexes_json`** on **`register_collection`**, **`collection(...).where` / `and_where` / `limit` / `explain` / `all`**, subset rows via **`all(fields=[...])`** (paths must match `fields_json`).
+- **Benchmarks**: Criterion bench **`crates/typra-core/benches/query.rs`** (`make bench`); compares **`get(pk)`**, indexed equality, and scan.
+- **Docs**: Python guide sections for queries, indexes, subset projection, and **DB-API / SQLAlchemy scope** (design-only for 0.7).
+
 ## [0.6.0] - 2026-04-21
 
 ### Added

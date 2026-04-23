@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use crate::error::{DbError, FormatError};
-use crate::schema::{Constraint, FieldDef, FieldPath, Type};
+use crate::schema::{Constraint, FieldDef, FieldPath, IndexDef, IndexKind, Type};
 
 /// Maximum UTF-8 length for a collection name (exclusive upper bound is 1024 bytes).
 pub const MAX_COLLECTION_NAME_BYTES: usize = 1023;
@@ -14,8 +14,10 @@ pub const CATALOG_PAYLOAD_VERSION_V1: u16 = 1;
 pub const CATALOG_PAYLOAD_VERSION_V2: u16 = 2;
 /// Current catalog write version: `primary_field` + [`FieldDef::constraints`].
 pub const CATALOG_PAYLOAD_VERSION_V3: u16 = 3;
+/// Catalog with `indexes` definitions (secondary indexes).
+pub const CATALOG_PAYLOAD_VERSION_V4: u16 = 4;
 /// What [`encode_catalog_payload`] writes (latest).
-pub const CATALOG_PAYLOAD_VERSION: u16 = CATALOG_PAYLOAD_VERSION_V3;
+pub const CATALOG_PAYLOAD_VERSION: u16 = CATALOG_PAYLOAD_VERSION_V4;
 
 pub const ENTRY_KIND_CREATE_COLLECTION: u16 = 1;
 pub const ENTRY_KIND_NEW_SCHEMA_VERSION: u16 = 2;
@@ -34,6 +36,9 @@ pub enum CatalogDecodeError {
     CollectionNameTooLong { got: usize },
     EmptyCollectionName,
     InvalidCreateSchemaVersion { got: u32 },
+    IndexNameTooLong { got: usize },
+    EmptyIndexName,
+    UnknownIndexKind { got: u8 },
 }
 
 impl From<CatalogDecodeError> for DbError {
@@ -54,6 +59,7 @@ pub fn encode_catalog_payload(record: &CatalogRecordWire) -> Vec<u8> {
             name,
             schema_version,
             fields,
+            indexes,
             primary_field,
         } => {
             out.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
@@ -61,17 +67,20 @@ pub fn encode_catalog_payload(record: &CatalogRecordWire) -> Vec<u8> {
             encode_name(&mut out, name);
             out.extend_from_slice(&schema_version.to_le_bytes());
             encode_fields_v3(&mut out, fields);
+            encode_indexes(&mut out, indexes);
             encode_optional_primary_name(&mut out, primary_field.as_deref());
         }
         CatalogRecordWire::NewSchemaVersion {
             collection_id,
             schema_version,
             fields,
+            indexes,
         } => {
             out.extend_from_slice(&ENTRY_KIND_NEW_SCHEMA_VERSION.to_le_bytes());
             out.extend_from_slice(&collection_id.to_le_bytes());
             out.extend_from_slice(&schema_version.to_le_bytes());
             encode_fields_v3(&mut out, fields);
+            encode_indexes(&mut out, indexes);
         }
     }
     out
@@ -85,6 +94,7 @@ pub enum CatalogRecordWire {
         name: String,
         schema_version: u32,
         fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
         /// Top-level segment name for the primary key (`None` for legacy v1 catalog segments).
         primary_field: Option<String>,
     },
@@ -92,6 +102,7 @@ pub enum CatalogRecordWire {
         collection_id: u32,
         schema_version: u32,
         fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
     },
 }
 
@@ -101,6 +112,7 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
     if ver != CATALOG_PAYLOAD_VERSION_V1
         && ver != CATALOG_PAYLOAD_VERSION_V2
         && ver != CATALOG_PAYLOAD_VERSION_V3
+        && ver != CATALOG_PAYLOAD_VERSION_V4
     {
         return Err(CatalogDecodeError::UnknownCatalogPayloadVersion { got: ver }.into());
     }
@@ -111,6 +123,11 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
             let name = decode_name(&mut cur)?;
             let schema_version = cur.take_u32()?;
             let fields = decode_fields(&mut cur, ver)?;
+            let indexes = if ver >= CATALOG_PAYLOAD_VERSION_V4 {
+                decode_indexes(&mut cur)?
+            } else {
+                Vec::new()
+            };
             let primary_field = if ver >= CATALOG_PAYLOAD_VERSION_V2 {
                 decode_optional_primary_name(&mut cur)?
             } else {
@@ -124,6 +141,7 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
                 name,
                 schema_version,
                 fields,
+                indexes,
                 primary_field,
             })
         }
@@ -131,6 +149,11 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
             let collection_id = cur.take_u32()?;
             let schema_version = cur.take_u32()?;
             let fields = decode_fields(&mut cur, ver)?;
+            let indexes = if ver >= CATALOG_PAYLOAD_VERSION_V4 {
+                decode_indexes(&mut cur)?
+            } else {
+                Vec::new()
+            };
             if cur.remaining() != 0 {
                 return Err(CatalogDecodeError::TrailingBytes.into());
             }
@@ -138,6 +161,7 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
                 collection_id,
                 schema_version,
                 fields,
+                indexes,
             })
         }
         _ => Err(CatalogDecodeError::UnknownEntryKind { got: kind }.into()),
@@ -187,6 +211,48 @@ fn decode_name(cur: &mut Cursor<'_>) -> Result<String, DbError> {
     }
     let bytes = cur.take_bytes(n)?;
     String::from_utf8(bytes).map_err(|_| CatalogDecodeError::InvalidUtf8.into())
+}
+
+fn encode_indexes(out: &mut Vec<u8>, indexes: &[IndexDef]) {
+    out.extend_from_slice(&(indexes.len() as u32).to_le_bytes());
+    for idx in indexes {
+        match idx.kind {
+            IndexKind::Unique => out.push(1),
+            IndexKind::NonUnique => out.push(2),
+        }
+        encode_field_path(out, &idx.path);
+        let b = idx.name.as_bytes();
+        out.extend_from_slice(&(b.len() as u32).to_le_bytes());
+        out.extend_from_slice(b);
+    }
+}
+
+fn decode_indexes(cur: &mut Cursor<'_>) -> Result<Vec<IndexDef>, DbError> {
+    let n = cur.take_u32()? as usize;
+    let mut v = Vec::with_capacity(n.min(1024));
+    for _ in 0..n {
+        let kind_tag = cur.take_u8()?;
+        let kind = match kind_tag {
+            1 => IndexKind::Unique,
+            2 => IndexKind::NonUnique,
+            _ => return Err(CatalogDecodeError::UnknownIndexKind { got: kind_tag }.into()),
+        };
+        let path = decode_field_path(cur)?;
+        let name_len = cur.take_u32()? as usize;
+        if name_len == 0 {
+            return Err(CatalogDecodeError::EmptyIndexName.into());
+        }
+        if name_len > MAX_COLLECTION_NAME_BYTES {
+            return Err(CatalogDecodeError::IndexNameTooLong { got: name_len }.into());
+        }
+        let bytes = cur.take_bytes(name_len)?;
+        let name = String::from_utf8(bytes).map_err(|_| CatalogDecodeError::InvalidUtf8)?;
+        if name.is_empty() {
+            return Err(CatalogDecodeError::EmptyIndexName.into());
+        }
+        v.push(IndexDef { name, path, kind });
+    }
+    Ok(v)
 }
 
 fn encode_fields_v3(out: &mut Vec<u8>, fields: &[FieldDef]) {
@@ -538,6 +604,7 @@ mod tests {
                 ty: Type::String,
                 constraints: Vec::new(),
             }],
+            indexes: vec![],
             primary_field: Some("title".to_string()),
         };
         let bytes = encode_catalog_payload(&rec);
@@ -551,6 +618,7 @@ mod tests {
             collection_id: 1,
             schema_version: 2,
             fields: vec![],
+            indexes: vec![],
         };
         let bytes = encode_catalog_payload(&rec);
         let got = decode_catalog_payload(&bytes).unwrap();

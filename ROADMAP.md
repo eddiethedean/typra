@@ -222,6 +222,8 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/t
 
 ### 0.7.0 — Secondary indexes (unique + non-unique) and simple filters
 
+**Status:** **Delivered** on `main` (Rust engine + Python query/index registration + docs; see [`CHANGELOG.md`](CHANGELOG.md) **Unreleased**).
+
 **Goal**: make real queries practical: equality filters on indexed fields and nested paths.
 
 - **Rust**

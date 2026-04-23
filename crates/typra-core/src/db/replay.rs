@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::catalog::{decode_catalog_payload, Catalog};
 use crate::error::{DbError, FormatError, SchemaError};
+use crate::index::{decode_index_payload, IndexState};
 use crate::record::{decode_record_payload, RowValue};
 use crate::schema::CollectionId;
 use crate::segments::header::SegmentType;
@@ -17,10 +18,10 @@ use super::LatestMap;
 
 /// One [`scan_segments`] pass, then apply schema segments to build `Catalog`, then replay record
 /// segments in order using the final catalog (same semantics as two separate full scans).
-pub(crate) fn load_catalog_and_latest_rows<S: Store>(
+pub(crate) fn load_catalog_latest_and_indexes<S: Store>(
     store: &mut S,
     segment_start: u64,
-) -> Result<(Catalog, LatestMap), DbError> {
+) -> Result<(Catalog, LatestMap, IndexState), DbError> {
     let metas = scan_segments(store, segment_start)?;
     let mut catalog = Catalog::default();
     for meta in &metas {
@@ -33,6 +34,17 @@ pub(crate) fn load_catalog_and_latest_rows<S: Store>(
     }
 
     let mut latest = HashMap::new();
+    let mut indexes = IndexState::default();
+    for meta in &metas {
+        if meta.header.segment_type != SegmentType::Index {
+            continue;
+        }
+        let payload = read_segment_payload(store, meta)?;
+        let entries = decode_index_payload(&payload)?;
+        for e in entries {
+            indexes.apply(e)?;
+        }
+    }
     for meta in &metas {
         if meta.header.segment_type != SegmentType::Record {
             continue;
@@ -81,5 +93,5 @@ pub(crate) fn load_catalog_and_latest_rows<S: Store>(
         }
         latest.insert((collection_id, decoded.pk.canonical_key_bytes()), full);
     }
-    Ok((catalog, latest))
+    Ok((catalog, latest, indexes))
 }

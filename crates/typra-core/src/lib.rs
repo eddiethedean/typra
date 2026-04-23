@@ -11,8 +11,10 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod file_format;
+pub mod index;
 pub mod manifest;
 pub mod publish;
+pub mod query;
 pub mod record;
 pub mod schema;
 pub mod segments;
@@ -32,6 +34,8 @@ pub use schema::CollectionSchema;
 pub use schema::Constraint;
 pub use schema::DbModel;
 pub use schema::FieldDef;
+pub use schema::IndexDef;
+pub use schema::IndexKind;
 pub use schema::SchemaVersion;
 pub use schema::Type;
 
@@ -46,5 +50,7 @@ pub mod prelude {
     pub use crate::schema::CollectionSchema;
     pub use crate::schema::DbModel;
     pub use crate::schema::FieldDef;
+    pub use crate::schema::IndexDef;
+    pub use crate::schema::IndexKind;
     pub use crate::schema::SchemaVersion;
 }

@@ -117,6 +117,8 @@ pub enum SchemaError {
     RowMissingField {
         name: String,
     },
+    /// Unique secondary index was violated (key already mapped to another primary key).
+    UniqueIndexViolation,
 }
 
 impl fmt::Display for ValidationError {
@@ -260,6 +262,7 @@ impl fmt::Display for SchemaError {
             SchemaError::RowMissingField { name } => {
                 write!(f, "insert row missing field {name:?}")
             }
+            SchemaError::UniqueIndexViolation => write!(f, "unique index violation"),
         }
     }
 }

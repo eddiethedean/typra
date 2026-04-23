@@ -56,13 +56,21 @@ Opening a **directory** path (or another non-file that cannot be used as a datab
 
 Returns the path string used to open the database (normalized by the OS path handling underlying the Rust core).
 
-### `register_collection(name: str, fields_json: str, primary_field: str) -> tuple[int, int]`
+### `register_collection(name: str, fields_json: str, primary_field: str, indexes_json: str | None = None) -> tuple[int, int]`
 
 Registers a **new** collection named `name` with schema version **1**. Collection names are **trimmed** of leading/trailing whitespace; empty names after trimming raise **`ValueError`**.
 
 `fields_json` must be a JSON **array** of field objects (see below). **`primary_field`** must name a **single-segment** top-level field present in that array; the primary key must be a **primitive** scalar (see [`migration_0.5_to_0.6.md`](migration_0.5_to_0.6.md)).
 
-If parsing or typing fails, **`ValueError`** is raised with a message describing the problem. If the name is already registered, **`ValueError`** is raised.
+Optional **`indexes_json`** is a JSON **array** of secondary index objects:
+
+| Key | Type | Meaning |
+|-----|------|--------|
+| **`name`** | string | Stable index name within the collection (non-empty, unique in the array). |
+| **`path`** | array of strings | Must **exactly** match a `path` entry in `fields_json`; the field must be a scalar or optional-of-scalar (not a list or object root). |
+| **`kind`** | string | `"unique"` for a uniqueness index, or `"index"` / `"non_unique"` for a non-unique index. |
+
+If parsing or typing fails, **`ValueError`** is raised with a message describing the problem. If the name is already registered, **`ValueError`** is raised. Unique index violations on **`insert`** also surface as **`ValueError`**.
 
 ### `insert(collection_name: str, row: dict) -> None`
 
@@ -79,6 +87,48 @@ In-memory databases use the same logical format as files. **`snapshot_bytes`** c
 ### `collection_names() -> list[str]`
 
 Returns registered collection names in **sorted order** (not insertion order).
+
+## Queries and the `Collection` handle
+
+### `collection(name: str) -> Collection`
+
+Returns a handle for **non-SQL** queries on `name`. Use **`where(path, value)`** for equality (path as a dotted string or tuple of segments), **`and_where`** for additional conjuncts, **`limit(n)`**, **`explain()`** for a simple plan string, and **`all()`** for matching rows as **`dict`** values.
+
+**`all(fields=...)`** optionally takes a list (or tuple) of paths; each path must match a field in `fields_json`. Only those fields are copied into each result dict (subset projection for large rows).
+
+Design reference: [`docs/05_query_planner_and_execution_spec.md`](05_query_planner_and_execution_spec.md).
+
+### Query example (verified in CI)
+
+```python
+import typra
+
+db = typra.Database.open_in_memory()
+fields = (
+    '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
+)
+indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
+db.register_collection("books", fields, "title", indexes)
+db.insert("books", {"title": "Hello", "year": 2020})
+explain = db.collection("books").where("title", "Hello").explain()
+rows = db.collection("books").where("title", "Hello").all(fields=["title"])
+print("index_lookup:", "IndexLookup" in explain)
+print("rows:", rows)
+```
+
+Output (checked by **`scripts/verify-doc-examples.sh`**):
+
+```text
+index_lookup: True
+rows: [{'title': 'Hello'}]
+```
+
+## DB-API 2.0 (PEP 249) and SQLAlchemy
+
+Typra does **not** ship a DB-API or SQLAlchemy integration in 0.7.x. Planned direction:
+
+- **DB-API 2.0** belongs after **transaction boundaries** land (see [`ROADMAP.md`](../ROADMAP.md) **0.8.0**): a `typra.dbapi`-style module would expose connection/cursor semantics over the native **`Database`** API, not over arbitrary SQL text.
+- **SQLAlchemy** would require a dialect or shim once queries and transactions are far enough along; Typra remains **non-SQL** first—use **`collection(...).where(...)`** for structured filters.
 
 ## `fields_json` (schema descriptor)
 
@@ -150,15 +200,15 @@ Registrations are **durable**: after you close the process and open the same pat
 |-----------|-------------------|
 | Invalid JSON, wrong JSON shape, unknown type, duplicate collection name, invalid collection name | **`ValueError`** |
 | I/O problems opening the file (missing parent dir, permission, is a directory, etc.) | **`OSError`** |
-| Engine reports “not implemented” (should not occur for supported 0.6.x calls) | **`RuntimeError`** |
+| Engine reports “not implemented” (should not occur for supported API paths) | **`RuntimeError`** |
 
 Always catch **`ValueError`** and **`OSError`** around `open`, `register_collection`, and **`insert`** in production code.
 
-## What is not in 0.6.x yet
+## What is not exposed in Python yet
 
-- SQL / rich **queries** and **secondary indexes**
-- **`register_schema_version`** from Python (Rust only for now)
-- Pydantic model inference (you pass explicit `fields_json`; the Rust engine still validates on insert)
+- Arbitrary **SQL** (use the structured query builder; see [Queries and the `Collection` handle](#queries-and-the-collection-handle) above).
+- **`register_schema_version`** (Rust-only for now).
+- Pydantic model inference (you pass explicit `fields_json`; the Rust engine still validates on insert).
 
 See [`ROADMAP.md`](../ROADMAP.md) for upcoming milestones.
 

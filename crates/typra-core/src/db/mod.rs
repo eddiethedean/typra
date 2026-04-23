@@ -9,10 +9,13 @@ mod replay;
 mod write;
 
 use std::collections::{BTreeMap, HashMap};
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
 use crate::error::{DbError, FormatError, SchemaError};
+use crate::index::IndexState;
+use crate::index::{encode_index_payload, IndexEntry};
 use crate::record::{encode_record_payload_v2, non_pk_defs_in_order, RowValue, ScalarValue};
 use crate::schema::{CollectionId, FieldDef, SchemaVersion};
 use crate::storage::{FileStore, Store, VecStore};
@@ -33,6 +36,8 @@ pub struct Database<S: Store = FileStore> {
     format_minor: u16,
     /// Latest row per `(collection_id, canonical primary-key bytes)`; last replayed insert wins.
     latest: LatestMap,
+    /// Secondary indexes rebuilt from replayed `Index` segments.
+    indexes: IndexState,
 }
 
 impl<S: Store> Database<S> {
@@ -53,6 +58,62 @@ impl<S: Store> Database<S> {
     /// All registered collection names in lexicographic order.
     pub fn collection_names(&self) -> Vec<String> {
         self.catalog.collection_names()
+    }
+
+    /// Read-only access to the in-memory secondary index state (rebuilt from `Index` segments).
+    pub fn index_state(&self) -> &IndexState {
+        &self.indexes
+    }
+
+    /// Execute a query against the current in-memory snapshot of the database.
+    pub fn query(
+        &self,
+        q: &crate::query::Query,
+    ) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
+        crate::query::execute_query(&self.catalog, &self.indexes, &self.latest, q)
+    }
+
+    /// Return a human-readable explanation of the chosen plan for `q`.
+    pub fn explain_query(&self, q: &crate::query::Query) -> Result<String, DbError> {
+        crate::query::explain_query(&self.catalog, q)
+    }
+
+    /// Lazy iterator over query rows (same semantics as [`Self::query`]).
+    ///
+    /// See [`crate::query::QueryRowIter`] — this is the v0.7 pull-based execution boundary, not a
+    /// full operator graph.
+    pub fn query_iter(
+        &self,
+        q: &crate::query::Query,
+    ) -> Result<crate::query::QueryRowIter<'_>, DbError> {
+        crate::query::execute_query_iter(&self.catalog, &self.indexes, &self.latest, q)
+    }
+
+    /// Register the collection schema defined by `T` (schema version 1).
+    pub fn register_model<T: crate::schema::DbModel>(
+        &mut self,
+    ) -> Result<(CollectionId, SchemaVersion), DbError> {
+        self.register_collection_with_indexes(
+            T::collection_name(),
+            T::fields(),
+            T::indexes(),
+            T::primary_field(),
+        )
+    }
+
+    /// Typed handle over a registered collection; `T` may be a *subset model*.
+    pub fn collection<'a, T: crate::schema::DbModel>(
+        &'a self,
+    ) -> Result<Collection<'a, S, T>, DbError> {
+        let cid = self.collection_id_named(T::collection_name())?;
+        validate_subset_model::<T>(self.catalog.get(cid).ok_or(DbError::Schema(
+            SchemaError::UnknownCollection { id: cid.0 },
+        ))?)?;
+        Ok(Collection {
+            db: self,
+            collection_id: cid,
+            _marker: PhantomData,
+        })
     }
 
     /// Look up [`CollectionId`] by collection name (leading/trailing whitespace trimmed).
@@ -76,6 +137,16 @@ impl<S: Store> Database<S> {
         fields: Vec<FieldDef>,
         primary_field: &str,
     ) -> Result<(CollectionId, SchemaVersion), DbError> {
+        self.register_collection_with_indexes(name, fields, vec![], primary_field)
+    }
+
+    pub fn register_collection_with_indexes(
+        &mut self,
+        name: &str,
+        fields: Vec<FieldDef>,
+        indexes: Vec<crate::schema::IndexDef>,
+        primary_field: &str,
+    ) -> Result<(CollectionId, SchemaVersion), DbError> {
         let name = helpers::normalize_collection_name(name)?;
         let pk = primary_field.trim();
         if pk.is_empty() {
@@ -92,6 +163,7 @@ impl<S: Store> Database<S> {
             name: name.clone(),
             schema_version: 1,
             fields,
+            indexes,
             primary_field: Some(pk.to_string()),
         };
         let payload = encode_catalog_payload(&wire);
@@ -113,6 +185,15 @@ impl<S: Store> Database<S> {
         id: CollectionId,
         fields: Vec<FieldDef>,
     ) -> Result<SchemaVersion, DbError> {
+        self.register_schema_version_with_indexes(id, fields, vec![])
+    }
+
+    pub fn register_schema_version_with_indexes(
+        &mut self,
+        id: CollectionId,
+        fields: Vec<FieldDef>,
+        indexes: Vec<crate::schema::IndexDef>,
+    ) -> Result<SchemaVersion, DbError> {
         let current = self
             .catalog
             .get(id)
@@ -126,6 +207,7 @@ impl<S: Store> Database<S> {
             collection_id: id.0,
             schema_version: next_v,
             fields,
+            indexes,
         };
         let payload = encode_catalog_payload(&wire);
         write::append_schema_segment_and_publish(
@@ -148,7 +230,7 @@ impl<S: Store> Database<S> {
         mut row: BTreeMap<String, RowValue>,
     ) -> Result<(), DbError> {
         write::ensure_header_v0_5(&mut self.store, &mut self.format_minor)?;
-        let (payload, full) = {
+        let (payload, full, index_entries) = {
             let col = self.catalog.get(collection_id).ok_or(DbError::Schema(
                 SchemaError::UnknownCollection {
                     id: collection_id.0,
@@ -221,9 +303,43 @@ impl<S: Store> Database<S> {
             for (def, v) in &non_pk {
                 full_map.insert(def.path.0[0].to_string(), v.clone());
             }
+            let mut index_entries: Vec<IndexEntry> = Vec::new();
+            for idx in &col.indexes {
+                let Some(v) = scalar_at_path(&full_map, &idx.path) else {
+                    continue;
+                };
+                index_entries.push(IndexEntry {
+                    collection_id: collection_id.0,
+                    index_name: idx.name.clone(),
+                    kind: idx.kind,
+                    index_key: v.canonical_key_bytes(),
+                    pk_key: pk_scalar.canonical_key_bytes(),
+                });
+            }
             let pk_key = pk_scalar.canonical_key_bytes();
-            (payload, (pk_key, full_map))
+            (payload, (pk_key, full_map), index_entries)
         };
+        for e in &index_entries {
+            if e.kind == crate::schema::IndexKind::Unique {
+                if let Some(existing) =
+                    self.indexes
+                        .unique_lookup(e.collection_id, &e.index_name, &e.index_key)
+                {
+                    if existing != e.pk_key.as_slice() {
+                        return Err(DbError::Schema(SchemaError::UniqueIndexViolation));
+                    }
+                }
+            }
+        }
+        if !index_entries.is_empty() {
+            let bytes = encode_index_payload(&index_entries);
+            write::append_index_segment_and_publish(
+                &mut self.store,
+                self.segment_start,
+                &mut self.format_minor,
+                &bytes,
+            )?;
+        }
         write::append_record_segment_and_publish(
             &mut self.store,
             self.segment_start,
@@ -231,6 +347,9 @@ impl<S: Store> Database<S> {
             &payload,
         )?;
         self.latest.insert((collection_id.0, full.0), full.1);
+        for e in index_entries {
+            self.indexes.apply(e)?;
+        }
         Ok(())
     }
 
@@ -267,6 +386,209 @@ impl<S: Store> Database<S> {
         let key = (collection_id.0, pk.canonical_key_bytes());
         Ok(self.latest.get(&key).cloned())
     }
+}
+
+pub struct Collection<'a, S: Store, T: crate::schema::DbModel> {
+    db: &'a Database<S>,
+    collection_id: CollectionId,
+    _marker: PhantomData<T>,
+}
+
+impl<'a, S: Store, T: crate::schema::DbModel> Collection<'a, S, T> {
+    pub fn where_eq(
+        &self,
+        path: crate::schema::FieldPath,
+        value: ScalarValue,
+    ) -> QueryBuilder<'a, S, T> {
+        QueryBuilder {
+            db: self.db,
+            collection_id: self.collection_id,
+            predicate: Some(crate::query::Predicate::Eq { path, value }),
+            limit: None,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn all(&self) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
+        let q = crate::query::Query {
+            collection: self.collection_id,
+            predicate: None,
+            limit: None,
+        };
+        let rows = self.db.query(&q)?;
+        Ok(rows.into_iter().map(project_row::<T>).collect())
+    }
+}
+
+pub struct QueryBuilder<'a, S: Store, T: crate::schema::DbModel> {
+    db: &'a Database<S>,
+    collection_id: CollectionId,
+    predicate: Option<crate::query::Predicate>,
+    limit: Option<usize>,
+    _marker: PhantomData<T>,
+}
+
+impl<'a, S: Store, T: crate::schema::DbModel> QueryBuilder<'a, S, T> {
+    pub fn limit(mut self, n: usize) -> Self {
+        self.limit = Some(n);
+        self
+    }
+
+    pub fn all(self) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
+        let q = crate::query::Query {
+            collection: self.collection_id,
+            predicate: self.predicate,
+            limit: self.limit,
+        };
+        let rows = self.db.query(&q)?;
+        Ok(rows.into_iter().map(project_row::<T>).collect())
+    }
+
+    pub fn explain(self) -> Result<String, DbError> {
+        let q = crate::query::Query {
+            collection: self.collection_id,
+            predicate: self.predicate,
+            limit: self.limit,
+        };
+        self.db.explain_query(&q)
+    }
+}
+
+fn validate_subset_model<T: crate::schema::DbModel>(
+    col: &crate::catalog::CollectionInfo,
+) -> Result<(), DbError> {
+    let want_primary = T::primary_field();
+    let Some(pk) = col.primary_field.as_deref() else {
+        return Err(DbError::Schema(SchemaError::NoPrimaryKey {
+            collection_id: col.id.0,
+        }));
+    };
+    if pk != want_primary {
+        return Err(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+            name: want_primary.to_string(),
+        }));
+    }
+    let model_fields = T::fields();
+    for mf in &model_fields {
+        let Some(cf) = col.fields.iter().find(|f| f.path == mf.path) else {
+            return Err(DbError::Schema(SchemaError::RowUnknownField {
+                name: mf.path.0.last().map(|s| s.to_string()).unwrap_or_default(),
+            }));
+        };
+        if cf.ty != mf.ty {
+            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+        }
+    }
+    Ok(())
+}
+
+/// Build a row map containing only the listed fields (same rules as subset-model projection).
+pub fn row_subset_by_field_defs(
+    row: &BTreeMap<String, RowValue>,
+    wanted: &[FieldDef],
+) -> BTreeMap<String, RowValue> {
+    let mut out: BTreeMap<String, RowValue> = BTreeMap::new();
+    for f in wanted {
+        let segs = &f.path.0;
+        if segs.is_empty() {
+            continue;
+        }
+        let Some(leaf) = row_value_at_path_segments(row, segs) else {
+            continue;
+        };
+        let root = segs[0].to_string();
+        if segs.len() == 1 {
+            out.insert(root, leaf);
+        } else {
+            let nested = row_value_nested_object_path(&segs[1..], leaf);
+            match out.get_mut(&root) {
+                Some(existing) => merge_row_value_trees(existing, nested),
+                None => {
+                    out.insert(root, nested);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn row_value_at_path_segments(
+    row: &BTreeMap<String, RowValue>,
+    path: &[std::borrow::Cow<'static, str>],
+) -> Option<RowValue> {
+    if path.is_empty() {
+        return None;
+    }
+    let mut cur = row.get(path[0].as_ref())?;
+    for seg in path.iter().skip(1) {
+        cur = match cur {
+            RowValue::Object(m) => m.get(seg.as_ref())?,
+            RowValue::None => return None,
+            _ => return None,
+        };
+    }
+    Some(cur.clone())
+}
+
+/// Build `Object({ seg[0]: Object({ seg[1]: ... leaf }) })` for non-empty `seg`.
+fn row_value_nested_object_path(
+    segments: &[std::borrow::Cow<'static, str>],
+    leaf: RowValue,
+) -> RowValue {
+    debug_assert!(!segments.is_empty());
+    if segments.len() == 1 {
+        let mut m = BTreeMap::new();
+        m.insert(segments[0].to_string(), leaf);
+        RowValue::Object(m)
+    } else {
+        let mut m = BTreeMap::new();
+        m.insert(
+            segments[0].to_string(),
+            row_value_nested_object_path(&segments[1..], leaf),
+        );
+        RowValue::Object(m)
+    }
+}
+
+fn merge_row_value_trees(into: &mut RowValue, from: RowValue) {
+    match (&mut *into, from) {
+        (RowValue::Object(m1), RowValue::Object(m2)) => {
+            for (k, v2) in m2 {
+                match m1.entry(k) {
+                    std::collections::btree_map::Entry::Vacant(e) => {
+                        e.insert(v2);
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut e) => {
+                        merge_row_value_trees(e.get_mut(), v2);
+                    }
+                }
+            }
+        }
+        (slot, from) => *slot = from,
+    }
+}
+
+fn project_row<T: crate::schema::DbModel>(
+    row: BTreeMap<String, RowValue>,
+) -> BTreeMap<String, RowValue> {
+    row_subset_by_field_defs(&row, &T::fields())
+}
+
+pub(crate) fn scalar_at_path(
+    row: &BTreeMap<String, RowValue>,
+    path: &crate::schema::FieldPath,
+) -> Option<ScalarValue> {
+    let mut cur: Option<&RowValue> = None;
+    for (i, seg) in path.0.iter().enumerate() {
+        let key = seg.as_ref();
+        cur = match (i, cur) {
+            (0, _) => row.get(key),
+            (_, Some(RowValue::Object(map))) => map.get(key),
+            (_, Some(RowValue::None)) => return None,
+            _ => return None,
+        };
+    }
+    cur.and_then(|v| v.as_scalar())
 }
 
 impl Database<FileStore> {
@@ -312,8 +634,10 @@ impl Database<VecStore> {
 mod tests {
     use super::Database;
     use crate::db::open;
+    use crate::db::write;
     use crate::error::FormatError;
     use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
+    use crate::index::{encode_index_payload, IndexEntry};
     use crate::schema::{FieldDef, Type};
     use crate::segments::header::{SegmentHeader, SegmentType};
     use crate::segments::writer::SegmentWriter;
@@ -321,6 +645,7 @@ mod tests {
     use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
     use crate::DbError;
     use std::borrow::Cow;
+    use std::collections::BTreeMap;
 
     fn new_store() -> FileStore {
         let f = tempfile::NamedTempFile::new().unwrap();
@@ -460,5 +785,252 @@ mod tests {
         let c = db.catalog().get(crate::schema::CollectionId(1)).unwrap();
         assert_eq!(c.name, "books");
         assert_eq!(c.fields.len(), 1);
+    }
+
+    #[test]
+    fn index_segment_replay_builds_index_state_on_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        {
+            let mut db = Database::open(&path).unwrap();
+            let (id, _v) = db
+                .register_collection("books", vec![path_field("title")], "title")
+                .unwrap();
+            let payload = encode_index_payload(&[IndexEntry {
+                collection_id: id.0,
+                index_name: "title_idx".to_string(),
+                kind: crate::schema::IndexKind::NonUnique,
+                index_key: b"Hello".to_vec(),
+                pk_key: b"Hello".to_vec(),
+            }]);
+            write::append_index_segment_and_publish(
+                &mut db.store,
+                db.segment_start,
+                &mut db.format_minor,
+                &payload,
+            )
+            .unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        let got = db
+            .index_state()
+            .non_unique_lookup(1, "title_idx", b"Hello")
+            .unwrap();
+        assert_eq!(got, vec![b"Hello".to_vec()]);
+    }
+
+    #[test]
+    fn query_uses_non_unique_index_for_equality_filter() {
+        use crate::query::{Predicate, Query};
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+        use crate::{RowValue, ScalarValue};
+        use std::collections::BTreeMap;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+        let mut year_def = path_field("year");
+        year_def.ty = Type::Int64;
+        let fields = vec![path_field("title"), year_def];
+        let indexes = vec![IndexDef {
+            name: "title_idx".to_string(),
+            path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes("books", fields, indexes, "title")
+            .unwrap();
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("title".to_string(), RowValue::String("Hello".to_string()));
+            m.insert("year".to_string(), RowValue::Int64(2020));
+            m
+        })
+        .unwrap();
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("title".to_string(), RowValue::String("World".to_string()));
+            m.insert("year".to_string(), RowValue::Int64(2021));
+            m
+        })
+        .unwrap();
+
+        let q = Query {
+            collection: cid,
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
+                value: ScalarValue::String("Hello".to_string()),
+            }),
+            limit: None,
+        };
+        let explain = db.explain_query(&q).unwrap();
+        assert!(explain.contains("IndexLookup"));
+        let rows = db.query(&q).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("year"), Some(&RowValue::Int64(2020)));
+    }
+
+    #[test]
+    fn subset_model_projection_returns_only_declared_fields() {
+        use crate::schema::{DbModel, FieldDef, FieldPath, Type};
+        use crate::RowValue;
+        use std::borrow::Cow;
+        use std::collections::BTreeMap;
+
+        #[allow(dead_code)]
+        struct BookFull {
+            title: String,
+            year: i64,
+        }
+
+        #[allow(dead_code)]
+        struct BookTitleOnly {
+            title: String,
+        }
+
+        impl DbModel for BookFull {
+            fn collection_name() -> &'static str {
+                "books"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("title")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("year")]),
+                        ty: Type::Int64,
+                        constraints: vec![],
+                    },
+                ]
+            }
+            fn primary_field() -> &'static str {
+                "title"
+            }
+        }
+
+        impl DbModel for BookTitleOnly {
+            fn collection_name() -> &'static str {
+                "books"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![FieldDef {
+                    path: FieldPath(vec![Cow::Borrowed("title")]),
+                    ty: Type::String,
+                    constraints: vec![],
+                }]
+            }
+            fn primary_field() -> &'static str {
+                "title"
+            }
+        }
+
+        let mut db = Database::open_in_memory().unwrap();
+        let (cid, _) = db.register_model::<BookFull>().unwrap();
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("title".to_string(), RowValue::String("Hello".to_string()));
+            m.insert("year".to_string(), RowValue::Int64(2020));
+            m
+        })
+        .unwrap();
+
+        let books = db.collection::<BookTitleOnly>().unwrap();
+        let rows = books.all().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0],
+            BTreeMap::from([("title".to_string(), RowValue::String("Hello".to_string()))])
+        );
+    }
+
+    #[test]
+    fn query_iter_matches_execute_query_for_indexed_equality() {
+        use crate::query::{Predicate, Query};
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+        use crate::{RowValue, ScalarValue};
+
+        let mut db = Database::open_in_memory().unwrap();
+        let mut year_def = path_field("year");
+        year_def.ty = Type::Int64;
+        let fields = vec![path_field("title"), year_def];
+        let indexes = vec![IndexDef {
+            name: "title_idx".to_string(),
+            path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes("books", fields, indexes, "title")
+            .unwrap();
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("title".to_string(), RowValue::String("Hello".to_string()));
+            m.insert("year".to_string(), RowValue::Int64(2020));
+            m
+        })
+        .unwrap();
+
+        let q = Query {
+            collection: cid,
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
+                value: ScalarValue::String("Hello".to_string()),
+            }),
+            limit: None,
+        };
+        let mut from_iter: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+        let mut from_vec = db.query(&q).unwrap();
+        from_iter.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+        from_vec.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+        assert_eq!(from_iter, from_vec);
+    }
+
+    #[test]
+    fn subset_projection_merges_nested_paths_under_shared_object() {
+        use crate::schema::{DbModel, FieldDef, FieldPath, Type};
+        use crate::RowValue;
+        use std::borrow::Cow;
+        struct Sub;
+        impl DbModel for Sub {
+            fn collection_name() -> &'static str {
+                "x"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("b")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("c")]),
+                        ty: Type::Int64,
+                        constraints: vec![],
+                    },
+                ]
+            }
+            fn primary_field() -> &'static str {
+                "id"
+            }
+        }
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), RowValue::String("pk".to_string()));
+        let inner = BTreeMap::from([
+            ("b".to_string(), RowValue::String("B".to_string())),
+            ("c".to_string(), RowValue::Int64(42)),
+        ]);
+        row.insert("a".to_string(), RowValue::Object(inner));
+
+        let out = super::project_row::<Sub>(row);
+        let a = out.get("a").unwrap();
+        let RowValue::Object(m) = a else {
+            panic!("expected object");
+        };
+        assert_eq!(m.get("b"), Some(&RowValue::String("B".to_string())));
+        assert_eq!(m.get("c"), Some(&RowValue::Int64(42)));
+        assert_eq!(out.len(), 1);
     }
 }

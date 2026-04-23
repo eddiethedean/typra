@@ -45,6 +45,7 @@ fn decode_rejects_trailing_garbage_after_valid_payload() {
         collection_id: 1,
         schema_version: 2,
         fields: vec![],
+        indexes: vec![],
     };
     let mut bytes = encode_catalog_payload(&rec);
     bytes.push(0xff);
@@ -71,6 +72,7 @@ fn decode_rejects_truncated_mid_stream() {
         name: "x".to_string(),
         schema_version: 1,
         fields: vec![],
+        indexes: vec![],
         primary_field: None,
     };
     let full = encode_catalog_payload(&rec);
@@ -135,6 +137,7 @@ fn roundtrip_all_primitive_field_types() {
         name: "prim".to_string(),
         schema_version: 1,
         fields,
+        indexes: vec![],
         primary_field: Some("a".to_string()),
     };
     let bytes = encode_catalog_payload(&rec);
@@ -176,6 +179,7 @@ fn roundtrip_nested_types_optional_list_object_enum() {
         name: "nested".to_string(),
         schema_version: 1,
         fields,
+        indexes: vec![],
         primary_field: Some("opt".to_string()),
     };
     let bytes = encode_catalog_payload(&rec);
@@ -194,6 +198,7 @@ fn decode_rejects_invalid_utf8_in_collection_name() {
     b.push(0xff);
     b.extend_from_slice(&1u32.to_le_bytes()); // schema_version must be 1 for apply, decode still reads
     b.extend_from_slice(&0u32.to_le_bytes()); // 0 fields
+    b.extend_from_slice(&0u32.to_le_bytes()); // 0 indexes (v4+)
     b.extend_from_slice(&0u32.to_le_bytes()); // v2 optional primary absent
     let err = decode_catalog_payload(&b).unwrap_err();
     assert!(matches!(
@@ -231,6 +236,7 @@ fn decode_v2_create_rejects_trailing_bytes_after_primary() {
         name: "c".to_string(),
         schema_version: 1,
         fields: vec![],
+        indexes: vec![],
         primary_field: None,
     };
     let mut bytes = encode_catalog_payload(&rec);
@@ -252,6 +258,7 @@ fn decode_rejects_optional_primary_name_too_long() {
     b.push(b'x');
     b.extend_from_slice(&1u32.to_le_bytes());
     b.extend_from_slice(&0u32.to_le_bytes()); // fields
+    b.extend_from_slice(&0u32.to_le_bytes()); // indexes (v4+)
     let too_long = MAX_COLLECTION_NAME_BYTES + 1;
     b.extend_from_slice(&(too_long as u32).to_le_bytes());
     b.extend(vec![b'a'; too_long]);
@@ -343,6 +350,7 @@ fn decode_rejects_unknown_field_type_tag() {
     b.extend_from_slice(&1u32.to_le_bytes());
     b.push(b'f');
     b.push(200u8); // unknown type tag
+    b.extend_from_slice(&0u32.to_le_bytes()); // 0 indexes (v4+)
     b.extend_from_slice(&0u32.to_le_bytes()); // v2 optional primary absent
     let err = decode_catalog_payload(&b).unwrap_err();
     assert!(matches!(
@@ -365,6 +373,7 @@ fn decode_rejects_optional_type_when_inner_tag_missing() {
     b.extend_from_slice(&1u32.to_le_bytes());
     b.push(b'f');
     b.push(8u8); // TAG_OPTIONAL — truncated before inner type tag
+    b.extend_from_slice(&0u32.to_le_bytes()); // 0 indexes (v4+)
     b.extend_from_slice(&0u32.to_le_bytes()); // v2 optional primary absent
     let err = decode_catalog_payload(&b).unwrap_err();
     assert!(matches!(

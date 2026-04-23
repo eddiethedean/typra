@@ -12,9 +12,10 @@ use typra_core::Database as CoreDatabase;
 use crate::errors::db_error_to_py;
 use crate::fields_json;
 use crate::inner_db::InnerDb;
+use crate::query as query_api;
 use crate::row_values;
 
-fn lock_inner(inner: &Mutex<InnerDb>) -> PyResult<MutexGuard<'_, InnerDb>> {
+pub(crate) fn lock_inner(inner: &Mutex<InnerDb>) -> PyResult<MutexGuard<'_, InnerDb>> {
     inner
         .lock()
         .map_err(|e| PyRuntimeError::new_err(format!("database lock poisoned: {e}")))
@@ -26,7 +27,7 @@ pub struct Database {
     pub(crate) inner: Mutex<InnerDb>,
 }
 
-fn collection_info(inner: &Mutex<InnerDb>, name: &str) -> PyResult<CollectionInfo> {
+pub(crate) fn collection_info(inner: &Mutex<InnerDb>, name: &str) -> PyResult<CollectionInfo> {
     let g = lock_inner(inner)?;
     let cid = g.collection_id_named(name).map_err(db_error_to_py)?;
     g.catalog()
@@ -72,6 +73,10 @@ impl Database {
     ///     fields_json (str): JSON array of field objects, e.g.
     ///         ``[{"path": ["title"], "type": "string"}, ...]``. See the package README for the v1 shape.
     ///     primary_field (str): Top-level field name used as the primary key.
+    ///     indexes_json (str | None): Optional JSON array of index objects
+    ///         ``[{"name": "...", "path": ["field"], "kind": "unique"|"index"|"non_unique"}, ...]``.
+    ///         Each ``path`` must match a field in ``fields_json``; only scalar (or optional scalar)
+    ///         fields may be indexed.
     ///
     /// Returns:
     ///     tuple[int, int]: ``(collection_id, schema_version)`` (both ``1`` for a new collection).
@@ -79,16 +84,23 @@ impl Database {
     /// Raises:
     ///     ValueError: Invalid JSON or schema rules (including unknown types for unsupported shapes).
     ///     OSError / RuntimeError: Mapped from engine errors where applicable.
+    #[pyo3(signature = (name, fields_json, primary_field, indexes_json=None))]
     fn register_collection(
         &self,
         name: &str,
         fields_json: &str,
         primary_field: &str,
+        indexes_json: Option<&str>,
     ) -> PyResult<(u32, u32)> {
         let fields = fields_json::fields_from_json(fields_json).map_err(PyValueError::new_err)?;
+        let indexes = match indexes_json {
+            None => Vec::new(),
+            Some(s) if s.trim().is_empty() => Vec::new(),
+            Some(s) => fields_json::indexes_from_json(s, &fields).map_err(PyValueError::new_err)?,
+        };
         let mut g = lock_inner(&self.inner)?;
         let (id, v) = g
-            .register_collection(name, fields, primary_field)
+            .register_collection_with_indexes(name, fields, indexes, primary_field)
             .map_err(db_error_to_py)?;
         Ok((id.0, v.0))
     }
@@ -97,6 +109,22 @@ impl Database {
     fn collection_names(&self) -> PyResult<Vec<String>> {
         let g = lock_inner(&self.inner)?;
         Ok(g.collection_names())
+    }
+
+    /// Return a collection handle for building queries.
+    fn collection(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        name: &str,
+    ) -> PyResult<query_api::Collection> {
+        // Validate early that the collection exists.
+        let _ = collection_info(&slf.inner, name)?;
+        let any: Py<PyAny> = slf.into_py(py);
+        let db: Py<Database> = any.bind(py).downcast::<Database>()?.clone().unbind();
+        Ok(query_api::Collection {
+            db,
+            name: name.to_string(),
+        })
     }
 
     /// Insert or replace one row (all top-level fields required per schema).

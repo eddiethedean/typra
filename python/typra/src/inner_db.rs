@@ -4,8 +4,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::BTreeMap;
 
+use typra_core::query::Query;
 use typra_core::record::{RowValue, ScalarValue};
-use typra_core::schema::{CollectionId, FieldDef, SchemaVersion};
+use typra_core::schema::{CollectionId, FieldDef, IndexDef, SchemaVersion};
 use typra_core::storage::{FileStore, VecStore};
 use typra_core::Database as CoreDatabase;
 
@@ -15,15 +16,20 @@ pub(crate) enum InnerDb {
 }
 
 impl InnerDb {
-    pub(crate) fn register_collection(
+    pub(crate) fn register_collection_with_indexes(
         &mut self,
         name: &str,
         fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
         primary_field: &str,
     ) -> Result<(CollectionId, SchemaVersion), typra_core::DbError> {
         match self {
-            InnerDb::File(d) => d.register_collection(name, fields, primary_field),
-            InnerDb::Mem(d) => d.register_collection(name, fields, primary_field),
+            InnerDb::File(d) => {
+                d.register_collection_with_indexes(name, fields, indexes, primary_field)
+            }
+            InnerDb::Mem(d) => {
+                d.register_collection_with_indexes(name, fields, indexes, primary_field)
+            }
         }
     }
 
@@ -70,6 +76,23 @@ impl InnerDb {
         match self {
             InnerDb::File(d) => d.get(id, pk),
             InnerDb::Mem(d) => d.get(id, pk),
+        }
+    }
+
+    pub(crate) fn query(
+        &self,
+        q: &Query,
+    ) -> Result<Vec<BTreeMap<String, RowValue>>, typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.query(q),
+            InnerDb::Mem(d) => d.query(q),
+        }
+    }
+
+    pub(crate) fn explain_query(&self, q: &Query) -> Result<String, typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.explain_query(q),
+            InnerDb::Mem(d) => d.explain_query(q),
         }
     }
 

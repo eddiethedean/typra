@@ -12,6 +12,7 @@ pub enum SegmentType {
     Record = 2,
     Manifest = 3,
     Checkpoint = 4,
+    Index = 5,
 }
 
 impl SegmentType {
@@ -21,6 +22,7 @@ impl SegmentType {
             2 => SegmentType::Record,
             3 => SegmentType::Manifest,
             4 => SegmentType::Checkpoint,
+            5 => SegmentType::Index,
             _ => return None,
         })
     }

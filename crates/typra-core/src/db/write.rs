@@ -85,3 +85,25 @@ pub(crate) fn append_record_segment_and_publish<S: Store>(
     store.sync()?;
     Ok(())
 }
+
+pub(crate) fn append_index_segment_and_publish<S: Store>(
+    store: &mut S,
+    segment_start: u64,
+    format_minor: &mut u16,
+    payload: &[u8],
+) -> Result<(), DbError> {
+    ensure_header_v0_5(store, format_minor)?;
+    let file_len = store.len()?;
+    let mut writer = SegmentWriter::new(store, file_len.max(segment_start));
+    writer.append(
+        SegmentHeader {
+            segment_type: SegmentType::Index,
+            payload_len: 0,
+            payload_crc32c: 0,
+        },
+        payload,
+    )?;
+    let _ = append_manifest_and_publish(store, segment_start)?;
+    store.sync()?;
+    Ok(())
+}

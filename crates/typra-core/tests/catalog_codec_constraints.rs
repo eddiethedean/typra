@@ -33,6 +33,7 @@ fn roundtrip_create_collection_with_constraints_v3() {
                 constraints: vec![Constraint::Email],
             },
         ],
+        indexes: vec![],
         primary_field: Some("id".to_string()),
     };
     let bytes = encode_catalog_payload(&rec);
@@ -52,6 +53,7 @@ fn decode_rejects_unknown_constraint_tag() {
             ty: Type::Int64,
             constraints: vec![Constraint::MinI64(0)],
         }],
+        indexes: vec![],
         primary_field: Some("x".to_string()),
     };
     let mut bytes = encode_catalog_payload(&rec);
@@ -76,6 +78,7 @@ fn decode_rejects_unknown_type_tag() {
             ty: Type::String,
             constraints: vec![],
         }],
+        indexes: vec![],
         primary_field: Some("x".to_string()),
     };
     let mut bytes = encode_catalog_payload(&rec);

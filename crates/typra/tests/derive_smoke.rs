@@ -1,7 +1,11 @@
 use typra::DbModel;
 
 #[derive(DbModel)]
-struct Smoke;
+#[allow(dead_code)]
+struct Smoke {
+    #[db(primary)]
+    id: String,
+}
 
 fn assert_model<T: DbModel>() {}
 

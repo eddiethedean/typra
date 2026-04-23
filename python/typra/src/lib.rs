@@ -5,6 +5,7 @@ mod database;
 mod errors;
 mod fields_json;
 mod inner_db;
+mod query;
 mod row_values;
 
 use pyo3::prelude::*;
@@ -19,5 +20,7 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<database::Database>()?;
+    m.add_class::<query::Collection>()?;
+    m.add_class::<query::QueryBuilder>()?;
     Ok(())
 }

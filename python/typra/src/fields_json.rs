@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 
 use serde_json::Value;
-use typra_core::schema::{Constraint, FieldDef, FieldPath, Type};
+use typra_core::schema::{Constraint, FieldDef, FieldPath, IndexDef, IndexKind, Type};
 
 /// Parse the `fields_json` string passed to ``Database.register_collection`` into engine [`FieldDef`] values.
 ///
@@ -163,4 +163,97 @@ fn primitive_type(s: &str) -> Result<Type, String> {
         "timestamp" => Type::Timestamp,
         _ => return Err(format!("unknown primitive type {s:?}")),
     })
+}
+
+fn type_is_indexable_scalar(ty: &Type) -> bool {
+    match ty {
+        Type::Optional(inner) => type_is_indexable_scalar(inner),
+        Type::Bool
+        | Type::Int64
+        | Type::Uint64
+        | Type::Float64
+        | Type::String
+        | Type::Bytes
+        | Type::Uuid
+        | Type::Timestamp
+        | Type::Enum(_) => true,
+        Type::List(_) | Type::Object(_) => false,
+    }
+}
+
+fn field_ty_for_path<'a>(fields: &'a [FieldDef], path: &FieldPath) -> Option<&'a Type> {
+    fields.iter().find(|f| &f.path == path).map(|f| &f.ty)
+}
+
+/// Parse ``indexes_json`` for ``Database.register_collection`` into engine [`IndexDef`] values.
+///
+/// Each index ``path`` must exactly match a [`FieldDef::path`] in ``fields``, and the field type
+/// must be indexable (scalar or optional-of-scalar, or enum); list and object roots are rejected.
+pub fn indexes_from_json(s: &str, fields: &[FieldDef]) -> Result<Vec<IndexDef>, String> {
+    let v: Value = serde_json::from_str(s).map_err(|e| e.to_string())?;
+    let arr = v
+        .as_array()
+        .ok_or_else(|| "indexes_json must be a JSON array".to_string())?;
+    let mut out = Vec::with_capacity(arr.len());
+    let mut seen_names = std::collections::HashSet::<String>::new();
+    for item in arr {
+        let obj = item
+            .as_object()
+            .ok_or_else(|| "each index must be a JSON object".to_string())?;
+        let name = obj
+            .get("name")
+            .and_then(|x| x.as_str())
+            .ok_or_else(|| "index missing \"name\" or name is not a string".to_string())?
+            .trim();
+        if name.is_empty() {
+            return Err("index \"name\" must be non-empty".to_string());
+        }
+        if !seen_names.insert(name.to_string()) {
+            return Err(format!("duplicate index name {name:?}"));
+        }
+        let path = obj
+            .get("path")
+            .ok_or_else(|| "index missing \"path\"".to_string())?;
+        let parts: Vec<Cow<'static, str>> = path
+            .as_array()
+            .ok_or_else(|| "index \"path\" must be an array of strings".to_string())?
+            .iter()
+            .map(|p| {
+                p.as_str()
+                    .map(|s| Cow::Owned(s.to_string()))
+                    .ok_or_else(|| "index path segment must be a string".to_string())
+            })
+            .collect::<Result<_, _>>()?;
+        let path = FieldPath::new(parts).map_err(|e| e.to_string())?;
+        let ty = field_ty_for_path(fields, &path).ok_or_else(|| {
+            format!(
+                "index {:?} path does not match any field in fields_json",
+                name
+            )
+        })?;
+        if !type_is_indexable_scalar(ty) {
+            return Err(format!(
+                "index {name:?} path must resolve to a scalar field (not list or object root)"
+            ));
+        }
+        let kind_s = obj
+            .get("kind")
+            .and_then(|x| x.as_str())
+            .ok_or_else(|| "index missing \"kind\" or kind is not a string".to_string())?;
+        let kind = match kind_s {
+            "unique" => IndexKind::Unique,
+            "index" | "non_unique" => IndexKind::NonUnique,
+            _ => {
+                return Err(format!(
+                    "index {name:?}: kind must be \"unique\", \"index\", or \"non_unique\" (got {kind_s:?})"
+                ));
+            }
+        };
+        out.push(IndexDef {
+            name: name.to_string(),
+            path,
+            kind,
+        });
+    }
+    Ok(out)
 }
