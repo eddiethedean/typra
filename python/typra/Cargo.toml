@@ -9,6 +9,7 @@ readme = "README.md"
 include = [
     "Cargo.toml",
     "README.md",
+    "typra.pyi",
     "pyproject.toml",
     "build.rs",
     "src/**/*",
