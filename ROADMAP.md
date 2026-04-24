@@ -3,7 +3,7 @@
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
 - **Current release**: `0.13.0` (see [`CHANGELOG.md`](CHANGELOG.md))
-- **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
+- **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0**.
 - **Next milestone**: `0.14.0` — planner/operator growth + query hardening (see roadmap by release). **`0.13.0`** (hardening + spillable agg/join foundations) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
@@ -26,7 +26,7 @@ In addition, Typra should support **multiple storage/compute modes** (SQLite-lik
 Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
-- **User migration**: [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md) (breaking **`primary_field`** in 0.5.0) · [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md) (**`RowValue`**, validation, record/catalog encodings in 0.6.0) · [`docs/migration_0.6_to_0.7.md`](docs/migration_0.6_to_0.7.md) (indexes, queries, subset projection in 0.7.0) · [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md) (transactions, format minor 6, recovery in 0.8.0)
+- **User migration**: migration docs are intentionally omitted for now (package is pre-adoption).
 - **Queries & indexes (Python)**: [`docs/guide_python.md`](docs/guide_python.md) (including [realistic on-disk workflow](docs/guide_python.md#realistic-workflow-indexed-queries-on-disk))
 
 Primary design references:
@@ -162,7 +162,7 @@ Design anchor: segment model + checksums in [`docs/02_on_disk_file_format.md`](d
 - **Python**
   - **`typra.Database`**: **`open`**, **`register_collection(name, fields_json)`** (no primary-field argument yet), **`collection_names()`**; **`fields_json`** documented in [`python/typra/README.md`](python/typra/README.md).
 
-**Superseded by 0.5.0** (breaking): **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory and snapshot constructors—see [CHANGELOG](CHANGELOG.md) and [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md).
+**Superseded by 0.5.0** (breaking): **`register_collection(..., primary_field)`**, **`insert`**, **`get`**, in-memory and snapshot constructors—see [CHANGELOG](CHANGELOG.md).
 
 - **Tests / docs**
   - Integration tests for duplicate names, unknown id, reopen, corrupt payload, lazy header bump; user guide note in models/collections doc.
@@ -180,7 +180,7 @@ Design anchor: catalog requirements in [`docs/01_full_architecture_spec.md`](doc
 
 ### 0.5.0 — Record encoding v1 + insert/get by primary key
 
-**Status:** **Delivered** in v0.5.0 (encoding in [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md), migration notes in [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md)).
+**Status:** **Delivered** in v0.5.0 (encoding in [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)).
 
 **Goal**: store records and retrieve them; establish the first durable record encoding.
 
@@ -213,7 +213,7 @@ Design anchor: record log + encoding strategy in [`docs/02_on_disk_file_format.m
 
 ### 0.6.0 — Validation engine (types + constraints) and better errors
 
-**Status:** **Delivered** in v0.6.0 (see [`CHANGELOG.md`](CHANGELOG.md), [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md), [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md)).
+**Status:** **Delivered** in v0.6.0 (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md)).
 
 **Goal**: enforce schema contracts at write time with high-quality error reporting.
 
@@ -258,7 +258,7 @@ Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec
 
 ### 0.8.0 — Transactions v1 (single-writer) + crash-safe durability
 
-**Status:** **Delivered** in **0.8.0** (see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md)). This phase assumes **0.7.0** is on disk: **Schema** / **Record** / **Index** segments, **MANIFEST** + **superblock** publication, **catalog v4** (constraints + index defs), **last-write-wins** replay, **minimal queries** + **`query_iter`**, and **insert-only** index maintenance.
+**Status:** **Delivered** in **0.8.0** (see [`CHANGELOG.md`](CHANGELOG.md)). This phase assumes **0.7.0** is on disk: **Schema** / **Record** / **Index** segments, **MANIFEST** + **superblock** publication, **catalog v4** (constraints + index defs), **last-write-wins** replay, **minimal queries** + **`query_iter`**, and **insert-only** index maintenance.
 
 **Goal:** **Atomic multi-write batches** and a **defined recovery story** after crash or partial write—beyond today’s “append segments in order and replay all.”
 
@@ -395,7 +395,7 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
   - Finalize typing story for DB-API rows and `typra.pyi` stability guarantees.
 - **Definition of done**
   - `make check-full` remains green across platforms.
-  - Docs consolidated: Getting Started, Queries, Transactions, Migrations, Operations, DB-API + SQL subset.
+  - Docs consolidated: Getting Started, Queries, Transactions, Operations, DB-API + SQL subset.
 
 ### 1.0.0 — Stable public API + format guarantees
 
@@ -421,7 +421,7 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 
 **Definition of done**
 - End-to-end **documented** journey: register → insert → **index/query** → **txn batch** → reopen → **migrate** → **compact** → recover from controlled corruption tests.
-- Doc set: Getting Started, Schema, Queries, Transactions, Migrations, Operations, Failure modes.
+- Doc set: Getting Started, Schema, Queries, Transactions, Operations, Failure modes.
 
 **Non-goals (unchanged for 1.0 unless explicitly revisited)**  
 Same as the **Non-goals** section at the end of this file: still **no** distributed replica, **no** full SQL server, **no** FTS/vector/DuckDB-style analytics as **shipping** commitments.

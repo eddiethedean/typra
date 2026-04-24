@@ -1,10 +1,12 @@
-# Typra User Guide: Models & Collections
+# Models & collections
 
 This guide explains how application models map to collections, how collection naming should work, and how **subset models / projections** should reduce friction when working with large schemas.
 
 ## Current status (important)
 
-As of **`0.13.x`**, Typra persists a **schema catalog** (append-only schema segments; **v3**+ catalogs store per-field **constraints**; **v4** adds **`indexes`** on create / new schema version) and **records** (**v1** primitive segments and **v2** nested rows; replay reads both), supports **transaction framing** (atomic multi-write batches + recovery), ships schema evolution helpers (compatibility checks + planning) plus richer query predicates (`OR`, ranges, `order_by`), supports **checkpointed open** (load checkpoint + replay tail), and has the first pieces of **bounded-memory query execution** scaffolding (ephemeral `Temp` spill segments + a streaming `query_iter` boundary; spillable agg/join foundations). You can **`register_collection`** / **`register_schema_version`** from Rust, and **`Database.register_collection(..., primary_field, indexes_json=...)`** with **`insert` / `get` / `delete`**, **`with db.transaction():`**, and **`db.collection(...).where(...).all()`** from Python using **`fields_json`** (see [`python/typra/README.md`](../python/typra/README.md) and [`guide_python.md`](guide_python.md)). **Typed subset models** (ORM-style) are still planned; **subset row dicts** via **`all(fields=[...])`** already exist—see [`ROADMAP.md`](../ROADMAP.md). This guide also describes **intended** longer-term behavior (subset models, naming defaults, etc.).
+As of **`0.13.x`**, Typra persists a **schema catalog** (append-only schema segments; catalogs store per-field **constraints** and **index definitions**), supports transaction framing, ships schema evolution helpers (compatibility checks + planning), supports richer query predicates, and has the first pieces of bounded-memory query execution scaffolding (ephemeral `Temp` spill segments + a streaming `query_iter` boundary).
+
+For the Python surface, see the [Python guide](python.md) and [`python/typra/README.md`](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md). For overall milestones, see [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 
 ## Collection identity vs name
 
@@ -13,7 +15,7 @@ Typra should treat:
 - **Collection ID**: the stable internal identity (does not change)
 - **Collection name**: a human-facing handle used in APIs and debugging
 
-This mirrors the idea that you should be able to **rename** a model class without accidentally renaming the underlying stored collection.
+This mirrors the idea that you should be able to rename a model class without accidentally renaming the underlying stored collection.
 
 ## Default collection names
 
@@ -35,12 +37,12 @@ Default should be the class `__name__` (e.g. `User`), with an override (e.g. a `
 
 Typra should support explicit naming to avoid accidental renames:
 
-- **Rust**: `#[db(collection = \"users\")]` (exact attribute spelling TBD)
-- **Python**: `__collection__ = \"users\"` (exact mechanism TBD)
+- **Rust**: `#[db(collection = "users")]` (exact attribute spelling TBD)
+- **Python**: `__collection__ = "users"` (exact mechanism TBD)
 
 ## Registering models and schema compatibility
 
-**Today (0.13.x)**, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection(..., primary_field)`** (Python, with a **`fields_json`** descriptor—see [`python/typra/README.md`](../python/typra/README.md)).
+Today, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection(..., primary_field)`** (Python, with a `fields_json` descriptor).
 
 Longer term, the database should also support ergonomic registration from model types:
 
@@ -51,11 +53,10 @@ Compatibility rules should be explicit:
 
 - If a collection name does not exist yet: create it with that schema.
 - If it exists: the schema must be compatible (or you must provide a migration path).
-In early versions, the engine should prefer **strict equality** to avoid surprising behavior.
 
 ## Subset models / projections
 
-Large collections can become cumbersome to use if every interaction requires a huge model with deeply nested fields. Typra should support **subset models** (projections/views) so you can interact with only the fields you care about.
+Large collections can become cumbersome if every interaction requires a huge model with deeply nested fields. Typra should support **subset models** (projections/views) so you can interact with only the fields you care about.
 
 ### What a subset model is
 
@@ -80,7 +81,7 @@ Where the encoding allows, queries should avoid decoding fields that are not req
 
 ### API direction
 
-**Rust-first** conceptual options:
+Rust-first conceptual options:
 
 - `db.collection::<FullUser>()` vs `db.collection::<UserSummary>()`
 - or `db.collection::<FullUser>().project::<UserSummary>()`
@@ -95,7 +96,7 @@ Python should allow defining a class with fewer fields than the collection, then
 
 ## Naming + subset models together
 
-Subset models should be able to target the **same collection name** as the full model, because they represent a different **materialization**, not a different stored dataset.
+Subset models should be able to target the **same collection name** as the full model, because they represent a different materialization, not a different stored dataset.
 
 To avoid ambiguity:
 

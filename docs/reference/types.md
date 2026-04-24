@@ -1,8 +1,8 @@
-# Typra supported types and operators (matrix)
+# Types matrix
 
 This document is a **truth table** for what Typra supports *today* across:
 
-- catalog field [`Type`](../crates/typra-core/src/schema.rs)
+- catalog field `Type`
 - row values (`RowValue` / `ScalarValue`)
 - constraints
 - indexes + predicates
@@ -39,7 +39,7 @@ It is intentionally conservative: if something is partially implemented or shape
 
 - **Top-level field defs** in a collection schema must currently be **single-segment** paths (e.g. `["title"]`).
   - Nested structure should be expressed via `Type::Object(...)` on a top-level field (e.g. `["profile"] : Object([...])`), not via multi-segment top-level field paths.
-  - Multi-segment `FieldPath` values are supported in **queries/projections/indexes** (see below), but defining them as *top-level schema fields* is not fully supported yet.
+  - Multi-segment field paths are supported in **queries/projections/indexes**, but defining them as *top-level schema fields* is not fully supported yet.
 
 ## Constraints (`schema::Constraint`)
 

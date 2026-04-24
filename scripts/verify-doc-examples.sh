@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifies stdout from the minimal Rust and Python snippets shown in README / guides.
-# Covered: root README (Rust + Python), docs/guide_getting_started.md (Rust cmd + Python),
-# docs/guide_python.md (quick start + query + realistic workflow + fields_json example),
+# Covered: root README (Rust + Python), docs/guides/quickstart.md (Rust cmd + Python),
+# docs/guides/python.md (quick start + query + realistic workflow + fields_json example),
 # python/typra/README.md (quick start + indexed sketch + fields_json nested/multi examples).
 # When outputs change intentionally, update the expected heredocs here and the matching ```text blocks.
 set -euo pipefail
@@ -42,7 +42,7 @@ ACTUAL_RUST=$(cargo run -q -p typra --example open | strip_cr)
   exit 1
 }
 
-# --- Python: docs/guide_getting_started.md "Run it (from this repo)" ---
+# --- Python: docs/guides/quickstart.md "Run it (from this repo)" ---
 read -r -d '' EXPECT_PY_GUIDE <<'EOF' || true
 registered collection_id= 1 schema_version= 1
 get: {'title': 'Hello'}
@@ -67,7 +67,7 @@ print("typra", typra.__version__)
 PY
 )
 [[ "$ACTUAL_PY_GUIDE" == "$EXPECT_PY_GUIDE" ]] || {
-  echo "Python (guide_getting_started) output mismatch." >&2
+  echo "Python (docs/guides/quickstart) output mismatch." >&2
   diff -u <(printf '%s' "$EXPECT_PY_GUIDE") <(printf '%s' "$ACTUAL_PY_GUIDE") >&2 || true
   exit 1
 }
@@ -130,7 +130,7 @@ PY
   exit 1
 }
 
-# --- Python: docs/guide_python.md Quick start ---
+# --- Python: docs/guides/python.md Quick start ---
 read -r -d '' EXPECT_PY_GUIDE_PYTHON <<'EOF' || true
 path: :memory:
 collection_id: 1 schema_version: 1
@@ -154,12 +154,12 @@ print("collection_names:", db.collection_names())
 PY
 )
 [[ "$ACTUAL_PY_GUIDE_PYTHON" == "$EXPECT_PY_GUIDE_PYTHON" ]] || {
-  echo "Python (guide_python quick start) output mismatch." >&2
+  echo "Python (docs/guides/python quick start) output mismatch." >&2
   diff -u <(printf '%s' "$EXPECT_PY_GUIDE_PYTHON") <(printf '%s' "$ACTUAL_PY_GUIDE_PYTHON") >&2 || true
   exit 1
 }
 
-# --- Python: docs/guide_python.md "Query example" ---
+# --- Python: docs/guides/python.md "Query example" ---
 read -r -d '' EXPECT_PY_GUIDE_QUERY <<'EOF' || true
 index_lookup: True
 rows: [{'title': 'Hello'}]
@@ -184,12 +184,12 @@ print("rows:", rows)
 PY
 )
 [[ "$ACTUAL_PY_GUIDE_QUERY" == "$EXPECT_PY_GUIDE_QUERY" ]] || {
-  echo "Python (guide_python query example) output mismatch." >&2
+  echo "Python (docs/guides/python query example) output mismatch." >&2
   diff -u <(printf '%s' "$EXPECT_PY_GUIDE_QUERY") <(printf '%s' "$ACTUAL_PY_GUIDE_QUERY") >&2 || true
   exit 1
 }
 
-# --- Python: docs/guide_python.md "Realistic workflow: indexed queries on disk" ---
+# --- Python: docs/guides/python.md "Realistic workflow: indexed queries on disk" ---
 read -r -d '' EXPECT_PY_GUIDE_WORKFLOW <<'EOF' || true
 indexed: True
 matches: 2
@@ -249,7 +249,7 @@ with tempfile.TemporaryDirectory() as d:
 PY
 )
 [[ "$ACTUAL_PY_GUIDE_WORKFLOW" == "$EXPECT_PY_GUIDE_WORKFLOW" ]] || {
-  echo "Python (guide_python realistic workflow) output mismatch." >&2
+  echo "Python (docs/guides/python realistic workflow) output mismatch." >&2
   diff -u <(printf '%s' "$EXPECT_PY_GUIDE_WORKFLOW") <(printf '%s' "$ACTUAL_PY_GUIDE_WORKFLOW") >&2 || true
   exit 1
 }
@@ -329,7 +329,7 @@ PY
   exit 1
 }
 
-# --- Python: docs/guide_python.md "Example: multiple top-level fields" ---
+# --- Python: docs/guides/python.md "Example: multiple top-level fields" ---
 read -r -d '' EXPECT_PY_GUIDE_FIELDS <<'EOF' || true
 collection_id: 1 schema_version: 1
 
@@ -350,12 +350,12 @@ print("collection_id:", cid, "schema_version:", ver)
 PY
 )
 [[ "$ACTUAL_PY_GUIDE_FIELDS" == "$EXPECT_PY_GUIDE_FIELDS" ]] || {
-  echo "Python (guide_python fields example) output mismatch." >&2
+  echo "Python (docs/guides/python fields example) output mismatch." >&2
   diff -u <(printf '%s' "$EXPECT_PY_GUIDE_FIELDS") <(printf '%s' "$ACTUAL_PY_GUIDE_FIELDS") >&2 || true
   exit 1
 }
 
-# --- Python: docs/guide_operations_and_failure_modes.md "Operational smoke test (Python)" ---
+# --- Python: docs/ops/operations_and_failure_modes.md "Operational smoke test (Python)" ---
 read -r -d '' EXPECT_PY_OPS <<'EOF' || true
 opened: :memory:
 names: ['books']
@@ -375,7 +375,7 @@ print("get:", db.get("books", "Hello"))
 PY
 )
 [[ "$ACTUAL_PY_OPS" == "$EXPECT_PY_OPS" ]] || {
-  echo "Python (guide_operations_and_failure_modes) output mismatch." >&2
+  echo "Python (docs/ops/operations_and_failure_modes) output mismatch." >&2
   diff -u <(printf '%s' "$EXPECT_PY_OPS") <(printf '%s' "$ACTUAL_PY_OPS") >&2 || true
   exit 1
 }

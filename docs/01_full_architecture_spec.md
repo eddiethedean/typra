@@ -18,7 +18,7 @@ Each collection contains records validated against a schema that defines:
 - defaults
 - validators
 - index metadata
-- compatibility rules for migration
+- compatibility rules for schema evolution
 - object nesting rules
 - list element typing
 
@@ -148,7 +148,7 @@ Persistent metadata store for:
 - field definitions
 - validators
 - index definitions
-- migration history
+- schema evolution history
 - compatibility notes
 
 ### 3. Record Log
@@ -156,7 +156,7 @@ Append-only segments containing:
 - insert events
 - replace/update events
 - delete tombstones
-- migration markers
+- schema evolution markers
 - transaction commit markers
 
 ### 4. Index Store
@@ -297,7 +297,7 @@ Nice-to-have:
 - prefix index for strings
 
 ## Schema Evolution Principles
-Migrations should be interpreted through compatibility rules.
+Schema evolution should be interpreted through compatibility rules.
 
 ### Safe
 - add optional field
@@ -404,7 +404,7 @@ Helpful capabilities:
 - nested objects
 - typed lists
 - unique and primary indexes
-- migration classifier
+- schema evolution classifier
 - Rust + Python APIs
 
 ## Future Extensions

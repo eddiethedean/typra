@@ -17,19 +17,18 @@ It combines the ease of SQLite with **strict schemas, validation, and nested dat
 | **Python** | **`Database.open`**, **`register_collection`**, **`register_schema_version`** + planning/backfill helpers, **`insert` / `get` / `delete`**, **`with db.transaction():`**, query builder (**`where` / `and_where` / `limit` / `explain` / `all`**), **`typra.dbapi`** (PEP 249, read-only minimal `SELECT`), in-memory + snapshots, **compaction**, **`collection_names()`** |
 | **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2**; **index** segment batches (**0.7.0+**); **transaction markers** (**0.8.0+**); file format minor **6** (lazy upgrades from older minors) |
 
-Typra ships an **experimental, read-only DB-API 2.0 adapter** (minimal `SELECT` subset) in **0.10.0**. Full SQL and SQLAlchemy integration remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
+Typra ships a read-only **DB-API 2.0 adapter** (minimal `SELECT` subset) in **0.10.0**. Full SQL and SQLAlchemy integration remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
 ## Guarantees and contracts (1.0-ready docs)
 
-- **Compatibility and recovery contract**: [`docs/compatibility_matrix.md`](docs/compatibility_matrix.md)
-- **Supported features matrix** (types, constraints, indexes, queries): [`docs/types_matrix.md`](docs/types_matrix.md)
-- **Operations and failure modes**: [`docs/guide_operations_and_failure_modes.md`](docs/guide_operations_and_failure_modes.md)
-- **Security posture** (threat model + disclosure): [`docs/security_threat_model.md`](docs/security_threat_model.md) and [`SECURITY.md`](SECURITY.md)
+- **Compatibility and recovery contract**: [`docs/reference/compatibility.md`](docs/reference/compatibility.md)
+- **Supported features matrix** (types, constraints, indexes, queries): [`docs/reference/types.md`](docs/reference/types.md)
+- **Operations and failure modes**: [`docs/ops/operations_and_failure_modes.md`](docs/ops/operations_and_failure_modes.md)
+- **Security posture** (threat model + disclosure): [`docs/reference/security.md`](docs/reference/security.md) and [`SECURITY.md`](SECURITY.md)
 
 | Resource | Link |
 |----------|------|
-| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Operations & failure modes](docs/guide_operations_and_failure_modes.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Compatibility](docs/compatibility_matrix.md) · [Types matrix](docs/types_matrix.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) · [Record encoding v2](docs/07_record_encoding_v2.md) |
-| **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) · [0.5.x → 0.6.x](docs/migration_0.5_to_0.6.md) · [0.6.x → 0.7.x](docs/migration_0.6_to_0.7.md) · [0.7.x → 0.8.x](docs/migration_0.7_to_0.8.md) |
+| **User guides** | [Quickstart](docs/guides/quickstart.md) · [Concepts](docs/guides/concepts.md) · [Python](docs/guides/python.md) · [Operations & failure modes](docs/ops/operations_and_failure_modes.md) · [Models & collections](docs/guides/models_and_collections.md) · [Storage modes](docs/guides/storage_modes.md) · [Compatibility](docs/reference/compatibility.md) · [Types matrix](docs/reference/types.md) · [Rust module layout](docs/specs/rust_crate_layout.md) · [Record encoding v2](docs/specs/record_encoding_v2.md) |
 | **Contributing** | [docs/contributing.md](docs/contributing.md) |
 
 ---

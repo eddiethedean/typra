@@ -1,12 +1,12 @@
-# Typra User Guide: Operations and failure modes
+# Operations & failure modes
 
 This guide is about running Typra safely in real applications: durability, transactions, reopen behavior, compaction, and what to expect when files are corrupted.
 
 It complements:
 
-- [`guide_getting_started.md`](guide_getting_started.md) (first steps)
-- [`guide_python.md`](guide_python.md) (Python API and DB-API subset)
-- [`compatibility_matrix.md`](compatibility_matrix.md) (compatibility and stability contract)
+- [Quickstart](../guides/quickstart.md) (first steps)
+- [Python guide](../guides/python.md) (Python API and DB-API subset)
+- [Compatibility matrix](../reference/compatibility.md) (compatibility and stability contract)
 
 ## Operational smoke test (Python)
 
@@ -43,7 +43,7 @@ Typra supports two recovery modes on open:
 - **`AutoTruncate`**: best-effort open by truncating torn tails back to the last known-good committed prefix.
 - **`Strict`**: fail-fast; refuses to open if recovery would require truncation.
 
-For the detailed contract, see [`compatibility_matrix.md`](compatibility_matrix.md).
+For the detailed contract, see [Compatibility matrix](../reference/compatibility.md).
 
 ## Compaction (file rewrite)
 

@@ -62,7 +62,7 @@ _Nothing yet._
 ### Added
 
 - **Schema evolution safety**: compatibility classifier for schema diffs enforced on schema-version registration, with explicit **migration required** vs **breaking** errors.
-- **Migrations (helpers)**: schema migration planning plus helpers for **backfill** and **index rebuild**.
+- **Schema evolution (helpers)**: schema evolution planning plus helpers for **backfill** and **index rebuild**.
 - **Record ops**: delete support and index delta maintenance for replace/delete semantics.
 - **Query upgrades**: `OR`, range predicates (`<`, `<=`, `>`, `>=`), and `order_by` (in-memory sort).
 - **Compaction prototype**: rewrite a database into a compacted image (`compact_to`, `compact_in_place`).
@@ -74,7 +74,7 @@ _Nothing yet._
 
 - **Transactions (Rust)**: `SegmentType::TxnBegin` / `TxnCommit` / `TxnAbort` with versioned payloads; **`Database::transaction`**, **`begin_transaction`**, **`commit_transaction`**, **`rollback_transaction`**; multi-insert / schema+data batches are one durable commit; **read-your-writes** inside a transaction via shadow catalog/index/latest maps.
 - **Format minor 6**: new databases use **6**; lazy upgrade from **5** on first transactional write; **replay v6** applies segments chronologically with txn framing; **legacy replay** unchanged for minors **≤ 5**.
-- **Recovery**: **`Store::truncate`**; **`OpenOptions`** / **`RecoveryMode`** (`AutoTruncate` default, **`Strict`**); tail scan tolerates torn last segment; uncommitted txn tails truncate to last **`TxnBegin`** (auto) or error (strict). See [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md).
+- **Recovery**: **`Store::truncate`**; **`OpenOptions`** / **`RecoveryMode`** (`AutoTruncate` default, **`Strict`**); tail scan tolerates torn last segment; uncommitted txn tails truncate to last **`TxnBegin`** (auto) or error (strict).
 - **Python**: **`with db.transaction():`** context manager mapping to Rust commit/rollback.
 
 ### Changed
@@ -83,7 +83,7 @@ _Nothing yet._
 
 ### Notes
 
-- **0.7.x → 0.8.0**: existing files remain readable; new writes may upgrade header to minor **6**; see [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md).
+- **0.7.x → 0.8.0**: existing files remain readable; new writes may upgrade header to minor **6**.
 
 ## [0.7.0] - 2026-04-22
 
@@ -96,7 +96,7 @@ _Nothing yet._
 
 ### Notes
 
-- **0.6.x → 0.7.0** is **additive** for typical `insert` / `get` usage; see [`docs/migration_0.6_to_0.7.md`](docs/migration_0.6_to_0.7.md). Publishing **`typra-core`** to crates.io before **`typra-derive`** / **`typra`** / **`typra-python`** is required (see [`scripts/publish-crates.sh`](scripts/publish-crates.sh)).
+- **0.6.x → 0.7.0** is **additive** for typical `insert` / `get` usage. Publishing **`typra-core`** to crates.io before **`typra-derive`** / **`typra`** / **`typra-python`** is required (see [`scripts/publish-crates.sh`](scripts/publish-crates.sh)).
 
 ## [0.6.0] - 2026-04-21
 
@@ -113,7 +113,7 @@ _Nothing yet._
 - **Breaking (Rust)**: `Database::insert` / `get` row type is `RowValue`, not `ScalarValue` only.
 - **Breaking (Python)**: same semantic change for rows (dicts/lists nest as in schema).
 
-See [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md).
+See the release notes above for details.
 
 ## [0.5.1] - 2026-04-22
 
@@ -135,7 +135,7 @@ See [`docs/migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md).
 
 ### Changed
 
-- **Breaking**: `register_collection` now requires a **primary field** name (top-level field in the schema). See [`docs/migration_0.4_to_0.5.md`](docs/migration_0.4_to_0.5.md).
+- **Breaking**: `register_collection` now requires a **primary field** name (top-level field in the schema).
 
 ## [0.4.0] - 2026-04-21
 

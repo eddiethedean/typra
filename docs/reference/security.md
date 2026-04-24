@@ -1,4 +1,4 @@
-# Typra threat model (local embedded database)
+# Security threat model
 
 This document defines Typra’s security posture as a **local, embedded** database library and the expectations we place on the codebase.
 
@@ -45,7 +45,7 @@ Assume the attacker **cannot**:
 
 - **Fuzzing**: `cargo-fuzz` targets exist under `fuzz/` for decode/replay surfaces.
 - **Property/invariant tests**: snapshot roundtrips and other invariants are validated via `proptest`.
-- **Coverage + doc verification**: CI enforces a high line-coverage gate for `typra-core` and runs `scripts/verify-doc-examples.sh` to prevent doc drift in supported user workflows.
+- **Coverage + doc verification**: CI runs `scripts/verify-doc-examples.sh` to prevent doc drift in supported user workflows.
 
 ## Operational guidance
 

@@ -28,3 +28,6 @@
 *.swp
 *.swo
 *~
+
+# MkDocs build output
+/site/

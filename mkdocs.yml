@@ -1,0 +1,74 @@
+site_name: Typra
+site_description: Typed embedded database (Rust core, Python bindings)
+repo_url: https://github.com/eddiethedean/typra
+repo_name: eddiethedean/typra
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+
+plugins:
+  - search
+
+exclude_docs: |
+  01_full_architecture_spec.md
+  02_on_disk_file_format.md
+  03_rust_crate_and_module_layout.md
+  04_schema_dsl_spec.md
+  05_query_planner_and_execution_spec.md
+  06_record_encoding_v1.md
+  07_record_encoding_v2.md
+  contributing.md
+  guide_storage_modes.md
+  typed_embedded_db_spec.md
+  guide_getting_started.md
+  guide_operations_and_failure_modes.md
+  guide_python.md
+  compatibility_matrix.md
+  security_threat_model.md
+  types_matrix.md
+
+nav:
+  - Home: index.md
+  - Docs map: map.md
+  - Guides:
+      - Quickstart: guides/quickstart.md
+      - Concepts: guides/concepts.md
+      - Python: guides/python.md
+      - Models & collections: guides/models_and_collections.md
+      - Storage modes: guides/storage_modes.md
+  - Operations:
+      - Operations & failure modes: ops/operations_and_failure_modes.md
+  - Reference:
+      - Compatibility matrix: reference/compatibility.md
+      - Types matrix: reference/types.md
+      - Security threat model: reference/security.md
+      - Rust API (curated): reference/rust_api.md
+      - Python API (curated): reference/python_api.md
+  - Glossary: glossary.md
+  - Specs:
+      - Full architecture: specs/full_architecture.md
+      - On-disk file format: specs/on_disk_file_format.md
+      - Rust crate/module layout: specs/rust_crate_layout.md
+      - Schema DSL: specs/schema_dsl.md
+      - Query planner/execution: specs/query_planner.md
+      - Record encoding v1: specs/record_encoding_v1.md
+      - Record encoding v2: specs/record_encoding_v2.md
+      - Typed embedded DB: specs/typed_embedded_db.md
+  - Dev:
+      - Contributing: dev/contributing_guide.md
+

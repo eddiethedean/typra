@@ -213,7 +213,7 @@ This document is a **product-level** vision. For the **shipping** release plan a
 - Python bindings
 
 ### v2
-- Migrations
+- Schema evolution
 - Advanced queries
 - Better indexing
 

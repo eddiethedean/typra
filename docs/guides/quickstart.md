@@ -1,4 +1,4 @@
-# Typra User Guide: Getting Started
+# Quickstart
 
 Typra is a typed, embedded database with a Rust-first core and optional Python bindings.
 
@@ -6,15 +6,15 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 As of **v0.13.x+**, Typra ships a **persisted schema catalog** (per-field **constraints** on catalog **v3**; **index definitions** on catalog **v4**), **secondary indexes**, richer **queries** (including `OR`, ranges, and `order_by`), **schema compatibility checks** + migration helpers, **record insert/get/delete** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **transactions** (`with db.transaction()` in Python / `Database::transaction` in Rust), **compaction**, **checkpoints** (faster reopen), in-memory databases + snapshots, and the first pieces of **bounded-memory query** scaffolding (ephemeral `Temp` spill segments; external sort plumbing behind `order_by`; spillable agg/join foundations).
 
-- **Rust**: `Database::open`, **`open_with_options`**, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get` / `delete`** with **`RowValue`**, **`Database::open_in_memory`**, `Database::transaction`, typed **queries**, **secondary indexes**, migration helpers, and compaction (see [`ROADMAP.md`](../ROADMAP.md)).
-- **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(..., indexes_json=...)`** (optional **`constraints`** in `fields_json`), **`insert` / `get` / `delete`**, schema-version planning/registration helpers, **`db.collection(name).where(...).all()`** (plus **`and_where`**, **`limit`**, **`explain`**, subset **`all(fields=[...])`**), **`snapshot_bytes`**, compaction helpers, **`collection_names()`**, and `__version__`. A **disk + indexes** walkthrough is in **[`guide_python.md` — Realistic workflow](guide_python.md#realistic-workflow-indexed-queries-on-disk)**.
-- **Not yet**: arbitrary **SQL** text and SQLAlchemy integration. Typra ships an experimental, read-only **DB-API 2.0** adapter (`typra.dbapi`) with a minimal `SELECT` subset—see [`guide_python.md`](guide_python.md#db-api-20-pep-249-and-sqlalchemy) and [`ROADMAP.md`](../ROADMAP.md).
+- **Rust**: `Database::open`, **`open_with_options`**, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get` / `delete`** with **`RowValue`**, **`Database::open_in_memory`**, `Database::transaction`, typed **queries**, **secondary indexes**, migration helpers, and compaction (see [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md)).
+- **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(..., indexes_json=...)`** (optional **`constraints`** in `fields_json`), **`insert` / `get` / `delete`**, schema-version planning/registration helpers, **`db.collection(name).where(...).all()`** (plus **`and_where`**, **`limit`**, **`explain`**, subset **`all(fields=[...])`**), **`snapshot_bytes`**, compaction helpers, **`collection_names()`**, and `__version__`. A **disk + indexes** walkthrough is in **[Python guide — Realistic workflow](python.md#realistic-workflow-indexed-queries-on-disk)**.
+- **Not yet**: arbitrary **SQL** text and SQLAlchemy integration. Typra ships a read-only **DB-API 2.0** adapter (`typra.dbapi`) with a minimal `SELECT` subset—see [Python guide](python.md#db-api-20-pep-249-and-sqlalchemy) and [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 
-Contributor-oriented layout (Rust crates and `typra-core` modules): [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
+Contributor-oriented layout (Rust crates and `typra-core` modules): [Rust crate/module layout](../specs/rust_crate_layout.md).
 
-Compatibility and stability expectations (file-format minors + API policy): [`compatibility_matrix.md`](compatibility_matrix.md).
+Compatibility and stability expectations (file-format minors + API policy): [Compatibility matrix](../reference/compatibility.md).
 
-Supported types, constraints, indexes, and query operators: [`types_matrix.md`](types_matrix.md).
+Supported types, constraints, indexes, and query operators: [Types matrix](../reference/types.md).
 
 ## Install (Rust)
 
@@ -141,17 +141,18 @@ make check-full
 ```
 
 This runs:
+
 - Rust format/clippy/tests
 - Python ruff/ty checks
 - Python tests (via `maturin develop --release` + `pytest`)
-- **`make verify-doc-examples`**: asserts stdout from `cargo run -p typra --example open` and the embedded Python snippets match each documented **text** output block on this page, the root **`README.md`**, **`docs/guide_python.md`** (quick start, query, workflow, fields example), and **`python/typra/README.md`** (quick start, indexed sketch, **`fields_json`** examples). See **`scripts/verify-doc-examples.sh`** for the exact snippets.
+- **`make verify-doc-examples`**: asserts stdout from `cargo run -p typra --example open` and the embedded Python snippets match each documented **text** output block on this page, the root **`README.md`**, [Python guide](python.md) (quick start, query, workflow, fields example), and **`python/typra/README.md`** (quick start, indexed sketch, **`fields_json`** examples). See **`scripts/verify-doc-examples.sh`** for the exact snippets.
 
 ## Where to go next
 
-- **Concepts**: [`guide_concepts.md`](guide_concepts.md)
-- **Python** (`Database`, `fields_json`, errors): [`guide_python.md`](guide_python.md)
-- **Models & collections** (naming + subset models): [`guide_models_and_collections.md`](guide_models_and_collections.md)
-- **Storage modes** (disk vs in-memory vs hybrid/streaming): [`guide_storage_modes.md`](guide_storage_modes.md)
+- **Concepts**: [Concepts](concepts.md)
+- **Python** (`Database`, `fields_json`, errors): [Python guide](python.md)
+- **Models & collections** (naming + subset models): [Models & collections](models_and_collections.md)
+- **Storage modes** (disk vs in-memory vs hybrid/streaming): [Storage modes](storage_modes.md)
 
-If you want deeper design specs (not a user guide), start in [`01_full_architecture_spec.md`](01_full_architecture_spec.md).
+If you want deeper design specs (not a user guide), start in [Full architecture spec](../specs/full_architecture.md).
 

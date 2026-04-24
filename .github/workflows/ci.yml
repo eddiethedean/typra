@@ -76,3 +76,5 @@ jobs:
           "$VENV_PY" -m ruff check python
           env -u VIRTUAL_ENV "$VENV_PY" -m ty check --python "$VENV_PY" --python-version ${{ matrix.python-version }} python
           bash ./scripts/verify-doc-examples.sh
+          "$VENV_PY" -m pip install -r docs/requirements.txt
+          "$VENV_PY" -m mkdocs build --strict

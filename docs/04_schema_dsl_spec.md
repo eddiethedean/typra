@@ -23,7 +23,7 @@ This document defines the **text DSL** and its conceptual schema model.
 3. Types are explicit.
 4. Defaults and validators are attached declaratively.
 5. Nested objects are first-class.
-6. Migrations compare schema contracts, not just field lists.
+6. Schema evolution compares contracts, not just field lists.
 
 ## Example
 
@@ -229,7 +229,7 @@ Example:
 display_name: string @rename_from("name")
 ```
 
-This does not itself perform migration, but informs migration planning.
+This does not itself perform schema evolution, but informs planning.
 
 ## Alternate Representation: Rust
 Rust derive should map to equivalent schema metadata.

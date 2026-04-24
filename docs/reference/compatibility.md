@@ -1,4 +1,4 @@
-# Typra Compatibility Matrix
+# Compatibility matrix
 
 This document describes **read/write compatibility** for Typra database files and **stability expectations** for public APIs.
 
@@ -6,7 +6,7 @@ Typra is still **pre-1.0**: minor versions (`0.x`) may include breaking changes,
 
 ## File-format compatibility
 
-Typra database files have a **format major** and **format minor** (see [`docs/02_on_disk_file_format.md`](02_on_disk_file_format.md)).
+Typra database files have a **format major** and **format minor** (see [On-disk file format spec](../specs/on_disk_file_format.md)).
 
 - **Format major (`FORMAT_MAJOR`)**: breaking changes. Typra will refuse to open unknown majors.
 - **Format minor (`FORMAT_MINOR`)**: compatible evolution within a major. Minors may gate new segment types, replay semantics, or publication metadata.
@@ -88,7 +88,7 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
 ### Python package (`typra` on PyPI)
 
 - The Python surface mirrors the engine where feasible.
-- DB-API (`typra.dbapi`) is a read-only subset of PEP 249 for a minimal `SELECT` grammar (see [`docs/guide_python.md`](guide_python.md)).
+- DB-API (`typra.dbapi`) is a read-only subset of PEP 249 for a minimal `SELECT` grammar (see [Python guide](../guides/python.md)).
 
 ## DB-API + SQL subset guarantees (current)
 

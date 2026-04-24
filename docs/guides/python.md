@@ -1,10 +1,10 @@
-# Typra User Guide: Python
+# Python
 
 This guide covers the **`typra`** PyPI package: installation, the **`Database`** API, optional **`indexes_json`**, the **query** builder on **`db.collection(...)`** (`where`, `and_where`, `limit`, `explain`, `all`, subset **`all(fields=[...])`**), the **`fields_json`** schema format, error behavior, and local development.
 
-For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust-first usage, see [`guide_getting_started.md`](guide_getting_started.md). For how the engine is organized in Rust, see [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
+For project-wide status and roadmap, see [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md). For Rust-first usage, see [Quickstart](quickstart.md). For how the engine is organized in Rust, see [Rust crate/module layout](../specs/rust_crate_layout.md).
 
-For file-format and API compatibility expectations, see [`compatibility_matrix.md`](compatibility_matrix.md).
+For file-format and API compatibility expectations, see [Compatibility matrix](../reference/compatibility.md).
 
 ## Install
 
@@ -46,7 +46,7 @@ collection_names: ['books']
 
 `register_collection` returns **`(collection_id, schema_version)`**. For a new collection, ids start at **`1`** and the first schema version is **`1`**.
 
-A longer insert/get snippet with **`typra.__version__`** is in **[`guide_getting_started.md` — Minimal Python example](guide_getting_started.md#minimal-python-example)** (also verified in CI).
+A longer insert/get snippet with **`typra.__version__`** is in [Quickstart — Minimal Python example](quickstart.md#minimal-python-example) (also verified in CI).
 
 ## `Database`
 
@@ -64,7 +64,7 @@ Returns the path string used to open the database (normalized by the OS path han
 
 Registers a **new** collection named `name` with schema version **1**. Collection names are **trimmed** of leading/trailing whitespace; empty names after trimming raise **`ValueError`**.
 
-`fields_json` must be a JSON **array** of field objects (see below). **`primary_field`** must name a **single-segment** top-level field present in that array; the primary key must be a **primitive** scalar (see [`migration_0.5_to_0.6.md`](migration_0.5_to_0.6.md)).
+`fields_json` must be a JSON **array** of field objects (see below). **`primary_field`** must name a **single-segment** top-level field present in that array; the primary key must be a **primitive** scalar.
 
 Optional **`indexes_json`** is a JSON **array** of secondary index objects:
 
@@ -100,7 +100,7 @@ Returns a handle for **non-SQL** queries on `name`. Use **`where(path, value)`**
 
 **`all(fields=...)`** optionally takes a list (or tuple) of paths; each path must match a field in `fields_json`. Only those fields are copied into each result dict (subset projection for large rows).
 
-Design reference: [`docs/05_query_planner_and_execution_spec.md`](05_query_planner_and_execution_spec.md).
+Design reference: [Query planner/execution spec](../specs/query_planner.md).
 
 ### Query example
 
@@ -174,9 +174,7 @@ with tempfile.TemporaryDirectory() as d:
     print("matches:", len(rows))
     print("rows:", rows)
     short = sorted(
-        db.collection("order_lines").where("status", "open").all(
-            fields=["id", "qty"]
-        ),
+        db.collection("order_lines").where("status", "open").all(fields=["id", "qty"]),
         key=lambda r: r["id"],
     )
     print("subset:", short)
@@ -218,7 +216,10 @@ import typra
 
 conn = typra.dbapi.connect("app.typra")
 cur = conn.cursor()
-cur.execute("SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10", (2020,))
+cur.execute(
+    "SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10",
+    (2020,),
+)
 rows = cur.fetchall()
 ```
 
@@ -234,7 +235,7 @@ SQLAlchemy integration remains **planned**. For now, prefer the native non-SQL q
 |-----|------|--------|
 | **`path`** | array of strings | Field path segments, e.g. `["profile", "name"]`. Each segment must be a JSON string. |
 | **`type`** | string or object | Primitive name, or a nested composite (optional, list, object, enum). |
-| **`constraints`** | array (optional) | Constraint objects persisted in the catalog (e.g. `{"min_i64": 0}`, `{"max_length": 100}`, `{"regex": "^[a-z]+$"}`, `{"email": true}`). See [`python/typra/README.md`](../python/typra/README.md). |
+| **`constraints`** | array (optional) | Constraint objects persisted in the catalog (e.g. `{"min_i64": 0}`, `{"max_length": 100}`, `{"regex": "^[a-z]+$"}`, `{"email": true}`). See [`python/typra/README.md`](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md). |
 
 ### Primitives
 
@@ -318,7 +319,7 @@ Always catch **`ValueError`** and **`OSError`** around `open`, `register_collect
 - **Schema migrations beyond basic helpers** (the Python surface includes `plan_schema_version`, `register_schema_version(..., force=...)`, and `backfill_top_level_field`, but richer migration workflows are still evolving).
 - Pydantic model inference (you pass explicit `fields_json`; the Rust engine still validates on insert).
 
-See [`ROADMAP.md`](../ROADMAP.md) for upcoming milestones.
+See [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) for upcoming milestones.
 
 ## Development (build from this repo)
 
@@ -333,4 +334,5 @@ maturin develop --release
 pytest -q
 ```
 
-Or run **`make check-full`** from the repo root (Rust + Python checks and tests). See also [`python/README.md`](../python/README.md).
+Or run **`make check-full`** from the repo root (Rust + Python checks and tests). See also [`python/README.md`](https://github.com/eddiethedean/typra/blob/main/python/README.md).
+
