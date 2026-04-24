@@ -71,19 +71,33 @@ Output:
 
 In-memory (repeatable; same idea as the Rust example above):
 
-    # Setup: module and in-memory database.
+    # Setup: class-defined schema + in-memory DB.
+    from __future__ import annotations
+
+    from dataclasses import dataclass
+    from typing import Annotated, Optional
+
     import typra
 
+
+    @dataclass
+    class Book:
+        __typra_primary_key__ = "title"
+        __typra_indexes__ = [
+            typra.models.index("year"),
+            typra.models.unique("title"),
+        ]
+
+        title: str
+        year: Annotated[int, typra.models.constrained(min_i64=0)]
+        rating: Optional[float] = None
+
+
     db = typra.Database.open_in_memory()
-    cid, ver = db.register_collection(
-        "books",
-        '[{"path": ["title"], "type": "string"}]',
-        "title",
-    )
-    # Example: insert one row, read it back, print package version.
-    print("registered collection_id=", cid, "schema_version=", ver)
-    db.insert("books", {"title": "Hello"})
-    print("get:", db.get("books", "Hello"))
+    books = typra.models.collection(db, Book)
+
+    books.insert(Book(title="Hello", year=2020, rating=4.5))
+    print("get:", books.get("Hello"))
     print("typra", typra.__version__)
 
 ### Run it (from this repo)
@@ -110,8 +124,7 @@ Requires **Python 3.9+**. From the repository root, build the extension then run
 
 Output (the **`typra`** version line tracks the workspace / PyPI release):
 
-    registered collection_id= 1 schema_version= 1
-    get: {'title': 'Hello'}
+    get: Book(title='Hello', year=2020, rating=4.5)
     typra 0.13.0
 
 ## Development quickstart (repo contributors)

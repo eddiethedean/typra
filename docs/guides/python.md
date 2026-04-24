@@ -42,6 +42,75 @@ Output:
 
 A longer insert/get snippet with **`typra.__version__`** is in [Quickstart — Minimal Python example](quickstart.md#minimal-python-example) (also verified in CI).
 
+## Defining schemas with Python classes
+
+Typra’s core Python API takes a JSON schema descriptor (`fields_json`). If you prefer defining schemas as Python classes, use **`typra.models`**.
+
+Rules (v1):
+
+- Your class must be a **`@dataclass`** or a **Pydantic `BaseModel`** (Pydantic is an optional dependency).
+- You must explicitly declare the primary key field:
+  - `__typra_primary_key__ = "id"` (or any top-level field name)
+- Collection names default to **snake_case plural**:
+  - `Book` → `"books"`, `OrderLine` → `"order_lines"`
+  - Override with `__typra_collection__ = "my_name"`
+
+### Constraints and indexes (declared in-class)
+
+- **Constraints**: use `typing.Annotated[T, typra.models.constrained(...)]`
+- **Indexes**: declare `__typra_indexes__ = [typra.models.index(...), typra.models.unique(...)]`
+
+Example (dataclass):
+
+    from __future__ import annotations
+
+    from dataclasses import dataclass
+    from typing import Annotated, Optional
+    from uuid import UUID
+    from datetime import datetime
+
+    import typra
+
+    @dataclass
+    class Book:
+        __typra_primary_key__ = "title"
+        __typra_indexes__ = [
+            typra.models.index("year"),
+            typra.models.unique("title"),
+        ]
+
+        title: str
+        year: Annotated[int, typra.models.constrained(min_i64=0)]
+        rating: Optional[float] = None
+        id: Optional[UUID] = None
+        published_at: Optional[datetime] = None
+
+    db = typra.Database.open_in_memory()
+    books = typra.models.collection(db, Book)
+
+    books.insert(Book(title="Hello", year=2020, rating=4.5))
+    one = books.get("Hello")
+    rows = books.where("year", 2020).all()
+
+    # You can also use field refs injected onto the class:
+    rows2 = books.where(Book.title, "Hello").all()
+
+    # Projection (delegates to engine projection via `all(fields=...)`)
+    just_titles = books.where(Book.title, "Hello").select(["title"]).all()
+
+### Schema evolution (plan/apply)
+
+Derive the current model schema and compare/register a new schema version:
+
+    plan = typra.models.plan(db, Book)
+    new_version = typra.models.apply(db, Book, force=False)
+
+### Updates/patches (read-modify-write)
+
+Typra’s engine is “replace by primary key”. `typra.models` provides a small helper:
+
+    books.update("Hello", {"rating": 5.0})
+
 ## `Database`
 
 ### `Database.open(path: str) -> Database`

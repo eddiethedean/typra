@@ -68,31 +68,48 @@ Many items below are **goals**; see the changelog for what each release actually
 
 ## Python
 
-The **`typra`** package on PyPI is a native extension. **`fields_json`** is a JSON array of field descriptors—see **[`python/typra/README.md`](python/typra/README.md)** and **[`docs/guide_python.md`](docs/guide_python.md)**.
+The **`typra`** package on PyPI is a native extension. The **primary** interface is **class-defined schemas** via **`typra.models`** (dataclasses or Pydantic), with typed-ish collections/queries returning instances.
+
+The lower-level **`fields_json`** API is still available and fully supported, but is documented as an advanced escape hatch for programmatic schema generation and interop.
 
 - **Python:** 3.9+  
 - **Wheels:** `cp39-abi3` (one wheel per platform)
 
 ```python
-# Setup: module, in-memory DB, and `books` collection (PK `title`).
+# Setup: class-defined schema + in-memory DB.
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Annotated, Optional
+
 import typra
 
+
+@dataclass
+class Book:
+    __typra_primary_key__ = "title"
+    __typra_indexes__ = [
+        typra.models.index("year"),
+        typra.models.unique("title"),
+    ]
+
+    title: str
+    year: Annotated[int, typra.models.constrained(min_i64=0)]
+    rating: Optional[float] = None
+
+
 db = typra.Database.open_in_memory()
-_, _ = db.register_collection(
-    "books",
-    '[{"path": ["title"], "type": "string"}]',
-    "title",
-)
-# Example: insert and read one row; print version.
-db.insert("books", {"title": "Hello"})
-print(db.get("books", "Hello"))
+books = typra.models.collection(db, Book)
+
+books.insert(Book(title="Hello", year=2020, rating=4.5))
+print(books.get("Hello"))
 print(typra.__version__)
 ```
 
 Output:
 
 ```text
-{'title': 'Hello'}
+Book(title='Hello', year=2020, rating=4.5)
 0.13.0
 ```
 

@@ -36,27 +36,40 @@ Pin the minor range you test against; pre-1.0 releases may still change APIs or 
 ## Quick start
 
 ```python
-# Setup: module, in-memory DB, and `books` collection (PK `title`).
+# Setup: class-defined schema + in-memory DB.
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Annotated, Optional
+
 import typra
 
+
+@dataclass
+class Book:
+    __typra_primary_key__ = "title"
+    __typra_indexes__ = [
+        typra.models.index("year"),
+        typra.models.unique("title"),
+    ]
+
+    title: str
+    year: Annotated[int, typra.models.constrained(min_i64=0)]
+    rating: Optional[float] = None
+
+
 db = typra.Database.open_in_memory()
-cid, ver = db.register_collection(
-    "books",
-    '[{"path": ["title"], "type": "string"}]',
-    "title",
-)
-# Example: insert one row, read it back, print package version.
-print("registered", cid, ver)
-db.insert("books", {"title": "Typra"})
-print(db.get("books", "Typra"))
+books = typra.models.collection(db, Book)
+
+books.insert(Book(title="Typra", year=2020, rating=4.5))
+print(books.get("Typra"))
 print(typra.__version__)
 ```
 
 Output (the version line matches the installed wheel):
 
 ```text
-registered 1 1
-{'title': 'Typra'}
+Book(title='Typra', year=2020, rating=4.5)
 0.13.0
 ```
 
@@ -103,7 +116,9 @@ For behavior details (errors, edge cases, development), see the **[Python user g
 
 ## `fields_json` (schema descriptor)
 
-`register_collection` expects `fields_json` to be a JSON **array** of objects. Each object describes one field:
+`fields_json` is the lower-level schema descriptor accepted by `Database.register_collection(...)`. Prefer **`typra.models`** unless you need programmatic JSON generation or a dynamic schema.
+
+It must be a JSON **array** of objects. Each object describes one field:
 
 - **`path`**: JSON array of strings (path segments), e.g. `["profile", "name"]`.
 - **`type`**: either a **primitive** name or a **composite** object.

@@ -6,6 +6,7 @@ mod dbapi;
 mod errors;
 mod fields_json;
 mod inner_db;
+mod models;
 mod query;
 mod row_values;
 
@@ -26,6 +27,22 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<database::PyTransaction>()?;
     m.add_class::<query::Collection>()?;
     m.add_class::<query::QueryBuilder>()?;
+
+    // Python model helpers (class-based schemas).
+    let models_mod = PyModule::new_bound(m.py(), "models")?;
+    models_mod.add_function(wrap_pyfunction!(models::collection, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::plan, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::apply, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::index, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::unique, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::constrained, &models_mod)?)?;
+    models_mod.add_class::<models::ModelCollection>()?;
+    models_mod.add_class::<models::ModelQuery>()?;
+    models_mod.add_class::<models::IndexSpec>()?;
+    models_mod.add_class::<models::ConstraintSpec>()?;
+    models_mod.add_class::<models::FieldRef>()?;
+    m.add_submodule(&models_mod)?;
+    m.add("models", models_mod)?;
 
     // DB-API 2.0 (PEP 249) read-only adapter (0.10.0+).
     let dbapi_mod = PyModule::new_bound(m.py(), "dbapi")?;
