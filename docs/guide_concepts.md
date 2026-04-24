@@ -9,7 +9,7 @@ A **database** is a single embedded unit you open in your application.
 - **On-disk**: a `.typra` file (single file, zero-admin deployment)
 - **In-memory** (current releases): same logical API backed by RAM; use **`open_in_memory`** (Rust/Python) with **explicit snapshot** export/import to persist
 
-On open, `Database::open(path)` (or **`open_in_memory`**) creates or opens storage, validates the header, replays the **persisted schema catalog** from **Schema** segments, rebuilds the **latest row map** from **Record** segments (**v1** and **v2** payloads), replays **secondary index** state from **`SegmentType::Index`** segments (**0.7.0+**), and exposes **`register_collection`** / **`register_schema_version`**, **`insert`**, **`get`**, and **transactions** (**0.8.0+**) for collections that declare a **primary field**. Inserts run **type + constraint validation** (and **index uniqueness** checks where applicable) before a durable write (**0.6.0+** constraints, **0.7.0+** indexes).
+On open, `Database::open(path)` (or **`open_in_memory`**) creates or opens storage, validates the header, replays the **persisted schema catalog** from **Schema** segments, rebuilds the **latest row map** from **Record** segments (**v1** and **v2** payloads), replays **secondary index** state from **`SegmentType::Index`** segments (**0.7.0+**), and exposes **`register_collection`** / **`register_schema_version`** (with compatibility checks in **0.9.0**), **`insert`**, **`get`**, **`delete`** (**0.9.0**), and **transactions** (**0.8.0+**) for collections that declare a **primary field**. Inserts run **type + constraint validation** (and **index uniqueness** checks where applicable) before a durable write (**0.6.0+** constraints, **0.7.0+** indexes).
 
 ## Collections
 
@@ -45,7 +45,7 @@ Models can also be used as **subset models / projections**: **0.7.0** ships **fi
 - **Types** (including nested objects, lists, enums, and optionals)
 - **Constraints** declared on fields (min/max numerics, string length, regex, email/url heuristics, nonempty, etc.—see [`CHANGELOG.md`](../CHANGELOG.md) and [`docs/04_schema_dsl_spec.md`](04_schema_dsl_spec.md))
 
-**As of 0.7.0**, **secondary indexes** (non-unique and **unique**) are declared on collections, maintained on **insert**, persisted in the log, and used for **equality** lookups in the minimal query planner (see [`ROADMAP.md`](../ROADMAP.md) and [`guide_python.md`](guide_python.md)). **Update/delete** row ops, **compound** indexes, and rich **constraint ↔ index** integration beyond uniqueness are still **planned**.
+**As of 0.7.0**, **secondary indexes** (non-unique and **unique**) are declared on collections, maintained on **insert**, persisted in the log, and used for **equality** lookups in the minimal query planner (see [`ROADMAP.md`](../ROADMAP.md) and [`guide_python.md`](guide_python.md)). **As of 0.9.0**, delete/replace semantics update indexes via explicit index deltas. **Compound** indexes and richer **constraint ↔ index** integration beyond uniqueness remain **planned**.
 
 Invalid writes fail with structured **`ValidationError`** information in Rust (**`DbError::Validation`**) and map to **`ValueError`** in Python, including **nested field paths** and **expected vs actual** where applicable.
 
@@ -55,7 +55,9 @@ The design aims for typed query building rather than SQL parsing in v1.
 
 **Shipped in 0.7.0:** primary-key **`get`**, **conjunctive equality** filters (**`Predicate::Eq`** / **`And`**), **`limit`**, heuristic **`explain`**, pull-based **`Database::query_iter`** (Rust), and the Python **`db.collection(...).where(...).and_where(...).limit(...)`** builder (see [`guide_python.md`](guide_python.md)).
 
-**Still planned:** **`order_by`**, inequality / range predicates, joins, aggregations, and **SQL** text (see [`05_query_planner_and_execution_spec.md`](05_query_planner_and_execution_spec.md)).
+**Shipped in 0.9.0:** **`Or`** predicates, inequality / range predicates (`<`, `<=`, `>`, `>=`), and **`order_by`** (in-memory sort).
+
+**Still planned:** joins, aggregations, and **SQL** text (see [`05_query_planner_and_execution_spec.md`](05_query_planner_and_execution_spec.md)).
 
 ## File format (single-file, versioned)
 

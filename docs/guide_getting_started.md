@@ -4,10 +4,10 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 ## Current status (important)
 
-As of **v0.8.x+**, Typra ships a **persisted schema catalog** (per-field **constraints** on catalog **v3**; **index definitions** on catalog **v4**), **secondary indexes** and minimal **queries** (equality, `limit`, `explain`), **record insert/get** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **transactions** (`with db.transaction()` in Python / `Database::transaction` in Rust), **in-memory** databases and snapshots, alongside earlier on-disk foundations:
+As of **v0.9.x+**, Typra ships a **persisted schema catalog** (per-field **constraints** on catalog **v3**; **index definitions** on catalog **v4**), **secondary indexes**, richer **queries** (including `OR`, ranges, and `order_by`), **schema compatibility checks** + migration helpers, **record insert/get/delete** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **transactions** (`with db.transaction()` in Python / `Database::transaction` in Rust), **compaction**, and in-memory databases + snapshots.
 
-- **Rust**: `Database::open`, **`open_with_options`**, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get`** with **`RowValue`**, **`Database::open_in_memory`**, `Database::transaction`, typed **queries**, **secondary indexes**, and `#[derive(DbModel)]` (see [`ROADMAP.md`](../ROADMAP.md)).
-- **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(..., indexes_json=...)`** (optional **`constraints`** in `fields_json`), **`insert`**, **`get`**, **`db.collection(name).where(...).all()`** (plus **`and_where`**, **`limit`**, **`explain`**, subset **`all(fields=[...])`**), **`snapshot_bytes`**, **`collection_names()`**, and `__version__`. A **disk + indexes** walkthrough is in **[`guide_python.md` — Realistic workflow](guide_python.md#realistic-workflow-indexed-queries-on-disk)**.
+- **Rust**: `Database::open`, **`open_with_options`**, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get` / `delete`** with **`RowValue`**, **`Database::open_in_memory`**, `Database::transaction`, typed **queries**, **secondary indexes**, migration helpers, and compaction (see [`ROADMAP.md`](../ROADMAP.md)).
+- **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(..., indexes_json=...)`** (optional **`constraints`** in `fields_json`), **`insert` / `get` / `delete`**, schema-version planning/registration helpers, **`db.collection(name).where(...).all()`** (plus **`and_where`**, **`limit`**, **`explain`**, subset **`all(fields=[...])`**), **`snapshot_bytes`**, compaction helpers, **`collection_names()`**, and `__version__`. A **disk + indexes** walkthrough is in **[`guide_python.md` — Realistic workflow](guide_python.md#realistic-workflow-indexed-queries-on-disk)**.
 - **Not yet**: arbitrary **SQL** text, **DB-API / SQLAlchemy**—see [`ROADMAP.md`](../ROADMAP.md).
 
 Contributor-oriented layout (Rust crates and `typra-core` modules): [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
@@ -18,7 +18,7 @@ In your application `Cargo.toml`:
 
 ```toml
 [dependencies]
-typra = "0.8"
+typra = "0.9"
 ```
 
 ## Minimal Rust example
