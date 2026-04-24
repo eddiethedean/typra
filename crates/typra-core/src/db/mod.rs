@@ -24,12 +24,12 @@ use crate::record::{
 };
 use crate::schema::{classify_schema_update, SchemaChange};
 use crate::schema::{CollectionId, FieldDef, SchemaVersion};
-use crate::storage::{FileStore, Store, VecStore};
-use crate::validation;
-use crate::{MigrationPlan, MigrationStep};
-use crate::{checkpoint, publish};
 use crate::segments::header::{SegmentHeader, SegmentType, SEGMENT_HEADER_LEN};
 use crate::segments::writer::SegmentWriter;
+use crate::storage::{FileStore, Store, VecStore};
+use crate::validation;
+use crate::{checkpoint, publish};
+use crate::{MigrationPlan, MigrationStep};
 
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
 
@@ -1790,28 +1790,16 @@ mod tests {
                 .unwrap();
             db.insert(cid, {
                 let mut m = BTreeMap::new();
-                m.insert(
-                    "title".to_string(),
-                    RowValue::String("Hello".to_string()),
-                );
-                m.insert(
-                    "author".to_string(),
-                    RowValue::String("Alice".to_string()),
-                );
+                m.insert("title".to_string(), RowValue::String("Hello".to_string()));
+                m.insert("author".to_string(), RowValue::String("Alice".to_string()));
                 m
             })
             .unwrap();
             db.checkpoint().unwrap();
             db.insert(cid, {
                 let mut m = BTreeMap::new();
-                m.insert(
-                    "title".to_string(),
-                    RowValue::String("World".to_string()),
-                );
-                m.insert(
-                    "author".to_string(),
-                    RowValue::String("Bob".to_string()),
-                );
+                m.insert("title".to_string(), RowValue::String("World".to_string()));
+                m.insert("author".to_string(), RowValue::String("Bob".to_string()));
                 m
             })
             .unwrap();
@@ -1856,10 +1844,7 @@ mod tests {
                 .unwrap();
             db.insert(cid, {
                 let mut m = BTreeMap::new();
-                m.insert(
-                    "title".to_string(),
-                    RowValue::String("Hello".to_string()),
-                );
+                m.insert("title".to_string(), RowValue::String("Hello".to_string()));
                 m
             })
             .unwrap();
@@ -1876,7 +1861,9 @@ mod tests {
             .unwrap();
         let mut store = crate::storage::FileStore::new(file);
         let mut sb_buf = [0u8; SUPERBLOCK_SIZE];
-        store.read_exact_at(FILE_HEADER_SIZE as u64, &mut sb_buf).unwrap();
+        store
+            .read_exact_at(FILE_HEADER_SIZE as u64, &mut sb_buf)
+            .unwrap();
         let sb = decode_superblock(&sb_buf).unwrap();
         assert!(sb.checkpoint_offset != 0);
         let corrupt_at = sb.checkpoint_offset + SEGMENT_HEADER_LEN as u64 + 5;

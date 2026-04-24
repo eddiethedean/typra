@@ -72,8 +72,15 @@ fn try_load_checkpoint_state(
     store: &mut impl Store,
     sb: &Superblock,
     segment_start: u64,
-) -> Result<Option<(u64, crate::catalog::Catalog, super::LatestMap, crate::index::IndexState)>, DbError>
-{
+) -> Result<
+    Option<(
+        u64,
+        crate::catalog::Catalog,
+        super::LatestMap,
+        crate::index::IndexState,
+    )>,
+    DbError,
+> {
     if sb.checkpoint_offset == 0 || sb.checkpoint_len == 0 {
         return Ok(None);
     }
@@ -210,8 +217,11 @@ pub(crate) fn open_with_store<S: Store>(
         match try_load_checkpoint_state(&mut store, &selected, segment_start) {
             Ok(Some((from, cat, lat, idx))) => (cat, lat, idx, from),
             Ok(None) => {
-                let (cat, lat, idx) =
-                    replay::load_catalog_latest_and_indexes(&mut store, segment_start, format_minor)?;
+                let (cat, lat, idx) = replay::load_catalog_latest_and_indexes(
+                    &mut store,
+                    segment_start,
+                    format_minor,
+                )?;
                 (cat, lat, idx, store.len()?)
             }
             Err(e) => match opts.recovery {
@@ -219,8 +229,11 @@ pub(crate) fn open_with_store<S: Store>(
                 RecoveryMode::AutoTruncate => {
                     // If the checkpoint pointer is torn or the payload is corrupt, fall back to
                     // full replay (recovery already truncated the log tail).
-                    let (cat, lat, idx) =
-                        replay::load_catalog_latest_and_indexes(&mut store, segment_start, format_minor)?;
+                    let (cat, lat, idx) = replay::load_catalog_latest_and_indexes(
+                        &mut store,
+                        segment_start,
+                        format_minor,
+                    )?;
                     (cat, lat, idx, store.len()?)
                 }
             },
@@ -231,7 +244,14 @@ pub(crate) fn open_with_store<S: Store>(
         // Apply any tail segments that were written after the checkpoint. (When no checkpoint is
         // present, replay_from is set so this is a no-op.)
         if replay_from < store.len()? && replay_from >= segment_start {
-            replay::replay_tail_into(&mut store, replay_from, format_minor, &mut catalog, &mut latest, &mut indexes)?;
+            replay::replay_tail_into(
+                &mut store,
+                replay_from,
+                format_minor,
+                &mut catalog,
+                &mut latest,
+                &mut indexes,
+            )?;
         }
     }
 

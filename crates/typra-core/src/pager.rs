@@ -52,7 +52,7 @@ impl<S: Store> PagedStore<S> {
         if let Some(hit) = self
             .cache
             .lock()
-            .map_err(|_| DbError::Io(io::Error::new(io::ErrorKind::Other, "pager mutex poisoned")))?
+            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?
             .get(&page_idx)
             .cloned()
         {
@@ -78,7 +78,7 @@ impl<S: Store> PagedStore<S> {
 
         self.cache
             .lock()
-            .map_err(|_| DbError::Io(io::Error::new(io::ErrorKind::Other, "pager mutex poisoned")))?
+            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?
             .insert(page_idx, page.clone());
 
         Ok(page)
@@ -92,7 +92,7 @@ impl<S: Store> PagedStore<S> {
         let mut cache = self
             .cache
             .lock()
-            .map_err(|_| DbError::Io(io::Error::new(io::ErrorKind::Other, "pager mutex poisoned")))?;
+            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?;
         for p in pages {
             cache.remove(&p);
         }
@@ -103,7 +103,7 @@ impl<S: Store> PagedStore<S> {
         let mut cache = self
             .cache
             .lock()
-            .map_err(|_| DbError::Io(io::Error::new(io::ErrorKind::Other, "pager mutex poisoned")))?;
+            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?;
         let ps = self.page_size;
         cache.retain(|page_idx, _| {
             let start = page_idx.saturating_mul(ps);
@@ -202,7 +202,8 @@ mod tests {
     #[test]
     fn paged_store_truncate_clears_pages() {
         let mut raw = VecStore::new();
-        raw.write_all_at(0, &[1u8; (DEFAULT_PAGE_SIZE as usize) * 2]).unwrap();
+        raw.write_all_at(0, &[1u8; (DEFAULT_PAGE_SIZE as usize) * 2])
+            .unwrap();
         let mut ps = PagedStore::new(raw, DEFAULT_PAGE_SIZE);
 
         let mut buf = [0u8; 8];
@@ -212,4 +213,3 @@ mod tests {
         assert!(ps.read_exact_at(DEFAULT_PAGE_SIZE + 1, &mut buf).is_err());
     }
 }
-

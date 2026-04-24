@@ -28,15 +28,15 @@ pub fn encode_checkpoint_payload_v0(cp: &CheckpointV0) -> Vec<u8> {
 
     out.extend_from_slice(&(cp.catalog_records.len() as u32).to_le_bytes());
     for r in &cp.catalog_records {
-        let b = encode_catalog_payload(&r);
+        let b = encode_catalog_payload(r);
         out.extend_from_slice(&(b.len() as u32).to_le_bytes());
-        out.extend_from_slice(&b);
+        out.extend_from_slice(b.as_slice());
     }
 
     out.extend_from_slice(&(cp.record_payloads.len() as u32).to_le_bytes());
     for b in &cp.record_payloads {
         out.extend_from_slice(&(b.len() as u32).to_le_bytes());
-        out.extend_from_slice(&b);
+        out.extend_from_slice(b.as_slice());
     }
 
     let idx_blob = encode_index_payload(&cp.index_entries);
@@ -131,15 +131,15 @@ pub fn checkpoint_from_state(
     // Encode latest rows as v2 record payloads (insert op semantics).
     let mut record_payloads: Vec<Vec<u8>> = Vec::with_capacity(latest.len().min(1_000_000));
     for ((cid, _pk_key), row) in latest.iter() {
-        let col = catalog.get(CollectionId(*cid)).ok_or(DbError::Schema(
-            SchemaError::UnknownCollection { id: *cid },
-        ))?;
-        let pk_name = col
-            .primary_field
-            .as_deref()
-            .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
-                collection_id: col.id.0,
-            }))?;
+        let col = catalog
+            .get(CollectionId(*cid))
+            .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: *cid }))?;
+        let pk_name =
+            col.primary_field
+                .as_deref()
+                .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                    collection_id: col.id.0,
+                }))?;
         let pk_def = col
             .fields
             .iter()
@@ -147,11 +147,11 @@ pub fn checkpoint_from_state(
             .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
                 name: pk_name.to_string(),
             }))?;
-        let pk_cell = row.get(pk_name).ok_or(DbError::Schema(
-            SchemaError::RowMissingPrimary {
+        let pk_cell = row
+            .get(pk_name)
+            .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
                 name: pk_name.to_string(),
-            },
-        ))?;
+            }))?;
         let pk_scalar: ScalarValue = pk_cell.clone().into_scalar()?;
 
         let non_pk_defs: Vec<_> = col
@@ -224,12 +224,12 @@ fn apply_checkpoint_record_payload(
         .ok_or(DbError::Schema(SchemaError::UnknownCollection {
             id: collection_id,
         }))?;
-    let pk_name = col
-        .primary_field
-        .as_deref()
-        .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
-            collection_id: col.id.0,
-        }))?;
+    let pk_name =
+        col.primary_field
+            .as_deref()
+            .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                collection_id: col.id.0,
+            }))?;
     let pk_ty = col
         .fields
         .iter()
@@ -313,4 +313,3 @@ impl<'a> Cursor<'a> {
         Ok(slice.to_vec())
     }
 }
-

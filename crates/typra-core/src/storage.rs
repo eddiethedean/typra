@@ -72,7 +72,10 @@ pub struct FileStore {
 impl FileStore {
     pub fn new(file: File) -> Self {
         Self {
-            inner: crate::pager::PagedStore::new(RawFileStore::new(file), crate::pager::DEFAULT_PAGE_SIZE),
+            inner: crate::pager::PagedStore::new(
+                RawFileStore::new(file),
+                crate::pager::DEFAULT_PAGE_SIZE,
+            ),
         }
     }
 }
@@ -168,4 +171,3 @@ impl Store for VecStore {
         Ok(())
     }
 }
-

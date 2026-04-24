@@ -6,8 +6,8 @@
 //! [`prelude`].
 
 pub mod catalog;
-pub mod checksum;
 pub mod checkpoint;
+pub mod checksum;
 pub mod config;
 pub use config::{OpenOptions, RecoveryMode};
 pub mod db;

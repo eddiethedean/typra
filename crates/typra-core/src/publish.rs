@@ -62,10 +62,8 @@ pub fn append_manifest_and_publish_with_checkpoint(
 
     let (current, current_is_a) = selected;
     let next_generation = current.generation.saturating_add(1);
-    let (checkpoint_offset, checkpoint_len) = checkpoint.unwrap_or((
-        current.checkpoint_offset,
-        current.checkpoint_len,
-    ));
+    let (checkpoint_offset, checkpoint_len) =
+        checkpoint.unwrap_or((current.checkpoint_offset, current.checkpoint_len));
     let next = Superblock {
         generation: next_generation,
         manifest_offset,

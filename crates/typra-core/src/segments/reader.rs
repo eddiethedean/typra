@@ -1,7 +1,7 @@
 use crate::checksum::crc32c_append;
 use crate::error::{DbError, FormatError};
-use crate::segments::header::{decode_segment_header, SegmentHeader, SEGMENT_HEADER_LEN};
 use crate::segments::header::SegmentType;
+use crate::segments::header::{decode_segment_header, SegmentHeader, SEGMENT_HEADER_LEN};
 use crate::storage::Store;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
