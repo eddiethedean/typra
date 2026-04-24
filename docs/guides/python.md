@@ -59,6 +59,7 @@ Rules (v1):
 
 - **Constraints**: use `typing.Annotated[T, typra.models.constrained(...)]`
 - **Indexes**: declare `__typra_indexes__ = [typra.models.index(...), typra.models.unique(...)]`
+- **Nested paths**: use tuple paths for queries (e.g. `("profile","email")`) and index declarations via `fields_json`/`indexes_json` when working at the JSON layer.
 
 Example (dataclass):
 
@@ -150,6 +151,13 @@ Returns the latest row as a **`dict`** of JSON-like values, or **`None`** if no 
 ### `Database.open_in_memory() -> Database` / `Database.open_snapshot_bytes(data: bytes) -> Database` / `snapshot_bytes() -> bytes`
 
 In-memory databases use the same logical format as files. **`snapshot_bytes`** copies the full image (only for in-memory / snapshot-opened databases).
+
+### `Database.open_snapshot(path: str) -> Database` / `export_snapshot(dest_path: str) -> None`
+
+For a supported backup/restore workflow:
+
+- Use **`export_snapshot(dest_path)`** to write a consistent snapshot file.
+- Use **`Database.open_snapshot(path)`** to open a snapshot **in memory** (useful for tests and tooling).
 
 ### `collection_names() -> list[str]`
 

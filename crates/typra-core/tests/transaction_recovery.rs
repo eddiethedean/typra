@@ -150,6 +150,7 @@ fn open_strict_rejects_uncommitted_txn_tail_and_autotruncate_recovers() {
     // Strict mode refuses to mutate and errors with UncleanLogTail.
     let strict = OpenOptions {
         recovery: RecoveryMode::Strict,
+        ..OpenOptions::default()
     };
     let e = match Database::open_with_options(&path, strict) {
         Ok(_) => panic!("expected strict open to fail"),
@@ -163,6 +164,7 @@ fn open_strict_rejects_uncommitted_txn_tail_and_autotruncate_recovers() {
     // AutoTruncate opens and truncates away the incomplete txn tail.
     let auto = OpenOptions {
         recovery: RecoveryMode::AutoTruncate,
+        ..OpenOptions::default()
     };
     let _ = Database::open_with_options(&path, auto).unwrap();
 
@@ -188,6 +190,7 @@ fn open_strict_rejects_torn_segment_tail_and_autotruncate_recovers() {
 
     let strict = OpenOptions {
         recovery: RecoveryMode::Strict,
+        ..OpenOptions::default()
     };
     let e = match Database::open_with_options(&path, strict) {
         Ok(_) => panic!("expected strict open to fail"),
@@ -203,6 +206,7 @@ fn open_strict_rejects_torn_segment_tail_and_autotruncate_recovers() {
 
     let auto = OpenOptions {
         recovery: RecoveryMode::AutoTruncate,
+        ..OpenOptions::default()
     };
     let _ = Database::open_with_options(&path, auto).unwrap();
     let _ = Database::open(&path).unwrap();

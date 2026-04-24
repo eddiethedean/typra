@@ -1,0 +1,23 @@
+name: Bench (on demand)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  benches:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Criterion benches (typra-core)
+        run: |
+          cargo bench -p typra-core --bench query -- --nocapture
+          cargo bench -p typra-core --bench workflows -- --nocapture
+

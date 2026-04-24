@@ -48,6 +48,7 @@ fn corrupt_manifest_pointer_strict_fails_open_autotruncate_opens() {
     // Strict open surfaces the manifest corruption rather than mutating the file.
     let strict = OpenOptions {
         recovery: RecoveryMode::Strict,
+        ..OpenOptions::default()
     };
     assert!(Database::open_with_options(&path, strict).is_err());
 

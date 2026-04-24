@@ -101,8 +101,14 @@ impl Database {
     ///     ValueError: Invalid or unsupported on-disk format.
     ///     RuntimeError: Engine reports an unimplemented code path.
     #[staticmethod]
-    fn open(path: &str) -> PyResult<Self> {
-        let db = CoreDatabase::open(path).map_err(db_error_to_py)?;
+    #[pyo3(signature = (path, *, read_only=false))]
+    fn open(path: &str, read_only: bool) -> PyResult<Self> {
+        let db = if read_only {
+            CoreDatabase::open_read_only(path)
+        } else {
+            CoreDatabase::open(path)
+        }
+        .map_err(db_error_to_py)?;
         Ok(Self {
             inner: Mutex::new(InnerDb::File(db)),
         })
@@ -400,6 +406,15 @@ impl Database {
         })
     }
 
+    /// Open an in-memory database from a snapshot file on disk.
+    #[staticmethod]
+    fn open_snapshot(path: &str) -> PyResult<Self> {
+        let db = CoreDatabase::open_snapshot_path(path).map_err(db_error_to_py)?;
+        Ok(Self {
+            inner: Mutex::new(InnerDb::Mem(db)),
+        })
+    }
+
     /// Serialize an in-memory database to bytes (not supported for on-disk databases).
     ///
     /// Returns:
@@ -412,6 +427,15 @@ impl Database {
         let g = lock_inner(&self.inner)?;
         let v = g.snapshot_bytes()?;
         Ok(PyBytes::new_bound(py, &v).unbind())
+    }
+
+    /// Export a consistent snapshot of this database to `dest_path`.
+    ///
+    /// - File-backed DBs: checkpoint then copy the `.typra` file.
+    /// - In-memory DBs: write snapshot bytes to `dest_path`.
+    fn export_snapshot(&self, dest_path: &str) -> PyResult<()> {
+        let mut g = lock_inner(&self.inner)?;
+        g.export_snapshot_to_path(dest_path)
     }
 
     /// Rewrite the database file into a compacted image at `dest_path`.

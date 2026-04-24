@@ -1,5 +1,7 @@
 // PyO3 `IntoPy` / `extract` patterns often trigger `useless_conversion`; keep noise down.
 #![allow(clippy::useless_conversion)]
+// `pyo3::create_exception!` expands to cfgs that trip `unexpected_cfgs` under `-D warnings`.
+#![allow(unexpected_cfgs)]
 
 mod database;
 mod dbapi;
@@ -27,6 +29,28 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<database::PyTransaction>()?;
     m.add_class::<query::Collection>()?;
     m.add_class::<query::QueryBuilder>()?;
+
+    // Stable error kinds via distinct exception subclasses (still `isinstance(..., ValueError)` etc).
+    m.add(
+        "TypraFormatError",
+        m.py().get_type_bound::<errors::TypraFormatError>(),
+    )?;
+    m.add(
+        "TypraSchemaError",
+        m.py().get_type_bound::<errors::TypraSchemaError>(),
+    )?;
+    m.add(
+        "TypraValidationError",
+        m.py().get_type_bound::<errors::TypraValidationError>(),
+    )?;
+    m.add(
+        "TypraQueryError",
+        m.py().get_type_bound::<errors::TypraQueryError>(),
+    )?;
+    m.add(
+        "TypraTransactionError",
+        m.py().get_type_bound::<errors::TypraTransactionError>(),
+    )?;
 
     // Python model helpers (class-based schemas).
     let models_mod = PyModule::new_bound(m.py(), "models")?;

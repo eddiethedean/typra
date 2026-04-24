@@ -3,6 +3,7 @@ members = [
     "crates/typra-core",
     "crates/typra-derive",
     "crates/typra",
+    "crates/typra-cli",
     "python/typra",
     "fuzz",
 ]

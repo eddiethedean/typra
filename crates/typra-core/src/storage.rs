@@ -1,6 +1,9 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
+use crate::config::OpenMode;
 use crate::error::DbError;
 
 /// Random-access byte image of a Typra database (length, read, write, sync).
@@ -67,6 +70,41 @@ impl Store for RawFileStore {
 #[derive(Debug)]
 pub struct FileStore {
     inner: crate::pager::PagedStore<RawFileStore>,
+    _writer_lock: Option<WriterLockGuard>,
+}
+
+#[derive(Debug)]
+struct WriterLockState {
+    _file: File,
+    refs: usize,
+}
+
+static WRITER_LOCKS: OnceLock<Mutex<std::collections::HashMap<PathBuf, WriterLockState>>> =
+    OnceLock::new();
+
+fn writer_locks() -> &'static Mutex<std::collections::HashMap<PathBuf, WriterLockState>> {
+    WRITER_LOCKS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+#[derive(Debug)]
+struct WriterLockGuard {
+    lock_path: PathBuf,
+}
+
+impl Drop for WriterLockGuard {
+    fn drop(&mut self) {
+        let Ok(mut g) = writer_locks().lock() else {
+            return;
+        };
+        let Some(st) = g.get_mut(&self.lock_path) else {
+            return;
+        };
+        st.refs = st.refs.saturating_sub(1);
+        if st.refs == 0 {
+            // Dropping the file releases the OS-level lock.
+            g.remove(&self.lock_path);
+        }
+    }
 }
 
 impl FileStore {
@@ -76,7 +114,72 @@ impl FileStore {
                 RawFileStore::new(file),
                 crate::pager::DEFAULT_PAGE_SIZE,
             ),
+            _writer_lock: None,
         }
+    }
+
+    fn lock_path_for_db_path(db_path: &Path) -> PathBuf {
+        // Sidecar lock file so writers can exclude other writers while read-only opens proceed.
+        // This is advisory and best-effort; platforms differ in exact semantics.
+        PathBuf::from(format!("{}.writer.lock", db_path.display()))
+    }
+
+    /// Open a file store and acquire the process-level lock for the database path.
+    ///
+    /// - `ReadWrite`: creates the database file if missing and takes an exclusive lock on `<path>.lock`.
+    /// - `ReadOnly`: opens an existing file read-only and takes a shared lock on `<path>.lock`.
+    pub fn open_locked(path: impl AsRef<Path>, mode: OpenMode) -> Result<Self, DbError> {
+        use fs2::FileExt;
+
+        let path = path.as_ref();
+        let file = match mode {
+            OpenMode::ReadWrite => std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)?,
+            OpenMode::ReadOnly => std::fs::OpenOptions::new().read(true).open(path)?,
+        };
+
+        let writer_lock = match mode {
+            OpenMode::ReadOnly => None,
+            OpenMode::ReadWrite => {
+                let lock_path = Self::lock_path_for_db_path(path);
+                let mut g = writer_locks()
+                    .lock()
+                    .map_err(|_| std::io::Error::other("lock poisoned"))?;
+                if let Some(st) = g.get_mut(&lock_path) {
+                    st.refs = st.refs.saturating_add(1);
+                    Some(WriterLockGuard { lock_path })
+                } else {
+                    let lock_file = std::fs::OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .truncate(false)
+                        .open(&lock_path)?;
+                    // Fail fast: do not block indefinitely.
+                    lock_file.try_lock_exclusive()?;
+                    g.insert(
+                        lock_path.clone(),
+                        WriterLockState {
+                            _file: lock_file,
+                            refs: 1,
+                        },
+                    );
+                    Some(WriterLockGuard { lock_path })
+                }
+            }
+        };
+
+        Ok(Self {
+            inner: crate::pager::PagedStore::new(
+                RawFileStore::new(file),
+                crate::pager::DEFAULT_PAGE_SIZE,
+            ),
+            _writer_lock: writer_lock,
+        })
     }
 }
 

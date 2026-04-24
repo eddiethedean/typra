@@ -55,10 +55,12 @@ nav:
       - Storage modes: guides/storage_modes.md
   - Operations:
       - Operations & failure modes: ops/operations_and_failure_modes.md
+      - Debugging & tracing: ops/debugging.md
   - Reference:
       - Compatibility matrix: reference/compatibility.md
       - Types matrix: reference/types.md
       - Security threat model: reference/security.md
+      - CLI: reference/cli.md
       - Rust API (curated): reference/rust_api.md
       - Python API (curated): reference/python_api.md
   - Glossary: glossary.md

@@ -181,8 +181,34 @@ fn type_is_indexable_scalar(ty: &Type) -> bool {
     }
 }
 
-fn field_ty_for_path<'a>(fields: &'a [FieldDef], path: &FieldPath) -> Option<&'a Type> {
-    fields.iter().find(|f| &f.path == path).map(|f| &f.ty)
+fn resolve_type_at_path<'a>(fields: &'a [FieldDef], path: &FieldPath) -> Option<&'a Type> {
+    let segs = &path.0;
+    if segs.is_empty() {
+        return None;
+    }
+    let root = fields
+        .iter()
+        .find(|f| f.path.0.len() == 1 && f.path.0[0] == segs[0])?;
+    if segs.len() == 1 {
+        return Some(&root.ty);
+    }
+    type_at_nested_segments(&root.ty, &segs[1..])
+}
+
+fn type_at_nested_segments<'a>(ty: &'a Type, segs: &[Cow<'static, str>]) -> Option<&'a Type> {
+    if segs.is_empty() {
+        return Some(ty);
+    }
+    match ty {
+        Type::Optional(inner) => type_at_nested_segments(inner, segs),
+        Type::Object(fields) => {
+            let f = fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0] == segs[0])?;
+            type_at_nested_segments(&f.ty, &segs[1..])
+        }
+        _ => None,
+    }
 }
 
 /// Parse ``indexes_json`` for ``Database.register_collection`` into engine [`IndexDef`] values.
@@ -225,7 +251,7 @@ pub fn indexes_from_json(s: &str, fields: &[FieldDef]) -> Result<Vec<IndexDef>, 
             })
             .collect::<Result<_, _>>()?;
         let path = FieldPath::new(parts).map_err(|e| e.to_string())?;
-        let ty = field_ty_for_path(fields, &path).ok_or_else(|| {
+        let ty = resolve_type_at_path(fields, &path).ok_or_else(|| {
             format!(
                 "index {:?} path does not match any field in fields_json",
                 name

@@ -406,6 +406,45 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 **Already in place (seed for 1.0 hardening)**  
 - **`make check-full`**, **`RUSTDOCFLAGS=-D warnings`**, **`verify-doc-examples`**, **`typra-core` line-coverage gate**, **Criterion** `make bench` for **get / indexed eq / scan**.
 
+#### 1.0 “must-have” (high-impact blockers)
+
+These items are high-leverage for real applications shipping Typra as an embedded DB. They should be completed (or explicitly cut) before the 1.0.0 tag.
+
+- **Operational CLI (`typra` binary)**:
+  - `typra inspect <path>`: print header/minor, superblock generations, latest checkpoint offset, catalog summary (collections, schema versions, indexes).
+  - `typra verify <path>`: run a read-only integrity scan (checksums, segment framing, catalog decode) with a clear exit code.
+  - `typra dump-catalog <path> --json`: machine-readable catalog output for debugging/support.
+  - Definition of done: cross-platform (macOS/Linux/Windows) smoke tests; docs page with examples.
+
+- **Cross-process safety (file locking policy)**:
+  - Prevent two writers from corrupting the same `.typra` file; document the concurrency contract.
+  - Prefer “single writer / many readers” where feasible; define behavior for Windows vs Unix locking.
+  - Definition of done: integration tests demonstrating a second writer fails fast with a crisp error.
+
+- **Backup/restore primitives**:
+  - Provide a supported way to create a consistent copy of an on-disk database (e.g. `Database::checkpoint()` + “copy bytes” guidance, or an explicit `export_snapshot_to_path` API).
+  - Python parity: `db.export_snapshot(path)` / `Database.open_snapshot(path)` (names TBD).
+  - Definition of done: docs and tests for “backup while reads are happening” (single-writer contract).
+
+- **Schema path support (multi-segment field paths)**
+  - Make nested object fields addressable by multi-segment `FieldPath` for schema declarations where practical (or explicitly document the limitation as a 1.0 constraint).
+  - Definition of done: register schema with nested paths, enforce validation and projections, and support secondary indexes on nested scalar paths (when type is indexable).
+
+- **Typed, model-first Python API stabilization**
+  - Treat `typra.models` as the primary interface (dataclass + Pydantic v2), including constraints/indexes declarations, schema evolution (`plan/apply`), and patch updates.
+  - Lock a public “v1” contract for `typra.models` (errors, naming rules, supported typing constructs).
+  - Definition of done: parity tests for dataclass and Pydantic; docs are class-model-first; `typra.pyi` stable for the `models` surface.
+
+- **Observability / debug-ability**
+  - Add structured error codes (or stable error “kinds”) so apps can reliably distinguish validation vs IO vs format corruption vs schema mismatch.
+  - Add optional tracing hooks (Rust `tracing` feature-gated) for open/replay/checkpoint/compaction and query planning.
+  - Definition of done: docs on enabling tracing; tests ensure the feature flag compiles in workspace.
+
+- **Performance + regression gates**
+  - Expand Criterion benches to cover: transactions, compaction, checkpointed open, and a representative indexed query.
+  - Add at least one “budget” guardrail in CI (e.g. compare against a recorded baseline in a non-blocking job, or run benches on demand with saved results).
+  - Definition of done: documented performance methodology and a repeatable bench command set.
+
 **Rust — remaining work**
 - **API + format stability**: explicit compatibility matrix (forward read / write policy per minor), feature-flag policy for `typra` / `typra-core`.
 - **Types matrix**: supported **`Type`** / **`RowValue`** / **constraints** / **indexes**—including multi-segment schema paths if implemented by then.

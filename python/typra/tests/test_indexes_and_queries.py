@@ -50,6 +50,23 @@ def test_indexes_survive_reopen_on_disk() -> None:
         assert "IndexLookup" in explain
 
 
+def test_nested_object_field_can_be_indexed_and_queried() -> None:
+    db = typra.Database.open_in_memory()
+    fields = """[
+      {"path": ["id"], "type": "int64"},
+      {"path": ["profile"], "type": {"object": [
+        {"path": ["email"], "type": "string"}
+      ]}}
+    ]"""
+    indexes = '[{"name": "email_idx", "path": ["profile", "email"], "kind": "index"}]'
+    db.register_collection("users", fields, "id", indexes)
+    db.insert("users", {"id": 1, "profile": {"email": "a@x.test"}})
+
+    q = db.collection("users").where(("profile", "email"), "a@x.test")
+    assert q.all() == [{"id": 1, "profile": {"email": "a@x.test"}}]
+    assert "IndexLookup" in q.explain()
+
+
 def test_and_where_builds_conjunctive_predicate() -> None:
     db = typra.Database.open_in_memory()
     fields = (

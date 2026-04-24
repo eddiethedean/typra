@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use typra_core::db::row_subset_by_field_defs;
 use typra_core::query::{Predicate, Query};
-use typra_core::schema::{FieldDef, FieldPath};
+use typra_core::schema::{FieldDef, FieldPath, Type};
 
 use crate::database::Database;
 use crate::errors::db_error_to_py;
@@ -40,6 +40,39 @@ fn to_field_path(parts: &[String]) -> PyResult<FieldPath> {
     Ok(FieldPath(
         parts.iter().map(|s| Cow::Owned(s.clone())).collect(),
     ))
+}
+
+fn resolve_leaf_type<'a>(
+    col: &'a typra_core::catalog::CollectionInfo,
+    fp: &FieldPath,
+) -> Option<&'a Type> {
+    if fp.0.is_empty() {
+        return None;
+    }
+    let root = col
+        .fields
+        .iter()
+        .find(|f| f.path.0.len() == 1 && f.path.0[0] == fp.0[0])?;
+    if fp.0.len() == 1 {
+        return Some(&root.ty);
+    }
+    type_at_nested_segments(&root.ty, &fp.0[1..])
+}
+
+fn type_at_nested_segments<'a>(ty: &'a Type, segs: &[Cow<'static, str>]) -> Option<&'a Type> {
+    if segs.is_empty() {
+        return Some(ty);
+    }
+    match ty {
+        Type::Optional(inner) => type_at_nested_segments(inner, segs),
+        Type::Object(fields) => {
+            let f = fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0] == segs[0])?;
+            type_at_nested_segments(&f.ty, &segs[1..])
+        }
+        _ => None,
+    }
 }
 
 fn build_predicate(
@@ -94,16 +127,17 @@ fn one_path_to_field_def(
 ) -> PyResult<FieldDef> {
     let parts = parse_path(obj)?;
     let fp = to_field_path(&parts)?;
-    col.fields
-        .iter()
-        .find(|f| f.path == fp)
-        .cloned()
-        .ok_or_else(|| {
-            PyValueError::new_err(format!(
-                "unknown field path for this collection: {:?}",
-                parts
-            ))
-        })
+    let Some(ty) = resolve_leaf_type(col, &fp) else {
+        return Err(PyValueError::new_err(format!(
+            "unknown field path for this collection: {:?}",
+            parts
+        )));
+    };
+    Ok(FieldDef {
+        path: fp,
+        ty: ty.clone(),
+        constraints: vec![],
+    })
 }
 
 #[pyclass]
@@ -125,11 +159,7 @@ impl Collection {
         let db_ref = self.db.borrow(py);
         let col = super::database::collection_info(&db_ref.inner, &self.name)?;
         let field_path = to_field_path(&parts)?;
-        let leaf_ty = col
-            .fields
-            .iter()
-            .find(|f| f.path == field_path)
-            .map(|f| &f.ty)
+        let leaf_ty = resolve_leaf_type(&col, &field_path)
             .ok_or_else(|| PyValueError::new_err("unknown field path"))?;
         let scalar = row_values::scalar_from_py(py, value, leaf_ty)?;
         let db = self.db.clone_ref(py);
@@ -228,11 +258,7 @@ impl QueryBuilder {
         let db_ref = self.db.borrow(py);
         let col = super::database::collection_info(&db_ref.inner, &self.collection_name)?;
         let field_path = to_field_path(&parts)?;
-        let leaf_ty = col
-            .fields
-            .iter()
-            .find(|f| f.path == field_path)
-            .map(|f| &f.ty)
+        let leaf_ty = resolve_leaf_type(&col, &field_path)
             .ok_or_else(|| PyValueError::new_err("unknown field path"))?;
         let scalar = row_values::scalar_from_py(py, value, leaf_ty)?;
         preds.push((parts, scalar));

@@ -60,7 +60,7 @@ ruff-format-check:
 ruff-check:
 	$(RUFF) check python
 
-ty-check:
+ty-check: python-develop
 	env -u VIRTUAL_ENV $(TY) check --python $(PYTHON) --python-version 3.12 python
 
 check-rust: rust-fmt-check rust-clippy rust-check rust-doc rust-test

@@ -67,5 +67,6 @@ fn stable_surface_smoke_in_memory_register_txn_query_checkpoint_compact() -> Res
 fn open_with_options_surface_exists_and_recovery_mode_is_public() {
     let _opts = OpenOptions {
         recovery: RecoveryMode::AutoTruncate,
+        ..OpenOptions::default()
     };
 }

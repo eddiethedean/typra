@@ -1,19 +1,26 @@
 //! Maps [`typra_core::DbError`] to `OSError`, `ValueError`, or `RuntimeError` so Python callers get
 //! stable exception types from the C extension.
 
+use pyo3::create_exception;
 use pyo3::exceptions::{PyOSError, PyRuntimeError, PyValueError};
 use pyo3::PyErr;
 use typra_core::DbError;
+
+create_exception!(typra, TypraFormatError, PyValueError);
+create_exception!(typra, TypraSchemaError, PyValueError);
+create_exception!(typra, TypraValidationError, PyValueError);
+create_exception!(typra, TypraQueryError, PyValueError);
+create_exception!(typra, TypraTransactionError, PyRuntimeError);
 
 /// Convert a core error into the Python exception type used for that category (I/O vs format/schema vs stub).
 pub fn db_error_to_py(err: DbError) -> PyErr {
     match err {
         DbError::Io(e) => PyOSError::new_err(e.to_string()),
-        DbError::Format(e) => PyValueError::new_err(e.to_string()),
-        DbError::Schema(e) => PyValueError::new_err(e.to_string()),
-        DbError::Validation(e) => PyValueError::new_err(e.to_string()),
-        DbError::Transaction(e) => PyRuntimeError::new_err(e.to_string()),
-        DbError::Query(e) => PyValueError::new_err(e.message),
+        DbError::Format(e) => TypraFormatError::new_err(e.to_string()),
+        DbError::Schema(e) => TypraSchemaError::new_err(e.to_string()),
+        DbError::Validation(e) => TypraValidationError::new_err(e.to_string()),
+        DbError::Transaction(e) => TypraTransactionError::new_err(e.to_string()),
+        DbError::Query(e) => TypraQueryError::new_err(e.message),
         DbError::NotImplemented => PyRuntimeError::new_err("not implemented"),
     }
 }

@@ -28,6 +28,32 @@ pub enum DbError {
     NotImplemented,
 }
 
+/// Stable classification of core errors (suitable for matching in higher-level bindings).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DbErrorKind {
+    Io,
+    Format,
+    Schema,
+    Validation,
+    Transaction,
+    Query,
+    NotImplemented,
+}
+
+impl DbError {
+    pub fn kind(&self) -> DbErrorKind {
+        match self {
+            DbError::Io(_) => DbErrorKind::Io,
+            DbError::Format(_) => DbErrorKind::Format,
+            DbError::Schema(_) => DbErrorKind::Schema,
+            DbError::Validation(_) => DbErrorKind::Validation,
+            DbError::Transaction(_) => DbErrorKind::Transaction,
+            DbError::Query(_) => DbErrorKind::Query,
+            DbError::NotImplemented => DbErrorKind::NotImplemented,
+        }
+    }
+}
+
 /// Query errors: unsupported query forms, bad syntax, or invalid paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryError {

@@ -13,17 +13,29 @@ pip install "typra>=0.13.0,<0.14"
 ## Core objects
 
 - **`typra.Database`**
-  - `open(path: str) -> Database`
+  - `open(path: str, *, read_only: bool = False) -> Database`
   - `open_in_memory() -> Database`
   - `open_snapshot_bytes(data: bytes) -> Database`
+  - `open_snapshot(path: str) -> Database`
   - `path() -> str`
   - `register_collection(name, fields_json, primary_field, indexes_json=None) -> (collection_id, schema_version)`
   - `insert(collection, row: dict) -> None`
   - `get(collection, pk) -> dict | None`
   - `delete(collection, pk) -> None`
+  - `export_snapshot(dest_path: str) -> None`
   - `transaction()` context manager (`with db.transaction(): ...`)
   - `collection_names() -> list[str]`
   - `collection(name) -> Collection` (typed query builder)
+
+## Errors
+
+Typra maps engine errors to standard Python exceptions (`ValueError`, `OSError`, `RuntimeError`), and also provides **more specific subclasses** you can match on:
+
+- `typra.TypraFormatError` (subclass of `ValueError`)
+- `typra.TypraSchemaError` (subclass of `ValueError`)
+- `typra.TypraValidationError` (subclass of `ValueError`)
+- `typra.TypraQueryError` (subclass of `ValueError`)
+- `typra.TypraTransactionError` (subclass of `RuntimeError`)
 
 ## Query builder (`Collection`)
 

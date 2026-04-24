@@ -114,6 +114,8 @@ pub(crate) fn open_with_store<S: Store>(
     mut store: S,
     opts: OpenOptions,
 ) -> Result<Database<S>, DbError> {
+    #[cfg(feature = "tracing")]
+    tracing::info!(path = %path.display(), "open_with_store_begin");
     let len = store.len()?;
     let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
 
@@ -266,5 +268,7 @@ pub(crate) fn open_with_store<S: Store>(
         txn_seq: 0,
         txn_staging: None,
     };
+    #[cfg(feature = "tracing")]
+    tracing::info!(path = %db.path.display(), format_minor = db.format_minor, "open_with_store_ok");
     Ok(db)
 }

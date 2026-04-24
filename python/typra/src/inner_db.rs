@@ -212,6 +212,17 @@ impl InnerDb {
         }
     }
 
+    pub(crate) fn export_snapshot_to_path(&mut self, dest_path: &str) -> PyResult<()> {
+        match self {
+            InnerDb::File(d) => d
+                .export_snapshot_to_path(dest_path)
+                .map_err(|e| PyValueError::new_err(format!("{e}"))),
+            InnerDb::Mem(d) => d
+                .export_snapshot_to_path(dest_path)
+                .map_err(|e| PyValueError::new_err(format!("{e}"))),
+        }
+    }
+
     pub(crate) fn begin_transaction(&mut self) -> Result<(), typra_core::DbError> {
         match self {
             InnerDb::File(d) => d.begin_transaction(),

@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
-use crate::config::OpenOptions;
+use crate::config::{OpenMode, OpenOptions};
 use crate::error::{DbError, FormatError, SchemaError, TransactionError};
 use crate::index::IndexState;
 use crate::index::{encode_index_payload, IndexEntry, IndexOp};
@@ -1094,6 +1094,16 @@ impl Database<FileStore> {
         self.store.sync()?;
         Ok(())
     }
+
+    /// Create a consistent backup copy of this on-disk database.
+    ///
+    /// This writes a checkpoint (for fast reopen and a stable state marker) and then copies the
+    /// underlying file bytes to `dest_path`.
+    pub fn export_snapshot_to_path(&mut self, dest_path: impl AsRef<Path>) -> Result<(), DbError> {
+        self.checkpoint()?;
+        std::fs::copy(&self.path, dest_path.as_ref())?;
+        Ok(())
+    }
 }
 
 pub struct Collection<'a, S: Store, T: crate::schema::DbModel> {
@@ -1310,19 +1320,24 @@ impl Database<FileStore> {
         Self::open_with_options(path, crate::config::OpenOptions::default())
     }
 
+    /// Open an existing file read-only (does not create it).
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, DbError> {
+        Self::open_with_options(
+            path,
+            crate::config::OpenOptions {
+                mode: OpenMode::ReadOnly,
+                ..crate::config::OpenOptions::default()
+            },
+        )
+    }
+
     /// Open with recovery and other options (see [`crate::config::OpenOptions`]).
     pub fn open_with_options(
         path: impl AsRef<Path>,
         opts: crate::config::OpenOptions,
     ) -> Result<Self, DbError> {
         let path = path.as_ref().to_path_buf();
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)?;
-        let store = FileStore::new(file);
+        let store = FileStore::open_locked(&path, opts.mode)?;
         Self::open_with_store(path, store, opts)
     }
 }
@@ -1355,6 +1370,18 @@ impl Database<VecStore> {
     /// Clone of the full serialized database image (alias of the buffer returned by [`into_snapshot_bytes`](Self::into_snapshot_bytes)).
     pub fn snapshot_bytes(&self) -> Vec<u8> {
         self.store.as_slice().to_vec()
+    }
+
+    /// Write the full in-memory database image to `dest_path`.
+    pub fn export_snapshot_to_path(&self, dest_path: impl AsRef<Path>) -> Result<(), DbError> {
+        std::fs::write(dest_path.as_ref(), self.snapshot_bytes())?;
+        Ok(())
+    }
+
+    /// Open an in-memory database from a snapshot file.
+    pub fn open_snapshot_path(path: impl AsRef<Path>) -> Result<Self, DbError> {
+        let bytes = std::fs::read(path.as_ref())?;
+        Self::from_snapshot_bytes(bytes)
     }
 }
 
@@ -1926,6 +1953,7 @@ mod tests {
             &path,
             OpenOptions {
                 recovery: RecoveryMode::Strict,
+                ..OpenOptions::default()
             },
         );
         assert!(strict.is_err());
@@ -1935,6 +1963,7 @@ mod tests {
             &path,
             OpenOptions {
                 recovery: RecoveryMode::AutoTruncate,
+                ..OpenOptions::default()
             },
         )
         .unwrap();

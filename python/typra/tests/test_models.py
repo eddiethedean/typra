@@ -106,3 +106,41 @@ def test_models_pydantic_optional_if_installed() -> None:
     assert got is not None
     assert got.id == 1
     assert got.name == "Ada"
+
+
+def test_models_pydantic_constraints_update_select_and_plan_apply_if_installed() -> (
+    None
+):
+    pydantic = pytest.importorskip("pydantic")
+
+    class User(pydantic.BaseModel):
+        __typra_primary_key__ = "id"
+        __typra_indexes__ = [
+            typra.models.unique("id"),
+            typra.models.index("age"),
+        ]
+
+        id: int
+        age: Annotated[int, typra.models.constrained(min_i64=0)]
+        name: str
+
+    db = typra.Database.open_in_memory()
+    users = typra.models.collection(db, User)
+
+    with pytest.raises(ValueError):
+        users.insert(User(id=1, age=-1, name="Bad"))
+
+    users.insert(User(id=1, age=10, name="Ada"))
+    users.update(1, {"name": "Ada2"})
+    got = users.get(1)
+    assert got is not None
+    assert got.name == "Ada2"
+
+    rows = users.where("id", 1).select(["id", "name"]).all()
+    assert len(rows) == 1
+    assert rows[0].id == 1
+    assert rows[0].name == "Ada2"
+
+    _plan = typra.models.plan(db, User)
+    ver = typra.models.apply(db, User, force=False)
+    assert isinstance(ver, int)

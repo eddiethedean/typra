@@ -202,6 +202,13 @@ python3 -m venv .venv
 make check-full
 ```
 
+Benchmarks (Criterion):
+
+```bash
+cargo bench -p typra-core --bench query
+cargo bench -p typra-core --bench workflows
+```
+
 Design specs live under **[`docs/`](docs/)**.
 
 ## License
