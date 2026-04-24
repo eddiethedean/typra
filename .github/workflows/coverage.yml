@@ -1,0 +1,54 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps (PyO3)
+        run: sudo apt-get update && sudo apt-get install -y python3-dev pkg-config
+
+      - name: Prepare venv + tools
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -U pip
+          make install-tools
+
+      - name: Rust coverage (non-gated)
+        run: make coverage-rust COVERAGE_TYPRA_CORE_LINES=0
+
+      - name: Python coverage
+        run: make coverage-python
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            target/coverage/rust.lcov
+            target/coverage/python.xml
+
