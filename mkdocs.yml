@@ -15,6 +15,8 @@ theme:
 markdown_extensions:
   - admonition
   - attr_list
+  - fenced_code
+  - codehilite
   - tables
   - toc:
       permalink: true
