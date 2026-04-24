@@ -110,11 +110,11 @@ Output:
 
 ```text
 Book(title='Hello', year=2020, rating=4.5)
-0.13.0
+1.0.0
 ```
 
 ```bash
-pip install "typra>=0.13.0,<0.14"
+pip install "typra>=1.0.0,<2"
 ```
 
 ---
@@ -127,13 +127,13 @@ Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(D
 
 ```toml
 [dependencies]
-typra = "0.13"
+typra = "1.0"
 ```
 
 Without proc-macros (engine only):
 
 ```toml
-typra = { version = "0.13", default-features = false }
+typra = { version = "1.0", default-features = false }
 ```
 
 ### Lower-level crates

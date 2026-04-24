@@ -45,7 +45,7 @@ ACTUAL_RUST=$(cargo run -q -p typra --example open | strip_cr)
 # --- Python: docs/guides/quickstart.md "Run it (from this repo)" ---
 read -r -d '' EXPECT_PY_GUIDE <<'EOF' || true
 get: Book(title='Hello', year=2020, rating=4.5)
-typra 0.13.0
+typra 1.0.0
 
 EOF
 ACTUAL_PY_GUIDE=$("$PYTHON" <<'PY' | strip_cr
@@ -87,7 +87,7 @@ PY
 # --- Python: root README.md (Python section) ---
 read -r -d '' EXPECT_PY_ROOT <<'EOF' || true
 Book(title='Hello', year=2020, rating=4.5)
-0.13.0
+1.0.0
 
 EOF
 ACTUAL_PY_ROOT=$("$PYTHON" <<'PY' | strip_cr
@@ -129,7 +129,7 @@ PY
 # --- Python: python/typra/README.md quick start ---
 read -r -d '' EXPECT_PY_PKG <<'EOF' || true
 Book(title='Typra', year=2020, rating=4.5)
-0.13.0
+1.0.0
 
 EOF
 ACTUAL_PY_PKG=$("$PYTHON" <<'PY' | strip_cr

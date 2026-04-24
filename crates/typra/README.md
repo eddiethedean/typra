@@ -5,7 +5,7 @@
 
 User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get, secondary indexes, minimal typed queries).
 
-## Status (v0.13.x)
+## Status (v1.0.x)
 
 `Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get` / `delete`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, **`#[derive(DbModel)]`** (via the default `derive` feature), **secondary indexes**, typed **query** execution (**equality**, `And`, `Or`, ranges, `limit`, `order_by`, `explain`), **`Database::query_iter`**, and **subset projections**. Typra’s **SQL text** surface remains minimal (primarily to support Python DB-API); applications should prefer the typed query builder APIs.
 
@@ -26,13 +26,13 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 
 ```toml
 [dependencies]
-typra = "0.13"
+typra = "1.0"
 ```
 
 Disable the default `derive` feature if you only need the engine:
 
 ```toml
-typra = { version = "0.13", default-features = false }
+typra = { version = "1.0", default-features = false }
 ```
 
 ## Example

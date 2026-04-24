@@ -10,7 +10,7 @@ For file-format and API compatibility expectations, see [Compatibility matrix](.
 
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
 
-    pip install "typra>=0.13.0,<0.14"
+    pip install "typra>=1.0.0,<2"
 
 Pin the minor range you test against; pre-1.0 minors may include API or format changes.
 

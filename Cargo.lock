@@ -1110,7 +1110,7 @@ dependencies = [
 
 [[package]]
 name = "typra"
-version = "0.13.0"
+version = "1.0.0"
 dependencies = [
  "tempfile",
  "tokio",
@@ -1120,7 +1120,7 @@ dependencies = [
 
 [[package]]
 name = "typra-cli"
-version = "0.13.0"
+version = "1.0.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1132,7 +1132,7 @@ dependencies = [
 
 [[package]]
 name = "typra-core"
-version = "0.13.0"
+version = "1.0.0"
 dependencies = [
  "crc32c",
  "criterion",
@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "typra-derive"
-version = "0.13.0"
+version = "1.0.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "typra-python"
-version = "0.13.0"
+version = "1.0.0"
 dependencies = [
  "pyo3",
  "serde_json",

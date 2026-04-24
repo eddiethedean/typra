@@ -13,7 +13,7 @@ Most applications should depend on **`typra`**:
 
 ```toml
 [dependencies]
-typra = "0.13"
+typra = "1.0"
 ```
 
 It re-exports the engine and (by default) enables `#[derive(DbModel)]`.

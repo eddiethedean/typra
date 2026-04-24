@@ -21,7 +21,7 @@ Supported types, constraints, indexes, and query operators: [Types matrix](../re
 In your application `Cargo.toml`:
 
     [dependencies]
-    typra = "0.13"
+    typra = "1.0"
 
 ## Minimal Rust example
 
@@ -65,7 +65,7 @@ Output:
 
 ## Install (Python)
 
-    pip install "typra>=0.13.0,<0.14"
+    pip install "typra>=1.0.0,<2"
 
 ## Minimal Python example
 
@@ -125,7 +125,7 @@ Requires **Python 3.9+**. From the repository root, build the extension then run
 Output (the **`typra`** version line tracks the workspace / PyPI release):
 
     get: Book(title='Hello', year=2020, rating=4.5)
-    typra 0.13.0
+    typra 1.0.0
 
 ## Development quickstart (repo contributors)
 

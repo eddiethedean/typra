@@ -7,7 +7,7 @@ For worked examples and the SQL/DB-API subset, see the [Python guide](../guides/
 ## Install
 
 ```bash
-pip install "typra>=0.13.0,<0.14"
+pip install "typra>=1.0.0,<2"
 ```
 
 ## Core objects
