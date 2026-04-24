@@ -20,125 +20,107 @@ Supported types, constraints, indexes, and query operators: [Types matrix](../re
 
 In your application `Cargo.toml`:
 
-```toml
-[dependencies]
-typra = "0.13"
-```
+    [dependencies]
+    typra = "0.13"
 
 ## Minimal Rust example
 
 This uses an **in-memory** database (no file; safe to run repeatedly). For an on-disk file, use `Database::open("my.typra")?` instead of `open_in_memory()`.
 
-```rust
-use std::borrow::Cow;
+    use std::borrow::Cow;
 
-use typra::prelude::*;
-use typra::schema::FieldPath;
-use typra::FieldDef;
-use typra::Type;
+    use typra::prelude::*;
+    use typra::schema::FieldPath;
+    use typra::FieldDef;
+    use typra::Type;
 
-fn main() -> Result<(), DbError> {
-    // Setup: in-memory database (no file on disk).
-    let mut db = Database::open_in_memory()?;
-    println!("opened: {}", db.path().display());
-    // Example: register a `books` collection with a string primary key `title`.
-    let (id, ver) = db.register_collection(
-        "books",
-        vec![FieldDef {
-            path: FieldPath::new([Cow::Borrowed("title")])?,
-            ty: Type::String,
-            constraints: vec![],
-        }],
-        "title",
-    )?;
-    println!("registered collection id={} version={}", id.0, ver.0);
-    Ok(())
-}
-```
+    fn main() -> Result<(), DbError> {
+        // Setup: in-memory database (no file on disk).
+        let mut db = Database::open_in_memory()?;
+        println!("opened: {}", db.path().display());
+        // Example: register a `books` collection with a string primary key `title`.
+        let (id, ver) = db.register_collection(
+            "books",
+            vec![FieldDef {
+                path: FieldPath::new([Cow::Borrowed("title")])?,
+                ty: Type::String,
+                constraints: vec![],
+            }],
+            "title",
+        )?;
+        println!("registered collection id={} version={}", id.0, ver.0);
+        Ok(())
+    }
 
 ### Run it (from this repo)
 
 The workspace includes the same program as **`crates/typra/examples/open.rs`**:
 
-```bash
-cargo run -q -p typra --example open
-```
+    cargo run -q -p typra --example open
 
 Output:
 
-```text
-opened: :memory:
-registered collection id=1 version=1
-```
+    opened: :memory:
+    registered collection id=1 version=1
 
 ## Install (Python)
 
-```bash
-pip install "typra>=0.13.0,<0.14"
-```
+    pip install "typra>=0.13.0,<0.14"
 
 ## Minimal Python example
 
 In-memory (repeatable; same idea as the Rust example above):
 
-```python
-# Setup: module and in-memory database.
-import typra
+    # Setup: module and in-memory database.
+    import typra
 
-db = typra.Database.open_in_memory()
-cid, ver = db.register_collection(
-    "books",
-    '[{"path": ["title"], "type": "string"}]',
-    "title",
-)
-# Example: insert one row, read it back, print package version.
-print("registered collection_id=", cid, "schema_version=", ver)
-db.insert("books", {"title": "Hello"})
-print("get:", db.get("books", "Hello"))
-print("typra", typra.__version__)
-```
+    db = typra.Database.open_in_memory()
+    cid, ver = db.register_collection(
+        "books",
+        '[{"path": ["title"], "type": "string"}]',
+        "title",
+    )
+    # Example: insert one row, read it back, print package version.
+    print("registered collection_id=", cid, "schema_version=", ver)
+    db.insert("books", {"title": "Hello"})
+    print("get:", db.get("books", "Hello"))
+    print("typra", typra.__version__)
 
 ### Run it (from this repo)
 
 Requires **Python 3.9+**. From the repository root, build the extension then run the snippet (bash):
 
-```bash
-make python-develop
-.venv/bin/python <<'PY'
-# Setup: module and in-memory database.
-import typra
+    make python-develop
+    .venv/bin/python <<'PY'
+    # Setup: module and in-memory database.
+    import typra
 
-db = typra.Database.open_in_memory()
-cid, ver = db.register_collection(
-    "books",
-    '[{"path": ["title"], "type": "string"}]',
-    "title",
-)
-# Example: insert one row, read it back, print package version.
-print("registered collection_id=", cid, "schema_version=", ver)
-db.insert("books", {"title": "Hello"})
-print("get:", db.get("books", "Hello"))
-print("typra", typra.__version__)
-PY
-```
+    db = typra.Database.open_in_memory()
+    cid, ver = db.register_collection(
+        "books",
+        '[{"path": ["title"], "type": "string"}]',
+        "title",
+    )
+    # Example: insert one row, read it back, print package version.
+    print("registered collection_id=", cid, "schema_version=", ver)
+    db.insert("books", {"title": "Hello"})
+    print("get:", db.get("books", "Hello"))
+    print("typra", typra.__version__)
+    PY
 
 Output (the **`typra`** version line tracks the workspace / PyPI release):
 
-```text
-registered collection_id= 1 schema_version= 1
-get: {'title': 'Hello'}
-typra 0.13.0
-```
+    registered collection_id= 1 schema_version= 1
+    get: {'title': 'Hello'}
+    typra 0.13.0
 
 ## Development quickstart (repo contributors)
 
 From the repo root:
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -U pip
-make check-full
-```
+    python3 -m venv .venv
+    .venv/bin/python -m pip install -U pip
+    make check-full
 
 This runs:
 

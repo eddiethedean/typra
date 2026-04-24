@@ -10,9 +10,7 @@ For file-format and API compatibility expectations, see [Compatibility matrix](.
 
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
 
-```bash
-pip install "typra>=0.13.0,<0.14"
-```
+    pip install "typra>=0.13.0,<0.14"
 
 Pin the minor range you test against; pre-1.0 minors may include API or format changes.
 
@@ -20,29 +18,25 @@ Pin the minor range you test against; pre-1.0 minors may include API or format c
 
 In-memory (repeatable; no file). To use a file instead, replace `open_in_memory()` with `open("/path/to/app.typra")`.
 
-```python
-# Setup: module, in-memory DB, and one collection.
-import typra
+    # Setup: module, in-memory DB, and one collection.
+    import typra
 
-db = typra.Database.open_in_memory()
-cid, ver = db.register_collection(
-    "books",
-    '[{"path": ["title"], "type": "string"}]',
-    "title",
-)
-# Example: show path, registration ids, and registered names.
-print("path:", db.path())
-print("collection_id:", cid, "schema_version:", ver)
-print("collection_names:", db.collection_names())
-```
+    db = typra.Database.open_in_memory()
+    cid, ver = db.register_collection(
+        "books",
+        '[{"path": ["title"], "type": "string"}]',
+        "title",
+    )
+    # Example: show path, registration ids, and registered names.
+    print("path:", db.path())
+    print("collection_id:", cid, "schema_version:", ver)
+    print("collection_names:", db.collection_names())
 
 Output:
 
-```text
-path: :memory:
-collection_id: 1 schema_version: 1
-collection_names: ['books']
-```
+    path: :memory:
+    collection_id: 1 schema_version: 1
+    collection_names: ['books']
 
 `register_collection` returns **`(collection_id, schema_version)`**. For a new collection, ids start at **`1`** and the first schema version is **`1`**.
 
@@ -104,30 +98,26 @@ Design reference: [Query planner/execution spec](../specs/query_planner.md).
 
 ### Query example
 
-```python
-# Setup: in-memory DB, schema, index, and one row.
-import typra
+    # Setup: in-memory DB, schema, index, and one row.
+    import typra
 
-db = typra.Database.open_in_memory()
-fields = (
-    '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
-)
-indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
-db.register_collection("books", fields, "title", indexes)
-db.insert("books", {"title": "Hello", "year": 2020})
-# Example: indexed equality query with subset projection.
-explain = db.collection("books").where("title", "Hello").explain()
-rows = db.collection("books").where("title", "Hello").all(fields=["title"])
-print("index_lookup:", "IndexLookup" in explain)
-print("rows:", rows)
-```
+    db = typra.Database.open_in_memory()
+    fields = (
+        '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
+    )
+    indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
+    db.register_collection("books", fields, "title", indexes)
+    db.insert("books", {"title": "Hello", "year": 2020})
+    # Example: indexed equality query with subset projection.
+    explain = db.collection("books").where("title", "Hello").explain()
+    rows = db.collection("books").where("title", "Hello").all(fields=["title"])
+    print("index_lookup:", "IndexLookup" in explain)
+    print("rows:", rows)
 
 Output:
 
-```text
-index_lookup: True
-rows: [{'title': 'Hello'}]
-```
+    index_lookup: True
+    rows: [{'title': 'Hello'}]
 
 ### Realistic workflow: indexed queries on disk
 
@@ -135,63 +125,61 @@ This pattern matches a small **order line** table: **integer primary key**, **no
 
 Row order from `all()` is not guaranteed to be sorted; sort in application code when you need a stable listing.
 
-```python
-# Setup: temp on-disk file, collection with indexes, and sample rows.
-import tempfile
-from pathlib import Path
+    # Setup: temp on-disk file, collection with indexes, and sample rows.
+    import tempfile
+    from pathlib import Path
 
-import typra
+    import typra
 
-with tempfile.TemporaryDirectory() as d:
-    path = Path(d) / "app.typra"
-    db = typra.Database.open(str(path))
-    fields = """[
-      {"path": ["id"], "type": "int64"},
-      {"path": ["sku"], "type": "string"},
-      {"path": ["qty"], "type": "int64"},
-      {"path": ["status"], "type": "string"}
-    ]"""
-    indexes = """[
-      {"name": "sku_idx", "path": ["sku"], "kind": "index"},
-      {"name": "status_idx", "path": ["status"], "kind": "index"}
-    ]"""
-    db.register_collection("order_lines", fields, "id", indexes)
-    for oid, sku, qty, st in [
-        (1, "SKU-A", 2, "open"),
-        (2, "SKU-B", 1, "shipped"),
-        (3, "SKU-A", 4, "open"),
-    ]:
-        db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
-    # Example: conjunctive query, subset projection, reopen and `get` by PK.
-    q = (
-        db.collection("order_lines")
-        .where("status", "open")
-        .and_where("sku", "SKU-A")
-        .limit(10)
-    )
-    rows = sorted(q.all(), key=lambda r: r["id"])
-    print("indexed:", "IndexLookup" in q.explain())
-    print("matches:", len(rows))
-    print("rows:", rows)
-    short = sorted(
-        db.collection("order_lines").where("status", "open").all(fields=["id", "qty"]),
-        key=lambda r: r["id"],
-    )
-    print("subset:", short)
-    db2 = typra.Database.open(str(path))
-    row = db2.get("order_lines", 1)
-    print("reopen_qty:", row["qty"] if row else None)
-```
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "app.typra"
+        db = typra.Database.open(str(path))
+        fields = """[
+          {"path": ["id"], "type": "int64"},
+          {"path": ["sku"], "type": "string"},
+          {"path": ["qty"], "type": "int64"},
+          {"path": ["status"], "type": "string"}
+        ]"""
+        indexes = """[
+          {"name": "sku_idx", "path": ["sku"], "kind": "index"},
+          {"name": "status_idx", "path": ["status"], "kind": "index"}
+        ]"""
+        db.register_collection("order_lines", fields, "id", indexes)
+        for oid, sku, qty, st in [
+            (1, "SKU-A", 2, "open"),
+            (2, "SKU-B", 1, "shipped"),
+            (3, "SKU-A", 4, "open"),
+        ]:
+            db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
+        # Example: conjunctive query, subset projection, reopen and `get` by PK.
+        q = (
+            db.collection("order_lines")
+            .where("status", "open")
+            .and_where("sku", "SKU-A")
+            .limit(10)
+        )
+        rows = sorted(q.all(), key=lambda r: r["id"])
+        print("indexed:", "IndexLookup" in q.explain())
+        print("matches:", len(rows))
+        print("rows:", rows)
+        short = sorted(
+            db.collection("order_lines")
+            .where("status", "open")
+            .all(fields=["id", "qty"]),
+            key=lambda r: r["id"],
+        )
+        print("subset:", short)
+        db2 = typra.Database.open(str(path))
+        row = db2.get("order_lines", 1)
+        print("reopen_qty:", row["qty"] if row else None)
 
 Output:
 
-```text
-indexed: True
-matches: 2
-rows: [{'id': 1, 'qty': 2, 'sku': 'SKU-A', 'status': 'open'}, {'id': 3, 'qty': 4, 'sku': 'SKU-A', 'status': 'open'}]
-subset: [{'id': 1, 'qty': 2}, {'id': 3, 'qty': 4}]
-reopen_qty: 2
-```
+    indexed: True
+    matches: 2
+    rows: [{'id': 1, 'qty': 2, 'sku': 'SKU-A', 'status': 'open'}, {'id': 3, 'qty': 4, 'sku': 'SKU-A', 'status': 'open'}]
+    subset: [{'id': 1, 'qty': 2}, {'id': 3, 'qty': 4}]
+    reopen_qty: 2
 
 For **ephemeral** integration tests (CI, notebooks), prefer a temp file as above. For a fixed path in an application, ensure parent directories exist before `open`, and catch **`OSError`** around file creation.
 
@@ -211,17 +199,15 @@ Anything outside this subset raises `ValueError`.
 
 ### DB-API usage (0.10.0+)
 
-```python
-import typra
+    import typra
 
-conn = typra.dbapi.connect("app.typra")
-cur = conn.cursor()
-cur.execute(
-    "SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10",
-    (2020,),
-)
-rows = cur.fetchall()
-```
+    conn = typra.dbapi.connect("app.typra")
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10",
+        (2020,),
+    )
+    rows = cur.fetchall()
 
 ### SQLAlchemy
 
@@ -247,57 +233,45 @@ Unknown names produce a **`ValueError`** mentioning the unknown primitive.
 
 ### Optional
 
-```json
-{"optional": "string"}
-```
+    {"optional": "string"}
 
 Nested arbitrarily: `{"optional": {"list": "int64"}}`.
 
 ### List
 
-```json
-{"list": "string"}
-```
+    {"list": "string"}
 
 ### Object (nested fields)
 
-```json
-{"object": [
-  {"path": ["street"], "type": "string"},
-  {"path": ["zip"], "type": "string"}
-]}
-```
+    {"object": [
+      {"path": ["street"], "type": "string"},
+      {"path": ["zip"], "type": "string"}
+    ]}
 
 ### Enum
 
-```json
-{"enum": ["draft", "published"]}
-```
+    {"enum": ["draft", "published"]}
 
 Each variant must be a JSON string.
 
 ### Example: multiple top-level fields
 
-```python
-# Setup: in-memory DB and a multi-field `books` schema (PK `title`).
-import typra
+    # Setup: in-memory DB and a multi-field `books` schema (PK `title`).
+    import typra
 
-db = typra.Database.open_in_memory()
-fields = """[
-  {"path": ["title"], "type": "string"},
-  {"path": ["year"], "type": "int64"},
-  {"path": ["tags"], "type": {"list": "string"}}
-]"""
-cid, ver = db.register_collection("books", fields, "title")
-# Example: show assigned collection and schema version ids.
-print("collection_id:", cid, "schema_version:", ver)
-```
+    db = typra.Database.open_in_memory()
+    fields = """[
+      {"path": ["title"], "type": "string"},
+      {"path": ["year"], "type": "int64"},
+      {"path": ["tags"], "type": {"list": "string"}}
+    ]"""
+    cid, ver = db.register_collection("books", fields, "title")
+    # Example: show assigned collection and schema version ids.
+    print("collection_id:", cid, "schema_version:", ver)
 
 Output:
 
-```text
-collection_id: 1 schema_version: 1
-```
+    collection_id: 1 schema_version: 1
 
 ## Persistence
 
@@ -325,14 +299,12 @@ See [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) f
 
 From the repository root, with Python 3.9+:
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -U pip
-.venv/bin/python -m pip install -U "maturin>=1.5,<2" pytest
-cd python/typra
-maturin develop --release
-pytest -q
-```
+    python3 -m venv .venv
+    .venv/bin/python -m pip install -U pip
+    .venv/bin/python -m pip install -U "maturin>=1.5,<2" pytest
+    cd python/typra
+    maturin develop --release
+    pytest -q
 
 Or run **`make check-full`** from the repo root (Rust + Python checks and tests). See also [`python/README.md`](https://github.com/eddiethedean/typra/blob/main/python/README.md).
 
