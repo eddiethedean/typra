@@ -9,6 +9,8 @@ use crate::schema::{FieldDef, Type};
 
 pub const RECORD_PAYLOAD_VERSION: u16 = 1;
 pub const OP_INSERT: u8 = 1;
+pub const OP_REPLACE: u8 = 2;
+pub const OP_DELETE: u8 = 3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DecodedRecord {
@@ -57,15 +59,21 @@ pub(crate) fn decode_record_payload_v1_body(
         .iter()
         .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
         .collect();
-    if n != non_pk_defs.len() {
+    if op == OP_DELETE {
+        if n != 0 {
+            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+        }
+    } else if n != non_pk_defs.len() {
         return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
     }
 
     let mut out_fields = BTreeMap::new();
-    for def in non_pk_defs {
-        let name = def.path.0[0].to_string();
-        let v = decode_tagged_scalar(&mut cur, &def.ty)?;
-        out_fields.insert(name, RowValue::from_scalar(v));
+    if op != OP_DELETE {
+        for def in non_pk_defs {
+            let name = def.path.0[0].to_string();
+            let v = decode_tagged_scalar(&mut cur, &def.ty)?;
+            out_fields.insert(name, RowValue::from_scalar(v));
+        }
     }
     if cur.remaining() != 0 {
         return Err(DbError::Format(FormatError::TrailingRecordPayload));

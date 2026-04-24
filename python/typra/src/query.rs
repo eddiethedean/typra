@@ -186,6 +186,7 @@ impl QueryBuilder {
                 collection: cid,
                 predicate: pred,
                 limit: self.limit,
+                order_by: None,
             };
             g.query(&q).map_err(db_error_to_py)?
         };
@@ -254,6 +255,7 @@ impl QueryBuilder {
             collection: cid,
             predicate: pred,
             limit: self.limit,
+            order_by: None,
         };
         g.explain_query(&q).map_err(db_error_to_py)
     }

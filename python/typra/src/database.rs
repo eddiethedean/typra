@@ -15,6 +15,18 @@ use crate::inner_db::InnerDb;
 use crate::query as query_api;
 use crate::row_values;
 
+fn schema_change_to_str(change: &typra_core::schema::SchemaChange) -> (&'static str, Option<&str>) {
+    match change {
+        typra_core::schema::SchemaChange::Safe => ("safe", None),
+        typra_core::schema::SchemaChange::NeedsMigration { reason } => {
+            ("needs_migration", Some(reason.as_str()))
+        }
+        typra_core::schema::SchemaChange::Breaking { reason } => {
+            ("breaking", Some(reason.as_str()))
+        }
+    }
+}
+
 pub(crate) fn lock_inner(inner: &Mutex<InnerDb>) -> PyResult<MutexGuard<'_, InnerDb>> {
     inner
         .lock()
@@ -189,6 +201,132 @@ impl Database {
         g.insert(cid, mapped).map_err(db_error_to_py)
     }
 
+    /// Delete the latest row for a primary key (no-op if absent).
+    fn delete(&self, py: Python<'_>, collection_name: &str, pk: &Bound<'_, PyAny>) -> PyResult<()> {
+        let col = collection_info(&self.inner, collection_name)?;
+        let pk_name = col
+            .primary_field
+            .as_deref()
+            .ok_or_else(|| PyValueError::new_err("collection has no primary key"))?;
+        let pk_ty = col
+            .fields
+            .iter()
+            .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == pk_name)
+            .map(|f| &f.ty)
+            .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
+        let pk_val = row_values::scalar_from_py(py, pk, pk_ty)?;
+        let mut g = lock_inner(&self.inner)?;
+        let cid = g
+            .collection_id_named(collection_name)
+            .map_err(db_error_to_py)?;
+        g.delete(cid, &pk_val).map_err(db_error_to_py)
+    }
+
+    /// Register a new schema version for an existing collection.
+    ///
+    /// Returns the new schema version number.
+    #[pyo3(signature = (collection_name, fields_json, indexes_json=None, force=false))]
+    fn register_schema_version(
+        &self,
+        collection_name: &str,
+        fields_json: &str,
+        indexes_json: Option<&str>,
+        force: bool,
+    ) -> PyResult<u32> {
+        let fields = fields_json::fields_from_json(fields_json).map_err(PyValueError::new_err)?;
+        let indexes = match indexes_json {
+            None => Vec::new(),
+            Some(s) if s.trim().is_empty() => Vec::new(),
+            Some(s) => fields_json::indexes_from_json(s, &fields).map_err(PyValueError::new_err)?,
+        };
+        let mut g = lock_inner(&self.inner)?;
+        let cid = g
+            .collection_id_named(collection_name)
+            .map_err(db_error_to_py)?;
+        let v = if force {
+            g.register_schema_version_with_indexes_force(cid, fields, indexes)
+        } else {
+            g.register_schema_version_with_indexes(cid, fields, indexes)
+        }
+        .map_err(db_error_to_py)?;
+        Ok(v.0)
+    }
+
+    /// Plan a schema version bump and return a JSON-like dict describing required steps.
+    #[pyo3(signature = (collection_name, fields_json, indexes_json=None))]
+    fn plan_schema_version(
+        &self,
+        py: Python<'_>,
+        collection_name: &str,
+        fields_json: &str,
+        indexes_json: Option<&str>,
+    ) -> PyResult<Py<PyDict>> {
+        let fields = fields_json::fields_from_json(fields_json).map_err(PyValueError::new_err)?;
+        let indexes = match indexes_json {
+            None => Vec::new(),
+            Some(s) if s.trim().is_empty() => Vec::new(),
+            Some(s) => fields_json::indexes_from_json(s, &fields).map_err(PyValueError::new_err)?,
+        };
+        let g = lock_inner(&self.inner)?;
+        let cid = g
+            .collection_id_named(collection_name)
+            .map_err(db_error_to_py)?;
+        let plan = g
+            .plan_schema_version_with_indexes(cid, fields, indexes)
+            .map_err(db_error_to_py)?;
+        let d = PyDict::new_bound(py);
+        let (kind, reason) = schema_change_to_str(&plan.change);
+        d.set_item("change", kind)?;
+        if let Some(r) = reason {
+            d.set_item("reason", r)?;
+        }
+        let steps: Vec<String> = plan
+            .steps
+            .into_iter()
+            .map(|s| match s {
+                typra_core::MigrationStep::BackfillTopLevelField { field } => {
+                    format!("backfill_top_level_field:{field}")
+                }
+                typra_core::MigrationStep::RebuildIndexes => "rebuild_indexes".to_string(),
+            })
+            .collect();
+        d.set_item("steps", steps)?;
+        Ok(d.unbind())
+    }
+
+    /// Backfill a missing top-level field with a fixed value for all rows.
+    fn backfill_top_level_field(
+        &self,
+        py: Python<'_>,
+        collection_name: &str,
+        field: &str,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let col = collection_info(&self.inner, collection_name)?;
+        let def = col
+            .fields
+            .iter()
+            .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == field)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown field {field:?}")))?;
+        let rv = row_values::value_from_py(py, value, &def.ty)?;
+        let mut g = lock_inner(&self.inner)?;
+        let cid = g
+            .collection_id_named(collection_name)
+            .map_err(db_error_to_py)?;
+        g.backfill_top_level_field_with_value(cid, field, rv)
+            .map_err(db_error_to_py)
+    }
+
+    /// Rebuild index entries for a collection based on the latest rows.
+    fn rebuild_indexes(&self, collection_name: &str) -> PyResult<()> {
+        let mut g = lock_inner(&self.inner)?;
+        let cid = g
+            .collection_id_named(collection_name)
+            .map_err(db_error_to_py)?;
+        g.rebuild_indexes_for_collection(cid)
+            .map_err(db_error_to_py)
+    }
+
     /// Fetch the latest row for a primary key, or ``None`` if absent.
     ///
     /// Args:
@@ -274,6 +412,18 @@ impl Database {
         let g = lock_inner(&self.inner)?;
         let v = g.snapshot_bytes()?;
         Ok(PyBytes::new_bound(py, &v).unbind())
+    }
+
+    /// Rewrite the database file into a compacted image at `dest_path`.
+    fn compact_to(&self, dest_path: &str) -> PyResult<()> {
+        let g = lock_inner(&self.inner)?;
+        g.compact_to(dest_path)
+    }
+
+    /// Compact this database in place (rewrites the file).
+    fn compact(&self) -> PyResult<()> {
+        let mut g = lock_inner(&self.inner)?;
+        g.compact_in_place()
     }
 
     /// Return a context manager for a multi-write transaction (commits on success, rolls back on exception).

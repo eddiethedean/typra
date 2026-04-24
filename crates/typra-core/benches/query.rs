@@ -58,6 +58,7 @@ fn bench_query_paths(c: &mut Criterion) {
             value: ScalarValue::String("needle".to_string()),
         }),
         limit: None,
+        order_by: None,
     };
     c.bench_function("query_indexed_eq", |b| {
         b.iter(|| black_box(db.query(black_box(&q_indexed)).unwrap()))
@@ -70,6 +71,7 @@ fn bench_query_paths(c: &mut Criterion) {
             value: ScalarValue::Int64((N / 2) as i64),
         }),
         limit: None,
+        order_by: None,
     };
     c.bench_function("query_scan_eq_on_non_indexed_field", |b| {
         b.iter(|| black_box(db.query(black_box(&q_scan)).unwrap()))

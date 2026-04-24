@@ -9,6 +9,7 @@ use typra_core::record::{RowValue, ScalarValue};
 use typra_core::schema::{CollectionId, FieldDef, IndexDef, SchemaVersion};
 use typra_core::storage::{FileStore, VecStore};
 use typra_core::Database as CoreDatabase;
+use typra_core::MigrationPlan;
 
 pub(crate) enum InnerDb {
     File(CoreDatabase<FileStore>),
@@ -68,6 +69,75 @@ impl InnerDb {
         }
     }
 
+    pub(crate) fn delete(
+        &mut self,
+        id: CollectionId,
+        pk: &ScalarValue,
+    ) -> Result<(), typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.delete(id, pk),
+            InnerDb::Mem(d) => d.delete(id, pk),
+        }
+    }
+
+    pub(crate) fn register_schema_version_with_indexes(
+        &mut self,
+        id: CollectionId,
+        fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
+    ) -> Result<SchemaVersion, typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.register_schema_version_with_indexes(id, fields, indexes),
+            InnerDb::Mem(d) => d.register_schema_version_with_indexes(id, fields, indexes),
+        }
+    }
+
+    pub(crate) fn register_schema_version_with_indexes_force(
+        &mut self,
+        id: CollectionId,
+        fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
+    ) -> Result<SchemaVersion, typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.register_schema_version_with_indexes_force(id, fields, indexes),
+            InnerDb::Mem(d) => d.register_schema_version_with_indexes_force(id, fields, indexes),
+        }
+    }
+
+    pub(crate) fn plan_schema_version_with_indexes(
+        &self,
+        id: CollectionId,
+        fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
+    ) -> Result<MigrationPlan, typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.plan_schema_version_with_indexes(id, fields, indexes),
+            InnerDb::Mem(d) => d.plan_schema_version_with_indexes(id, fields, indexes),
+        }
+    }
+
+    pub(crate) fn backfill_top_level_field_with_value(
+        &mut self,
+        id: CollectionId,
+        field: &str,
+        value: RowValue,
+    ) -> Result<(), typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.backfill_top_level_field_with_value(id, field, value),
+            InnerDb::Mem(d) => d.backfill_top_level_field_with_value(id, field, value),
+        }
+    }
+
+    pub(crate) fn rebuild_indexes_for_collection(
+        &mut self,
+        id: CollectionId,
+    ) -> Result<(), typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.rebuild_indexes_for_collection(id),
+            InnerDb::Mem(d) => d.rebuild_indexes_for_collection(id),
+        }
+    }
+
     pub(crate) fn get(
         &self,
         id: CollectionId,
@@ -109,6 +179,28 @@ impl InnerDb {
                 "snapshot_bytes is only supported for in-memory databases",
             )),
             InnerDb::Mem(d) => Ok(d.snapshot_bytes()),
+        }
+    }
+
+    pub(crate) fn compact_to(&self, dest_path: &str) -> Result<(), PyErr> {
+        match self {
+            InnerDb::File(d) => d
+                .compact_to(dest_path)
+                .map_err(|e| PyValueError::new_err(format!("{e}"))),
+            InnerDb::Mem(_) => Err(PyValueError::new_err(
+                "compact_to is only supported for file-backed databases",
+            )),
+        }
+    }
+
+    pub(crate) fn compact_in_place(&mut self) -> Result<(), PyErr> {
+        match self {
+            InnerDb::File(d) => d
+                .compact_in_place()
+                .map_err(|e| PyValueError::new_err(format!("{e}"))),
+            InnerDb::Mem(_) => Err(PyValueError::new_err(
+                "compact_in_place is only supported for file-backed databases",
+            )),
         }
     }
 

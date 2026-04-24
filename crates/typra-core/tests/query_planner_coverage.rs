@@ -27,6 +27,7 @@ fn query_unknown_collection_errors() {
         collection: CollectionId(99),
         predicate: None,
         limit: None,
+        order_by: None,
     };
     assert!(matches!(
         db.explain_query(&q),
@@ -71,6 +72,7 @@ fn query_full_collection_scan_no_predicate() {
         collection: cid,
         predicate: None,
         limit: None,
+        order_by: None,
     };
     let explain = db.explain_query(&q).unwrap();
     assert!(explain.contains("CollectionScan"));
@@ -117,6 +119,7 @@ fn query_collection_scan_with_limit_and_non_indexed_predicate() {
             value: ScalarValue::Int64(2),
         }),
         limit: Some(1),
+        order_by: None,
     };
     let explain = db.explain_query(&q).unwrap();
     assert!(explain.contains("CollectionScan"));
@@ -173,6 +176,7 @@ fn query_and_prefers_unique_index_over_non_unique() {
         collection: cid,
         predicate: Some(pred),
         limit: None,
+        order_by: None,
     };
     let explain = db.explain_query(&q).unwrap();
     assert!(explain.contains("sku_idx"));
@@ -218,6 +222,7 @@ fn query_indexed_non_unique_respects_limit_and_iter_matches() {
             value: ScalarValue::String("x".into()),
         }),
         limit: Some(2),
+        order_by: None,
     };
     let vec_rows = db.query(&q).unwrap();
     assert_eq!(vec_rows.len(), 2);
@@ -256,6 +261,7 @@ fn query_unique_index_miss_returns_empty() {
             value: ScalarValue::String("missing".into()),
         }),
         limit: None,
+        order_by: None,
     };
     assert!(db.query(&q).unwrap().is_empty());
     assert_eq!(db.query_iter(&q).unwrap().count(), 0);
@@ -305,6 +311,7 @@ fn query_residual_and_with_two_conjuncts_after_index_pick() {
         collection: cid,
         predicate: Some(pred),
         limit: None,
+        order_by: None,
     };
     let explain = db.explain_query(&q).unwrap();
     assert!(explain.contains("title_idx"));
@@ -352,6 +359,7 @@ fn query_iter_unique_index_residual_filters_row() {
         collection: cid,
         predicate: Some(pred),
         limit: None,
+        order_by: None,
     };
     assert!(db.query(&q).unwrap().is_empty());
     assert_eq!(db.query_iter(&q).unwrap().count(), 0);
@@ -364,6 +372,7 @@ fn index_state_unique_violation_and_idempotent_reapply() {
         collection_id: 1,
         index_name: "u".into(),
         kind: IndexKind::Unique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: b"k".to_vec(),
         pk_key: b"p1".to_vec(),
     };
@@ -373,6 +382,7 @@ fn index_state_unique_violation_and_idempotent_reapply() {
         collection_id: 1,
         index_name: "u".into(),
         kind: IndexKind::Unique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: b"k".to_vec(),
         pk_key: b"p2".to_vec(),
     };
@@ -393,11 +403,12 @@ fn decode_index_payload_rejects_bad_version_kind_trailing() {
         collection_id: 1,
         index_name: "n".into(),
         kind: IndexKind::Unique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: vec![1],
         pk_key: vec![2],
     };
     let mut buf = encode_index_payload(std::slice::from_ref(&entry));
-    // ver(2) + n(4) + cid(4) + kind(1) + ...
+    // ver(2) + n(4) + cid(4) + kind(1) + op(1) + ...
     let kind_pos = 2 + 4 + 4;
     buf[kind_pos] = 99;
     assert!(decode_index_payload(&buf).is_err());

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::error::{DbError, FormatError};
 use crate::record::payload_v1::{
-    decode_record_payload_v1_body, DecodedRecord, RECORD_PAYLOAD_VERSION,
+    decode_record_payload_v1_body, DecodedRecord, OP_DELETE, RECORD_PAYLOAD_VERSION,
 };
 use crate::record::row_value::{decode_row_value, encode_row_value, RowValue};
 use crate::record::scalar::{decode_tagged_scalar, encode_tagged_scalar, Cursor, ScalarValue};
@@ -20,15 +20,38 @@ pub fn encode_record_payload_v2(
     pk_ty: &Type,
     non_pk_ordered: &[(FieldDef, RowValue)],
 ) -> Result<Vec<u8>, DbError> {
+    encode_record_payload_v2_op(
+        collection_id,
+        schema_version,
+        crate::record::payload_v1::OP_INSERT,
+        pk,
+        pk_ty,
+        non_pk_ordered,
+    )
+}
+
+/// Encode a record segment body (version 2) with an explicit operation code.
+pub fn encode_record_payload_v2_op(
+    collection_id: u32,
+    schema_version: u32,
+    op: u8,
+    pk: &ScalarValue,
+    pk_ty: &Type,
+    non_pk_ordered: &[(FieldDef, RowValue)],
+) -> Result<Vec<u8>, DbError> {
     let mut out = Vec::new();
     out.extend_from_slice(&RECORD_PAYLOAD_VERSION_V2.to_le_bytes());
     out.extend_from_slice(&collection_id.to_le_bytes());
     out.extend_from_slice(&schema_version.to_le_bytes());
-    out.push(crate::record::payload_v1::OP_INSERT);
+    out.push(op);
     encode_tagged_scalar(&mut out, pk, pk_ty)?;
-    out.extend_from_slice(&(non_pk_ordered.len() as u32).to_le_bytes());
-    for (def, val) in non_pk_ordered {
-        encode_row_value(&mut out, val, &def.ty)?;
+    if op == OP_DELETE {
+        out.extend_from_slice(&0u32.to_le_bytes());
+    } else {
+        out.extend_from_slice(&(non_pk_ordered.len() as u32).to_le_bytes());
+        for (def, val) in non_pk_ordered {
+            encode_row_value(&mut out, val, &def.ty)?;
+        }
     }
     Ok(out)
 }
@@ -50,15 +73,21 @@ pub(crate) fn decode_record_payload_v2_body(
         .iter()
         .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
         .collect();
-    if n != non_pk_defs.len() {
+    if op == OP_DELETE {
+        if n != 0 {
+            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+        }
+    } else if n != non_pk_defs.len() {
         return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
     }
 
     let mut out_fields = BTreeMap::new();
-    for def in non_pk_defs {
-        let name = def.path.0[0].to_string();
-        let v = decode_row_value(&mut cur, &def.ty)?;
-        out_fields.insert(name, v);
+    if op != OP_DELETE {
+        for def in non_pk_defs {
+            let name = def.path.0[0].to_string();
+            let v = decode_row_value(&mut cur, &def.ty)?;
+            out_fields.insert(name, v);
+        }
     }
     if cur.remaining() != 0 {
         return Err(DbError::Format(FormatError::TrailingRecordPayload));

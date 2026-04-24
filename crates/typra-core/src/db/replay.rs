@@ -221,6 +221,12 @@ fn apply_record_segment(
             got: decoded.schema_version,
         }));
     }
+    let pk_key = decoded.pk.canonical_key_bytes();
+    if decoded.op == crate::record::OP_DELETE {
+        latest.remove(&(collection_id, pk_key));
+        return Ok(());
+    }
+
     let mut full: BTreeMap<String, RowValue> = BTreeMap::new();
     full.insert(
         pk_name.to_string(),
@@ -229,6 +235,6 @@ fn apply_record_segment(
     for (k, v) in decoded.fields {
         full.insert(k, v);
     }
-    latest.insert((collection_id, decoded.pk.canonical_key_bytes()), full);
+    latest.insert((collection_id, pk_key), full);
     Ok(())
 }

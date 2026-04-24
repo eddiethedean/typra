@@ -3,5 +3,6 @@
 mod ast;
 mod planner;
 
+pub use ast::{OrderBy, OrderDirection};
 pub use ast::{Predicate, Query};
 pub use planner::{execute_query, execute_query_iter, explain_query, QueryRowIter};

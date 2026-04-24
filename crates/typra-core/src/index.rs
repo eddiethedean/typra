@@ -6,7 +6,8 @@ use crate::error::{DbError, FormatError, SchemaError};
 use crate::schema::IndexKind;
 
 pub const INDEX_PAYLOAD_VERSION_V1: u16 = 1;
-pub const INDEX_PAYLOAD_VERSION: u16 = INDEX_PAYLOAD_VERSION_V1;
+pub const INDEX_PAYLOAD_VERSION_V2: u16 = 2;
+pub const INDEX_PAYLOAD_VERSION: u16 = INDEX_PAYLOAD_VERSION_V2;
 
 type IndexName = String;
 type IndexKey = Vec<u8>;
@@ -15,12 +16,20 @@ type IndexId = (u32, IndexName);
 type UniqueIndex = HashMap<IndexKey, PkKey>;
 type NonUniqueIndex = HashMap<IndexKey, BTreeSet<PkKey>>;
 
-/// One index update entry (insert path only in 0.7.0).
+/// Index delta operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexOp {
+    Insert,
+    Delete,
+}
+
+/// One index update entry (insert/update/delete).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexEntry {
     pub collection_id: u32,
     pub index_name: String,
     pub kind: IndexKind,
+    pub op: IndexOp,
     pub index_key: Vec<u8>,
     pub pk_key: Vec<u8>,
 }
@@ -39,13 +48,23 @@ impl IndexState {
                     .unique
                     .entry((entry.collection_id, entry.index_name))
                     .or_default();
-                match m.get(&entry.index_key) {
-                    None => {
-                        m.insert(entry.index_key, entry.pk_key);
-                        Ok(())
-                    }
-                    Some(existing) if *existing == entry.pk_key => Ok(()),
-                    Some(_) => Err(DbError::Schema(SchemaError::UniqueIndexViolation)),
+                match entry.op {
+                    IndexOp::Insert => match m.get(&entry.index_key) {
+                        None => {
+                            m.insert(entry.index_key, entry.pk_key);
+                            Ok(())
+                        }
+                        Some(existing) if *existing == entry.pk_key => Ok(()),
+                        Some(_) => Err(DbError::Schema(SchemaError::UniqueIndexViolation)),
+                    },
+                    IndexOp::Delete => match m.get(&entry.index_key) {
+                        None => Ok(()),
+                        Some(existing) if *existing == entry.pk_key => {
+                            m.remove(&entry.index_key);
+                            Ok(())
+                        }
+                        Some(_) => Ok(()),
+                    },
                 }
             }
             IndexKind::NonUnique => {
@@ -53,7 +72,19 @@ impl IndexState {
                     .non_unique
                     .entry((entry.collection_id, entry.index_name))
                     .or_default();
-                m.entry(entry.index_key).or_default().insert(entry.pk_key);
+                match entry.op {
+                    IndexOp::Insert => {
+                        m.entry(entry.index_key).or_default().insert(entry.pk_key);
+                    }
+                    IndexOp::Delete => {
+                        if let Some(set) = m.get_mut(&entry.index_key) {
+                            set.remove(&entry.pk_key);
+                            if set.is_empty() {
+                                m.remove(&entry.index_key);
+                            }
+                        }
+                    }
+                }
                 Ok(())
             }
         }
@@ -95,6 +126,10 @@ pub fn encode_index_payload(entries: &[IndexEntry]) -> Vec<u8> {
             IndexKind::Unique => 1,
             IndexKind::NonUnique => 2,
         });
+        out.push(match e.op {
+            IndexOp::Insert => 1,
+            IndexOp::Delete => 2,
+        });
         encode_string(&mut out, &e.index_name);
         encode_bytes(&mut out, &e.index_key);
         encode_bytes(&mut out, &e.pk_key);
@@ -105,7 +140,7 @@ pub fn encode_index_payload(entries: &[IndexEntry]) -> Vec<u8> {
 pub fn decode_index_payload(bytes: &[u8]) -> Result<Vec<IndexEntry>, DbError> {
     let mut cur = Cursor::new(bytes);
     let ver = cur.take_u16()?;
-    if ver != INDEX_PAYLOAD_VERSION_V1 {
+    if ver != INDEX_PAYLOAD_VERSION_V1 && ver != INDEX_PAYLOAD_VERSION_V2 {
         return Err(DbError::Format(FormatError::UnsupportedVersion {
             major: 0,
             minor: ver,
@@ -125,6 +160,20 @@ pub fn decode_index_payload(bytes: &[u8]) -> Result<Vec<IndexEntry>, DbError> {
                 }))
             }
         };
+        let op = if ver >= INDEX_PAYLOAD_VERSION_V2 {
+            let op_tag = cur.take_u8()?;
+            match op_tag {
+                1 => IndexOp::Insert,
+                2 => IndexOp::Delete,
+                _ => {
+                    return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+                        message: format!("unknown index op tag {op_tag}"),
+                    }))
+                }
+            }
+        } else {
+            IndexOp::Insert
+        };
         let index_name = decode_string(&mut cur)?;
         let index_key = decode_bytes(&mut cur)?;
         let pk_key = decode_bytes(&mut cur)?;
@@ -132,6 +181,7 @@ pub fn decode_index_payload(bytes: &[u8]) -> Result<Vec<IndexEntry>, DbError> {
             collection_id,
             index_name,
             kind,
+            op,
             index_key,
             pk_key,
         });

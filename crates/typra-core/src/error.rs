@@ -136,6 +136,14 @@ pub enum SchemaError {
     },
     /// Unique secondary index was violated (key already mapped to another primary key).
     UniqueIndexViolation,
+    /// Proposed schema update is not compatible with the existing schema.
+    IncompatibleSchemaChange {
+        message: String,
+    },
+    /// Proposed schema update is supported, but requires an explicit migration step.
+    MigrationRequired {
+        message: String,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -300,6 +308,12 @@ impl fmt::Display for SchemaError {
                 write!(f, "insert row missing field {name:?}")
             }
             SchemaError::UniqueIndexViolation => write!(f, "unique index violation"),
+            SchemaError::IncompatibleSchemaChange { message } => {
+                write!(f, "incompatible schema change: {message}")
+            }
+            SchemaError::MigrationRequired { message } => {
+                write!(f, "migration required: {message}")
+            }
         }
     }
 }

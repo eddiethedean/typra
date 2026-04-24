@@ -304,6 +304,7 @@ fn realistic_disk_workflow_transaction_indexed_query_reopen() {
                 },
             ])),
             limit: Some(10),
+            order_by: None,
         };
         let explain = db.explain_query(&q).unwrap();
         assert!(explain.contains("IndexLookup"));

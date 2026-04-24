@@ -9,6 +9,7 @@ use crate::record::RowValue;
 use crate::schema::{CollectionId, IndexKind};
 use crate::ScalarValue;
 
+use super::ast::{OrderBy, OrderDirection};
 use super::ast::{Predicate, Query};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,11 +21,13 @@ enum Plan {
         key: Vec<u8>,
         residual: Option<Predicate>,
         limit: Option<usize>,
+        order_by: Option<OrderBy>,
     },
     CollectionScan {
         collection_id: u32,
         predicate: Option<Predicate>,
         limit: Option<usize>,
+        order_by: Option<OrderBy>,
     },
 }
 
@@ -42,6 +45,7 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
             kind,
             residual,
             limit,
+            order_by,
             ..
         } => {
             let mut s = String::new();
@@ -55,10 +59,16 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
             if let Some(n) = limit {
                 s.push_str(&format!("  Limit {n}\n"));
             }
+            if let Some(ob) = order_by {
+                s.push_str(&format!("  OrderBy {:?} {:?}\n", ob.path, ob.direction));
+            }
             s
         }
         Plan::CollectionScan {
-            predicate, limit, ..
+            predicate,
+            limit,
+            order_by,
+            ..
         } => {
             let mut s = String::new();
             s.push_str("Plan:\n");
@@ -68,6 +78,9 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
             }
             if let Some(n) = limit {
                 s.push_str(&format!("  Limit {n}\n"));
+            }
+            if let Some(ob) = order_by {
+                s.push_str(&format!("  OrderBy {:?} {:?}\n", ob.path, ob.direction));
             }
             s
         }
@@ -96,6 +109,7 @@ pub fn execute_query(
             key,
             residual,
             limit,
+            order_by,
         } => {
             let mut out = Vec::new();
             let push_row = |out: &mut Vec<BTreeMap<String, RowValue>>, pk_key: Vec<u8>| {
@@ -125,15 +139,14 @@ pub fn execute_query(
             if let Some(pred) = residual {
                 out.retain(|row| eval_predicate(row, &pred));
             }
-            if let Some(n) = limit {
-                out.truncate(n);
-            }
+            apply_order_by_and_limit(&mut out, order_by.as_ref(), limit);
             Ok(out)
         }
         Plan::CollectionScan {
             collection_id,
             predicate,
             limit,
+            order_by,
         } => {
             let mut out = Vec::new();
             for ((cid, _pk), row) in latest.iter() {
@@ -146,10 +159,8 @@ pub fn execute_query(
                     }
                 }
                 out.push(row.clone());
-                if limit.map(|n| out.len() >= n).unwrap_or(false) {
-                    break;
-                }
             }
+            apply_order_by_and_limit(&mut out, order_by.as_ref(), limit);
             Ok(out)
         }
     }
@@ -164,6 +175,10 @@ pub struct QueryRowIter<'a> {
 }
 
 enum QueryRowIterState<'a> {
+    Vec {
+        rows: Vec<BTreeMap<String, RowValue>>,
+        pos: usize,
+    },
     IndexUnique {
         latest: &'a crate::db::LatestMap,
         collection_id: u32,
@@ -193,6 +208,15 @@ impl<'a> Iterator for QueryRowIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.state {
+            QueryRowIterState::Vec { rows, pos } => {
+                if *pos >= rows.len() {
+                    None
+                } else {
+                    let out = rows[*pos].clone();
+                    *pos += 1;
+                    Some(Ok(out))
+                }
+            }
             QueryRowIterState::IndexUnique {
                 latest,
                 collection_id,
@@ -284,6 +308,14 @@ pub fn execute_query_iter<'a>(
     latest: &'a crate::db::LatestMap,
     query: &Query,
 ) -> Result<QueryRowIter<'a>, DbError> {
+    if query.order_by.is_some() {
+        return Ok(QueryRowIter {
+            state: QueryRowIterState::Vec {
+                rows: execute_query(catalog, indexes, latest, query)?,
+                pos: 0,
+            },
+        });
+    }
     let col =
         catalog
             .get(query.collection)
@@ -299,6 +331,7 @@ pub fn execute_query_iter<'a>(
             key,
             residual,
             limit,
+            ..
         } => match kind {
             IndexKind::Unique => {
                 let pk = indexes
@@ -331,6 +364,7 @@ pub fn execute_query_iter<'a>(
             collection_id,
             predicate,
             limit,
+            ..
         } => QueryRowIterState::Scan {
             it: latest.iter(),
             collection_id,
@@ -352,6 +386,7 @@ fn plan_query(
             collection_id: collection.0,
             predicate: None,
             limit: query.limit,
+            order_by: query.order_by.clone(),
         });
     };
 
@@ -371,12 +406,14 @@ fn plan_query(
             key: value.canonical_key_bytes(),
             residual,
             limit: query.limit,
+            order_by: query.order_by.clone(),
         })
     } else {
         Ok(Plan::CollectionScan {
             collection_id: collection.0,
             predicate: residual,
             limit: query.limit,
+            order_by: query.order_by.clone(),
         })
     }
 }
@@ -390,6 +427,11 @@ fn choose_index<'a>(
             .iter()
             .find(|idx| &idx.path == path)
             .map(|idx| (idx, value.clone(), pred.clone())),
+        Predicate::Lt { .. }
+        | Predicate::Lte { .. }
+        | Predicate::Gt { .. }
+        | Predicate::Gte { .. }
+        | Predicate::Or(_) => None,
         Predicate::And(items) => {
             // Prefer unique index predicates, else first indexed predicate.
             let mut best: Option<(&crate::schema::IndexDef, ScalarValue, Predicate)> = None;
@@ -432,6 +474,66 @@ fn eval_predicate(row: &BTreeMap<String, RowValue>, pred: &Predicate) -> bool {
         Predicate::Eq { path, value } => scalar_at_path(row, path)
             .map(|s| &s == value)
             .unwrap_or(false),
+        Predicate::Lt { path, value } => scalar_at_path(row, path)
+            .and_then(|s| scalar_partial_cmp(&s, value))
+            .map(|o| o.is_lt())
+            .unwrap_or(false),
+        Predicate::Lte { path, value } => scalar_at_path(row, path)
+            .and_then(|s| scalar_partial_cmp(&s, value))
+            .map(|o| o.is_lt() || o.is_eq())
+            .unwrap_or(false),
+        Predicate::Gt { path, value } => scalar_at_path(row, path)
+            .and_then(|s| scalar_partial_cmp(&s, value))
+            .map(|o| o.is_gt())
+            .unwrap_or(false),
+        Predicate::Gte { path, value } => scalar_at_path(row, path)
+            .and_then(|s| scalar_partial_cmp(&s, value))
+            .map(|o| o.is_gt() || o.is_eq())
+            .unwrap_or(false),
         Predicate::And(items) => items.iter().all(|p| eval_predicate(row, p)),
+        Predicate::Or(items) => items.iter().any(|p| eval_predicate(row, p)),
+    }
+}
+
+fn apply_order_by_and_limit(
+    rows: &mut Vec<BTreeMap<String, RowValue>>,
+    order_by: Option<&OrderBy>,
+    limit: Option<usize>,
+) {
+    if let Some(ob) = order_by {
+        rows.sort_by(|a, b| {
+            let av = scalar_at_path(a, &ob.path);
+            let bv = scalar_at_path(b, &ob.path);
+            let ord = match (av, bv) {
+                (None, None) => std::cmp::Ordering::Equal,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (Some(x), Some(y)) => {
+                    scalar_partial_cmp(&x, &y).unwrap_or(std::cmp::Ordering::Equal)
+                }
+            };
+            match ob.direction {
+                OrderDirection::Asc => ord,
+                OrderDirection::Desc => ord.reverse(),
+            }
+        });
+    }
+    if let Some(n) = limit {
+        rows.truncate(n);
+    }
+}
+
+fn scalar_partial_cmp(a: &ScalarValue, b: &ScalarValue) -> Option<std::cmp::Ordering> {
+    use ScalarValue::*;
+    match (a, b) {
+        (Bool(x), Bool(y)) => Some(x.cmp(y)),
+        (Int64(x), Int64(y)) => Some(x.cmp(y)),
+        (Uint64(x), Uint64(y)) => Some(x.cmp(y)),
+        (Float64(x), Float64(y)) => x.partial_cmp(y),
+        (String(x), String(y)) => Some(x.cmp(y)),
+        (Bytes(x), Bytes(y)) => Some(x.cmp(y)),
+        (Uuid(x), Uuid(y)) => Some(x.cmp(y)),
+        (Timestamp(x), Timestamp(y)) => Some(x.cmp(y)),
+        _ => None,
     }
 }

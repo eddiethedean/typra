@@ -28,6 +28,7 @@ fn index_payload_decode_covers_error_branches() {
         collection_id: 1,
         index_name: "i".to_string(),
         kind: IndexKind::Unique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: vec![1],
         pk_key: vec![2],
     };
@@ -54,6 +55,7 @@ fn index_state_non_unique_and_unique_branches() {
         collection_id: 1,
         index_name: "u".to_string(),
         kind: IndexKind::Unique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: b"k".to_vec(),
         pk_key: b"p".to_vec(),
     })
@@ -62,6 +64,7 @@ fn index_state_non_unique_and_unique_branches() {
         collection_id: 1,
         index_name: "u".to_string(),
         kind: IndexKind::Unique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: b"k".to_vec(),
         pk_key: b"p".to_vec(),
     })
@@ -73,6 +76,7 @@ fn index_state_non_unique_and_unique_branches() {
         collection_id: 1,
         index_name: "n".to_string(),
         kind: IndexKind::NonUnique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: b"k".to_vec(),
         pk_key: b"p1".to_vec(),
     })
@@ -81,6 +85,7 @@ fn index_state_non_unique_and_unique_branches() {
         collection_id: 1,
         index_name: "n".to_string(),
         kind: IndexKind::NonUnique,
+        op: typra_core::index::IndexOp::Insert,
         index_key: b"k".to_vec(),
         pk_key: b"p2".to_vec(),
     })
@@ -186,6 +191,7 @@ fn query_iter_covers_scan_and_index_paths_with_limits_and_residual() {
             },
         ])),
         limit: Some(1),
+        order_by: None,
     };
     let rows: Vec<_> = db
         .query_iter(&q)
@@ -202,6 +208,7 @@ fn query_iter_covers_scan_and_index_paths_with_limits_and_residual() {
             value: ScalarValue::Int64(3),
         }),
         limit: Some(10),
+        order_by: None,
     };
     let rows2 = db
         .query_iter(&q2)
