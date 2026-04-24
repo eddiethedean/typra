@@ -4,7 +4,7 @@ Typra is a typed, embedded database with a Rust-first core and optional Python b
 
 ## Current status (important)
 
-As of **v0.12.x+**, Typra ships a **persisted schema catalog** (per-field **constraints** on catalog **v3**; **index definitions** on catalog **v4**), **secondary indexes**, richer **queries** (including `OR`, ranges, and `order_by`), **schema compatibility checks** + migration helpers, **record insert/get/delete** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **transactions** (`with db.transaction()` in Python / `Database::transaction` in Rust), **compaction**, **checkpoints** (faster reopen), in-memory databases + snapshots, and the first pieces of **bounded-memory query** scaffolding (ephemeral `Temp` spill segments; external sort plumbing behind `order_by`).
+As of **v0.13.x+**, Typra ships a **persisted schema catalog** (per-field **constraints** on catalog **v3**; **index definitions** on catalog **v4**), **secondary indexes**, richer **queries** (including `OR`, ranges, and `order_by`), **schema compatibility checks** + migration helpers, **record insert/get/delete** with **nested row values** (new writes use **record payload v2**; **v1** segments still replay), **engine validation** before append, **transactions** (`with db.transaction()` in Python / `Database::transaction` in Rust), **compaction**, **checkpoints** (faster reopen), in-memory databases + snapshots, and the first pieces of **bounded-memory query** scaffolding (ephemeral `Temp` spill segments; external sort plumbing behind `order_by`; spillable agg/join foundations).
 
 - **Rust**: `Database::open`, **`open_with_options`**, **`register_collection(..., primary_field)`** / **`register_schema_version`**, **`insert` / `get` / `delete`** with **`RowValue`**, **`Database::open_in_memory`**, `Database::transaction`, typed **queries**, **secondary indexes**, migration helpers, and compaction (see [`ROADMAP.md`](../ROADMAP.md)).
 - **Python**: `typra.Database.open`, **`open_in_memory`**, **`open_snapshot_bytes`**, **`register_collection(..., indexes_json=...)`** (optional **`constraints`** in `fields_json`), **`insert` / `get` / `delete`**, schema-version planning/registration helpers, **`db.collection(name).where(...).all()`** (plus **`and_where`**, **`limit`**, **`explain`**, subset **`all(fields=[...])`**), **`snapshot_bytes`**, compaction helpers, **`collection_names()`**, and `__version__`. A **disk + indexes** walkthrough is in **[`guide_python.md` — Realistic workflow](guide_python.md#realistic-workflow-indexed-queries-on-disk)**.
@@ -20,7 +20,7 @@ In your application `Cargo.toml`:
 
 ```toml
 [dependencies]
-typra = "0.12"
+typra = "0.13"
 ```
 
 ## Minimal Rust example
@@ -72,7 +72,7 @@ registered collection id=1 version=1
 ## Install (Python)
 
 ```bash
-pip install "typra>=0.12.0,<0.13"
+pip install "typra>=0.13.0,<0.14"
 ```
 
 ## Minimal Python example
@@ -125,7 +125,7 @@ Output (the **`typra`** version line tracks the workspace / PyPI release):
 ```text
 registered collection_id= 1 schema_version= 1
 get: {'title': 'Hello'}
-typra 0.12.0
+typra 0.13.0
 ```
 
 ## Development quickstart (repo contributors)

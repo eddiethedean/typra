@@ -1,4 +1,4 @@
-//! Spill manager for bounded-memory query operators (0.12.0+).
+//! Spill manager for bounded-memory query operators (0.12.0+; stabilized in 0.13.0).
 //!
 //! v0 implementation: append ephemeral `Temp` segments to the store and truncate them away on drop.
 

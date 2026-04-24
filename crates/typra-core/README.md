@@ -5,7 +5,7 @@
 
 Core engine for **Typra**: typed, embedded storage with a persisted schema catalog and record payload encoding (v1 + v2).
 
-## Status (v0.12.x)
+## Status (v0.13.x)
 
 `Database<S: Store>` with default on-disk **`FileStore`** and in-memory **`VecStore`**; replayed **schema catalog** (including **`primary_field`** and **constraints**); **`insert` / `get` / `delete`** with **`RowValue`** and validation; **secondary indexes** and typed **query** execution (`Eq` / `And` / `Or` / ranges, plus `limit`, `order_by`, `explain`), **`Database::query_iter`**, subset projections; snapshot bytes; **`DbError`** / **`ValidationError`**. Typra includes a minimal SQL parser (for Python DB-API use); most consumers should use the typed query AST directly.
 
@@ -19,7 +19,7 @@ Core engine for **Typra**: typed, embedded storage with a persisted schema catal
 
 ```toml
 [dependencies]
-typra-core = "0.12"
+typra-core = "0.13"
 ```
 
 ## Notes

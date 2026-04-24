@@ -166,7 +166,7 @@ src/
 - **`Query`**, **`Predicate`**, **`QueryRowIter`**, **`IndexState`**, **`row_subset_by_field_defs`**
 - **`DbModel`** marker trait (derive lives in **`typra-derive`**)
 
-Not yet in the public API: typed **`CollectionHandle<T>`**, rich SQL text / full DB-API compatibility (see [`ROADMAP.md`](../ROADMAP.md)). Minimal **non-SQL** queries and **secondary indexes** ship (**0.7.0**); multi-write **transactions** ship (**0.8.0**); `OR` / range predicates / `order_by` ship (**0.9.0**); an experimental, read-only **DB-API 2.0** adapter with a minimal `SELECT` subset ships in **0.10.0** (Python `typra.dbapi`); pager/checkpointed open ships in **0.11.0**; initial bounded-memory scaffolding (ephemeral `Temp` segments, external sort plumbing) lands in **0.12.0**.
+Not yet in the public API: typed **`CollectionHandle<T>`**, rich SQL text / full DB-API compatibility (see [`ROADMAP.md`](../ROADMAP.md)). Minimal **non-SQL** queries and **secondary indexes** ship (**0.7.0**); multi-write **transactions** ship (**0.8.0**); `OR` / range predicates / `order_by` ship (**0.9.0**); an experimental, read-only **DB-API 2.0** adapter with a minimal `SELECT` subset ships in **0.10.0** (Python `typra.dbapi`); pager/checkpointed open ships in **0.11.0**; initial bounded-memory scaffolding (ephemeral `Temp` segments, external sort plumbing) lands in **0.12.0**; fuzz/property tests and spillable agg/join foundations land in **0.13.0**.
 
 ### `typra-storage`
 ```text

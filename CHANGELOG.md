@@ -9,9 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Hardening (in progress for 0.13.0)**: a `cargo-fuzz` harness under `fuzz/` with initial fuzz targets for decode/scan surfaces.
-- **Property tests (in progress for 0.13.0)**: initial `proptest` invariants covering snapshot roundtrip behavior.
-- **Bounded-memory operators (in progress for 0.13.0)**:
+_Nothing yet._
+
+## [0.13.0] - 2026-04-24
+
+### Added
+
+- **Hardening**: a `cargo-fuzz` harness under `fuzz/` with initial fuzz targets for decode/scan surfaces.
+- **Property tests**: initial `proptest` invariants covering snapshot roundtrip behavior.
+- **Bounded-memory operators (v0)**:
   - Spillable aggregation foundations (`COUNT` + `SUM(Int64)` over a single `Int64` group-by), with forced-spill tests.
   - Minimal spill-capable hash join foundation (match-count on `Int64` key), with forced-spill tests.
 - **Compatibility matrix**: documented file format + API stability policy in `docs/compatibility_matrix.md`.
