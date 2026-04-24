@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
+use std::io::Seek;
 use tempfile::tempdir;
 use typra_core::config::{OpenOptions, RecoveryMode};
 use typra_core::schema::{FieldDef, FieldPath, Type};
 use typra_core::{Database, RowValue, ScalarValue};
-use std::io::Seek;
 
 fn field(name: &'static str, ty: Type) -> FieldDef {
     FieldDef {
@@ -72,4 +72,3 @@ fn strict_rejects_trailing_garbage_and_autotruncate_recovers() {
     let got = db.get(cid, &ScalarValue::String("k1".to_string())).unwrap();
     assert!(got.is_some());
 }
-

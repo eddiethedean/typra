@@ -113,7 +113,7 @@ fn range_predicates_survive_reopen_and_match_baseline_filtering() {
     // Baseline in test: filter from a full scan.
     let mut baseline = Vec::new();
     for y in [-3i64, -2, -1, 0, 1, 2, 3, 10, 11, 12, 13] {
-        if y < 0 || y >= 12 {
+        if !(0..12).contains(&y) {
             baseline.push(y);
         }
     }
@@ -129,4 +129,3 @@ fn range_predicates_survive_reopen_and_match_baseline_filtering() {
         .collect();
     assert_eq!(years, baseline);
 }
-

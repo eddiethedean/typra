@@ -14,14 +14,7 @@ fn field(name: &'static str, ty: Type) -> FieldDef {
     }
 }
 
-fn insert(
-    db: &mut Database,
-    cid: CollectionId,
-    pk_name: &str,
-    pk: &str,
-    shared: &str,
-    value: i64,
-) {
+fn insert(db: &mut Database, cid: CollectionId, pk_name: &str, pk: &str, shared: &str, value: i64) {
     let mut row = BTreeMap::new();
     row.insert(pk_name.to_string(), RowValue::String(pk.to_string()));
     row.insert("shared".to_string(), RowValue::String(shared.to_string()));
@@ -112,4 +105,3 @@ fn two_collections_with_overlapping_field_names_do_not_cross_contaminate() {
         "collection b should see its own row"
     );
 }
-

@@ -21,7 +21,9 @@ def test_register_invalid_primary_key_raises_typra_schema_error() -> None:
     assert isinstance(e.value, ValueError)
 
 
-def test_insert_type_mismatch_raises_typra_validation_error(tmp_path: pathlib.Path) -> None:
+def test_insert_type_mismatch_raises_typra_validation_error(
+    tmp_path: pathlib.Path,
+) -> None:
     db = typra.Database.open(str(tmp_path / "t.typra"))
     # Use a constraint violation (correct type, invalid value) so the error comes from the engine
     # and is mapped via `DbError::Validation`.
@@ -37,7 +39,9 @@ def test_insert_type_mismatch_raises_typra_validation_error(tmp_path: pathlib.Pa
     assert isinstance(e.value, ValueError)
 
 
-def test_nested_transaction_raises_typra_transaction_error(tmp_path: pathlib.Path) -> None:
+def test_nested_transaction_raises_typra_transaction_error(
+    tmp_path: pathlib.Path,
+) -> None:
     db = typra.Database.open(str(tmp_path / "t.typra"))
     fields_json = '[{"path":["id"],"type":"string"}]'
     db.register_collection("x", fields_json, "id")
@@ -57,4 +61,3 @@ def test_dbapi_parse_error_raises_typra_query_error(tmp_path: pathlib.Path) -> N
     with pytest.raises(typra.TypraQueryError) as e:
         cur.execute("SELECT FROM")
     assert isinstance(e.value, ValueError)
-

@@ -75,11 +75,10 @@ fn e2e_inventory_like_workflow_roundtrips_txn_query_checkpoint_compact_snapshot(
             Ok(())
         });
         assert!(res.is_err());
-        assert!(
-            db.get(products, &ScalarValue::String("sku1".to_string()))
-                .unwrap()
-                .is_none()
-        );
+        assert!(db
+            .get(products, &ScalarValue::String("sku1".to_string()))
+            .unwrap()
+            .is_none());
 
         // Now insert a valid set.
         db.transaction(|tdb| {
@@ -149,7 +148,10 @@ fn e2e_inventory_like_workflow_roundtrips_txn_query_checkpoint_compact_snapshot(
                 _ => panic!("expected string sku"),
             })
             .collect();
-        assert_eq!(skus, vec!["sku1".to_string(), "sku2".to_string(), "sku4".to_string()]);
+        assert_eq!(
+            skus,
+            vec!["sku1".to_string(), "sku2".to_string(), "sku4".to_string()]
+        );
     }
 
     // Compact in place and ensure reopen still works.
@@ -164,10 +166,7 @@ fn e2e_inventory_like_workflow_roundtrips_txn_query_checkpoint_compact_snapshot(
             .get(products, &ScalarValue::String("sku3".to_string()))
             .unwrap()
             .unwrap();
-        assert_eq!(
-            got.get("name"),
-            Some(&RowValue::String("Book".to_string()))
-        );
+        assert_eq!(got.get("name"), Some(&RowValue::String("Book".to_string())));
     }
 
     // Snapshot restore: open snapshot file into memory and validate a couple reads.
@@ -184,4 +183,3 @@ fn e2e_inventory_like_workflow_roundtrips_txn_query_checkpoint_compact_snapshot(
         );
     }
 }
-

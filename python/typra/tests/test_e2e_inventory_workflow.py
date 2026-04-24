@@ -7,7 +7,9 @@ import pytest
 import typra
 
 
-def test_e2e_inventory_like_workflow_txn_query_reopen_compact_snapshot(tmp_path) -> None:
+def test_e2e_inventory_like_workflow_txn_query_reopen_compact_snapshot(
+    tmp_path,
+) -> None:
     path = tmp_path / "inventory.typra"
     snap = tmp_path / "inventory.snapshot.typra"
     compacted = tmp_path / "inventory.compacted.typra"
@@ -28,7 +30,9 @@ def test_e2e_inventory_like_workflow_txn_query_reopen_compact_snapshot(tmp_path)
             {"name": "category_idx", "path": ["category"], "kind": "index"},
         ]
     )
-    db.register_collection("products", products_fields, "sku", indexes_json=products_indexes)
+    db.register_collection(
+        "products", products_fields, "sku", indexes_json=products_indexes
+    )
 
     # Transaction rollback on unique index violation should discard all writes.
     with pytest.raises(ValueError):
@@ -120,14 +124,19 @@ def test_e2e_inventory_like_workflow_txn_query_reopen_compact_snapshot(tmp_path)
     # Compaction APIs.
     db2.compact_to(str(compacted))
     db3 = typra.Database.open(str(compacted))
-    assert db3.get("products", "sku3")["name"] == "Book"
+    got3 = db3.get("products", "sku3")
+    assert got3 is not None
+    assert got3["name"] == "Book"
 
     db2.compact()
     db4 = typra.Database.open(str(path))
-    assert db4.get("products", "sku2")["name"] == "Gadget"
+    got2 = db4.get("products", "sku2")
+    assert got2 is not None
+    assert got2["name"] == "Gadget"
 
     # Snapshot export/import.
     db4.export_snapshot(str(snap))
     snap_db = typra.Database.open_snapshot(str(snap))
-    assert snap_db.get("products", "sku4")["price"] == 499
-
+    got4 = snap_db.get("products", "sku4")
+    assert got4 is not None
+    assert got4["price"] == 499

@@ -136,4 +136,3 @@ fn order_by_is_correct_after_reopen_on_disk() {
         .collect();
     assert_eq!(years, vec![2, 3, 4]);
 }
-

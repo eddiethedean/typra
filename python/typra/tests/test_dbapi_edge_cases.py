@@ -1,4 +1,5 @@
 import pathlib
+from typing import Any, cast
 
 import pytest
 
@@ -28,7 +29,9 @@ def test_dbapi_rejects_params_not_list_or_tuple(tmp_path: pathlib.Path) -> None:
     conn = typra.dbapi.connect(str(p))
     cur = conn.cursor()
     with pytest.raises(ValueError, match="params must be a tuple or list"):
-        cur.execute("SELECT * FROM t", {"id": "k"})
+        # Intentionally wrong type; runtime should reject it, regardless of static types.
+        bad_params = cast(Any, {"id": "k"})
+        cur.execute("SELECT * FROM t", params=bad_params)
 
 
 def test_dbapi_execute_after_cursor_close_raises(tmp_path: pathlib.Path) -> None:
@@ -50,7 +53,9 @@ def test_dbapi_connection_close_prevents_new_cursor(tmp_path: pathlib.Path) -> N
         conn.cursor()
 
 
-def test_dbapi_select_star_column_order_matches_schema_field_order(tmp_path: pathlib.Path) -> None:
+def test_dbapi_select_star_column_order_matches_schema_field_order(
+    tmp_path: pathlib.Path,
+) -> None:
     p = tmp_path / "t.typra"
     db = typra.Database.open(str(p))
 
@@ -66,6 +71,6 @@ def test_dbapi_select_star_column_order_matches_schema_field_order(tmp_path: pat
     conn = typra.dbapi.connect(str(p))
     cur = conn.cursor()
     cur.execute("SELECT * FROM t WHERE b = ?", ("k",))
+    assert cur.description is not None
     assert [d[0] for d in cur.description] == ["b", "a", "c"]
     assert cur.fetchone() == ("k", 1, True)
-

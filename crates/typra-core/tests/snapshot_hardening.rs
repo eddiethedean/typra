@@ -64,4 +64,3 @@ fn from_snapshot_bytes_never_panics_on_mutations_and_returns_error() {
         }
     }
 }
-
