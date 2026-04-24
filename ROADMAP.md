@@ -4,7 +4,7 @@ This document is the **project roadmap** for Typra: a typed, embedded, single-fi
 
 - **Current release**: `0.12.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
-- **Next milestone**: `0.12.0` — bounded-memory operators (spill/external algorithms) (see roadmap by release). **`0.11.0`** (pager/buffer pool + checkpoints) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Next milestone**: `0.13.0` — hardening + compatibility + pre-1.0 cleanup (see roadmap by release). **`0.12.0`** (bounded-memory scaffolding + external sort v0) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -41,7 +41,7 @@ Primary design references:
 
 ## Near-term focus
 
-**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints), **`0.7.0`** (secondary indexes, minimal queries, subset projection), **`0.8.0`** (transactions, format minor 6, recovery), **`0.9.0`** (schema evolution tooling, compaction prototype, richer queries and record ops), **`0.10.0`** (DB-API 2.0 + minimal SQL text), and **`0.11.0`** (pager/buffer pool + checkpoints) are **delivered**. **`1.0.0`** sections below call out **what is already partially done** vs **what remains** so planning matches the repo’s actual baseline.
+**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints), **`0.7.0`** (secondary indexes, minimal queries, subset projection), **`0.8.0`** (transactions, format minor 6, recovery), **`0.9.0`** (schema evolution tooling, compaction prototype, richer queries and record ops), **`0.10.0`** (DB-API 2.0 + minimal SQL text), **`0.11.0`** (pager/buffer pool + checkpoints), and **`0.12.0`** (bounded-memory scaffolding + external sort v0) are **delivered**. **`1.0.0`** sections below call out **what is already partially done** vs **what remains** so planning matches the repo’s actual baseline.
 
 ```mermaid
 flowchart LR
@@ -51,7 +51,8 @@ flowchart LR
   v090["0.9.0 migrations ✓"]
   v100["0.10.0 dbapi/sql ✓"]
   v110["0.11.0 pager/checkpoints ✓"]
-  v060 --> v070 --> v080 --> v090 --> v100 --> v110
+  v120["0.12.0 spill/external sort ✓"]
+  v060 --> v070 --> v080 --> v090 --> v100 --> v110 --> v120
 ```
 
 ## Status snapshot (current: 0.12.x)
@@ -350,17 +351,25 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 
 ### 0.12.0 — Bounded-memory operators (spill/external algorithms)
 
-**Goal:** enable queries and DB-API reads to operate when datasets exceed memory.
+**Status:** **Delivered** in **0.12.0** (v0 bounded-memory scaffolding).
 
+**Goal:** enable queries and DB-API reads to operate when datasets exceed memory (incrementally; start with external algorithms + streaming boundaries).
+
+**Shipped in 0.12.0 (implemented):**
 - **Rust**
-  - Implement **external sort** to back `order_by` under memory constraints.
-  - Implement at least one **spillable** operator family (aggregation and/or join foundation) aligned to target workloads.
-  - Introduce operator-level execution traits so `query_iter` can stream without materializing full result sets.
+  - **Ephemeral `Temp` segments** for scratch spill data; recovery + replay ignore them.
+  - **Spill helper (v0)**: RAII truncation/cleanup of temp spill bytes (`TempSpillFile` / `TempSpillGuard`).
+  - **Operator boundary (v0)**: internal pull-based key pipeline (`RowSource`) used by `query_iter` to avoid eager materialization.
+  - **External sort (v0)**: `order_by` can spill to `Temp` segments for large inputs (file-backed DBs).
 - **Python**
-  - Ensure DB-API cursor iteration streams results for large scans/sorts (no forced materialization).
-- **Definition of done**
-  - CI-friendly tests that simulate constrained memory and verify correctness.
-  - Document spill behavior (temp segments vs sidecar, cleanup rules).
+  - **DB-API cursor incremental fetch (v0)**: `fetchone` / `fetchmany` / `fetchall` refill results incrementally instead of materializing all rows on `execute`.
+
+**Definition of done (met for v0):**
+- Workspace checks pass (`make check-full`), including doc example verification.
+- Tests cover: temp segments ignored on reopen, and external sort correctness on large inputs.
+
+**Deferred from 0.12.0 (still planned):**
+- Spillable aggregation (e.g. `COUNT`/`SUM`) and join foundations under a strict memory budget.
 
 ### 0.13.0 — Hardening + compatibility matrix + pre-1.0 cleanup
 
@@ -370,6 +379,7 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
   - Add dedicated **fuzz** targets (header/segments/catalog/record/index payloads).
   - Add **property tests** (index invariants, replay idempotence, txn + checkpoint interactions).
   - Publish a **compatibility matrix** (read/write policy per file-format minor; API policy per crate).
+  - Continue bounded-memory operators: **spillable aggregation** + stricter memory-budgeted execution tests.
 - **Python**
   - Finalize typing story for DB-API rows and `typra.pyi` stability guarantees.
 - **Definition of done**
