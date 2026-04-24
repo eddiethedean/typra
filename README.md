@@ -1,6 +1,7 @@
 # Typra
 
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
+[![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/?badge=latest)
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
 [![PyPI](https://img.shields.io/pypi/v/typra.svg)](https://pypi.org/project/typra/)
 
