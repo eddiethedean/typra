@@ -23,13 +23,13 @@ Typra database files have a **format major** and **format minor** (see [On-disk 
 | Minor | Read | Write | Notes |
 |------|------|-------|------|
 | **6** | ✅ | ✅ | Current for new databases. Transaction framing (`TxnBegin/Commit/Abort`) and strict replay rules. |
-| **≤ 5** | ✅ | ⚠️ | Read supported. New writes may lazily upgrade file header/minor when required by newer semantics (see migration docs). |
+| **≤ 5** | ✅ | ⚠️ | Read supported. New writes may lazily upgrade file header/minor when required by newer semantics. |
 
 ### Upgrade and write behavior (policy)
 
 - **Existing files** are opened without rewriting whenever possible.
 - Typra prefers **preserving the file’s current minor** until an operation requires newer invariants.
-- When a **lazy upgrade** happens, Typra will make the post-upgrade behavior explicit in release notes and migration docs.
+- When a **lazy upgrade** happens, Typra will make the post-upgrade behavior explicit in release notes.
 
 #### Practical rules by minor
 
@@ -92,7 +92,7 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
 
 ## DB-API + SQL subset guarantees (current)
 
-- Supported: `SELECT <cols|*> FROM <collection>` with optional `WHERE` (=`?` params; `AND`/`OR` and ranges), optional `ORDER BY`, optional `LIMIT`.
+- Supported: `SELECT \<cols|*\> FROM \<collection\>` with optional `WHERE` (=`?` params; `AND`/`OR` and ranges), optional `ORDER BY`, optional `LIMIT`.
 - Not supported: DDL/DML SQL, joins, group-by SQL, SQLAlchemy dialect.
 - Cursor behavior: `fetchone`/`fetchmany`/`fetchall` retrieve results incrementally (no forced full materialization on `execute`).
 

@@ -202,9 +202,9 @@ Typra ships a **read-only** DB-API 2.0 adapter (PEP 249) starting in **0.10.0**,
 ### Supported SQL subset (0.10.0+)
 
 - **Only `SELECT`** is supported (read-only).
-- `SELECT <cols|*> FROM <collection>`
+- `SELECT \<cols|*\> FROM \<collection\>`
 - Optional `WHERE` with `=` / `AND` / `OR` and range predicates (`<`, `<=`, `>`, `>=`) using **`?` positional parameters**.
-- Optional `ORDER BY <field> [ASC|DESC]` (default `ASC`)
+- Optional `ORDER BY \<field\> [ASC|DESC]` (default `ASC`)
 - Optional `LIMIT n`
 
 Anything outside this subset raises `ValueError`.
