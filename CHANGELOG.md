@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-24
+
+### Added
+
+- **Python DB-API 2.0 (PEP 249)**: experimental, read-only adapter exposed as **`typra.dbapi`** (`connect`, `Connection`, `Cursor`, `execute` + `fetch*`, and `cursor.description`).
+- **Minimal SQL `SELECT` subset** (read-only): `SELECT <cols|*> FROM <collection>` with optional `WHERE` (`=` / `AND` / `OR` / range predicates using `?` positional params), `ORDER BY <field> [ASC|DESC]`, and `LIMIT n`.
+- **Query errors**: new `DbError::Query(QueryError)` for SQL parsing / query adapter failures.
+- **Tests**: Rust unit tests for the SQL adapter and Python integration tests for the DB-API module.
+
+### Changed
+
+- **Docs**: updated guides and READMEs to document DB-API + supported SQL subset and to keep versioned examples consistent with 0.10.0.
+
 ## [0.9.0] - 2026-04-24
 
 ### Added
