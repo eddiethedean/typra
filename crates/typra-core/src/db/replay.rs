@@ -39,6 +39,155 @@ pub(crate) fn load_catalog_latest_and_indexes<S: Store>(
     }
 }
 
+pub(crate) fn replay_tail_into<S: Store>(
+    store: &mut S,
+    start: u64,
+    format_minor: u16,
+    catalog: &mut Catalog,
+    latest: &mut LatestMap,
+    indexes: &mut IndexState,
+) -> Result<(), DbError> {
+    if format_minor < FORMAT_MINOR_V6 {
+        replay_tail_legacy(store, start, catalog, latest, indexes)
+    } else {
+        replay_tail_v6(store, start, catalog, latest, indexes)
+    }
+}
+
+fn replay_tail_legacy<S: Store>(
+    store: &mut S,
+    start: u64,
+    catalog: &mut Catalog,
+    latest: &mut LatestMap,
+    indexes: &mut IndexState,
+) -> Result<(), DbError> {
+    let metas = scan_segments(store, start)?;
+    for meta in &metas {
+        if meta.header.segment_type != SegmentType::Schema {
+            continue;
+        }
+        let payload = read_segment_payload(store, meta)?;
+        let record = decode_catalog_payload(&payload)?;
+        catalog.apply_record(record)?;
+    }
+    for meta in &metas {
+        if meta.header.segment_type != SegmentType::Index {
+            continue;
+        }
+        let payload = read_segment_payload(store, meta)?;
+        let entries = decode_index_payload(&payload)?;
+        for e in entries {
+            indexes.apply(e)?;
+        }
+    }
+    for meta in &metas {
+        if meta.header.segment_type != SegmentType::Record {
+            continue;
+        }
+        let payload = read_segment_payload(store, meta)?;
+        apply_record_segment(&payload, catalog, latest)?;
+    }
+    Ok(())
+}
+
+fn replay_tail_v6<S: Store>(
+    store: &mut S,
+    start: u64,
+    catalog: &mut Catalog,
+    latest: &mut LatestMap,
+    indexes: &mut IndexState,
+) -> Result<(), DbError> {
+    let metas = scan_segments(store, start)?;
+
+    let mut committed: Vec<StagedSegment> = Vec::new();
+    let mut in_txn = false;
+    let mut pending_txn_id: Option<u64> = None;
+    let mut staged: Vec<StagedSegment> = Vec::new();
+
+    for meta in &metas {
+        match meta.header.segment_type {
+            SegmentType::Manifest | SegmentType::Checkpoint => {}
+            SegmentType::TxnBegin => {
+                if in_txn {
+                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                        message: "nested TxnBegin in replay".into(),
+                    }));
+                }
+                let payload = read_segment_payload(store, meta)?;
+                let id = decode_txn_payload_v0(&payload)?;
+                in_txn = true;
+                pending_txn_id = Some(id);
+                staged.clear();
+            }
+            SegmentType::TxnCommit => {
+                let payload = read_segment_payload(store, meta)?;
+                let id = decode_txn_payload_v0(&payload)?;
+                if !in_txn {
+                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                        message: "TxnCommit outside transaction in replay".into(),
+                    }));
+                }
+                if pending_txn_id != Some(id) {
+                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                        message: "TxnCommit txn_id mismatch in replay".into(),
+                    }));
+                }
+                committed.append(&mut staged);
+                in_txn = false;
+                pending_txn_id = None;
+            }
+            SegmentType::TxnAbort => {
+                let _ = decode_txn_payload_v0(&read_segment_payload(store, meta)?)?;
+                staged.clear();
+                in_txn = false;
+                pending_txn_id = None;
+            }
+            SegmentType::Schema | SegmentType::Index | SegmentType::Record => {
+                if !in_txn {
+                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                        message: "unframed data segment in format minor 6".into(),
+                    }));
+                }
+                let payload = read_segment_payload(store, meta)?;
+                match meta.header.segment_type {
+                    SegmentType::Schema => staged.push(StagedSegment::Schema(payload)),
+                    SegmentType::Index => staged.push(StagedSegment::Index(payload)),
+                    SegmentType::Record => staged.push(StagedSegment::Record(payload)),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if in_txn {
+        return Err(DbError::Format(FormatError::InvalidTxnPayload {
+            message: "unclosed transaction at end of log (recovery should truncate)".into(),
+        }));
+    }
+
+    for seg in &committed {
+        if let StagedSegment::Schema(bytes) = seg {
+            let record = decode_catalog_payload(bytes)?;
+            catalog.apply_record(record)?;
+        }
+    }
+    for seg in &committed {
+        if let StagedSegment::Index(bytes) = seg {
+            let entries = decode_index_payload(bytes)?;
+            for e in entries {
+                indexes.apply(e)?;
+            }
+        }
+    }
+    for seg in &committed {
+        if let StagedSegment::Record(bytes) = seg {
+            apply_record_segment(bytes, catalog, latest)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn load_catalog_latest_and_indexes_legacy<S: Store>(
     store: &mut S,
     segment_start: u64,

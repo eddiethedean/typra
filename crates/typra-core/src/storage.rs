@@ -21,17 +21,18 @@ pub trait Store {
 
 // In 0.2.x this is intentionally internal scaffolding.
 // The public API should not expose storage mechanics yet.
-pub struct FileStore {
+#[derive(Debug)]
+struct RawFileStore {
     file: File,
 }
 
-impl FileStore {
-    pub fn new(file: File) -> Self {
+impl RawFileStore {
+    fn new(file: File) -> Self {
         Self { file }
     }
 }
 
-impl Store for FileStore {
+impl Store for RawFileStore {
     fn len(&self) -> Result<u64, DbError> {
         Ok(self.file.metadata()?.len())
     }
@@ -56,6 +57,45 @@ impl Store for FileStore {
     fn truncate(&mut self, len: u64) -> Result<(), DbError> {
         self.file.set_len(len)?;
         Ok(())
+    }
+}
+
+/// On-disk store: a real file wrapped in a fixed-size page cache.
+///
+/// This keeps the public `FileStore` name stable while introducing the 0.11.0 pager/buffer-pool
+/// boundary via [`crate::pager::PagedStore`].
+#[derive(Debug)]
+pub struct FileStore {
+    inner: crate::pager::PagedStore<RawFileStore>,
+}
+
+impl FileStore {
+    pub fn new(file: File) -> Self {
+        Self {
+            inner: crate::pager::PagedStore::new(RawFileStore::new(file), crate::pager::DEFAULT_PAGE_SIZE),
+        }
+    }
+}
+
+impl Store for FileStore {
+    fn len(&self) -> Result<u64, DbError> {
+        self.inner.len()
+    }
+
+    fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+        self.inner.read_exact_at(offset, buf)
+    }
+
+    fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+        self.inner.write_all_at(offset, buf)
+    }
+
+    fn sync(&mut self) -> Result<(), DbError> {
+        self.inner.sync()
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+        self.inner.truncate(len)
     }
 }
 
@@ -128,3 +168,4 @@ impl Store for VecStore {
         Ok(())
     }
 }
+

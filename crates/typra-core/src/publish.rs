@@ -12,6 +12,14 @@ pub fn append_manifest_and_publish(
     store: &mut impl Store,
     segment_start: u64,
 ) -> Result<Superblock, DbError> {
+    append_manifest_and_publish_with_checkpoint(store, segment_start, None)
+}
+
+pub fn append_manifest_and_publish_with_checkpoint(
+    store: &mut impl Store,
+    segment_start: u64,
+    checkpoint: Option<(u64, u32)>,
+) -> Result<Superblock, DbError> {
     let file_len = store.len()?;
     let mut writer = SegmentWriter::new(store, file_len.max(segment_start));
 
@@ -54,10 +62,16 @@ pub fn append_manifest_and_publish(
 
     let (current, current_is_a) = selected;
     let next_generation = current.generation.saturating_add(1);
+    let (checkpoint_offset, checkpoint_len) = checkpoint.unwrap_or((
+        current.checkpoint_offset,
+        current.checkpoint_len,
+    ));
     let next = Superblock {
         generation: next_generation,
         manifest_offset,
         manifest_len: manifest_payload.len() as u32,
+        checkpoint_offset,
+        checkpoint_len,
         checksum_kind: current.checksum_kind,
     };
 

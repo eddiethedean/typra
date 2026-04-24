@@ -41,7 +41,7 @@ pub(crate) fn scan_segments_allow_tail_tear(
             cursor += to_read as u64;
             remaining -= to_read as u64;
         }
-        if crc != header.payload_crc32c {
+        if header.segment_type != SegmentType::Checkpoint && crc != header.payload_crc32c {
             return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum));
         }
 

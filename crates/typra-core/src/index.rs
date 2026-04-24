@@ -114,6 +114,37 @@ impl IndexState {
             .get(index_key)?;
         Some(set.iter().cloned().collect())
     }
+
+    pub(crate) fn entries_for_checkpoint(&self) -> Vec<IndexEntry> {
+        let mut out = Vec::new();
+        for ((collection_id, index_name), m) in &self.unique {
+            for (index_key, pk_key) in m {
+                out.push(IndexEntry {
+                    collection_id: *collection_id,
+                    index_name: index_name.clone(),
+                    kind: IndexKind::Unique,
+                    op: IndexOp::Insert,
+                    index_key: index_key.clone(),
+                    pk_key: pk_key.clone(),
+                });
+            }
+        }
+        for ((collection_id, index_name), m) in &self.non_unique {
+            for (index_key, set) in m {
+                for pk_key in set {
+                    out.push(IndexEntry {
+                        collection_id: *collection_id,
+                        index_name: index_name.clone(),
+                        kind: IndexKind::NonUnique,
+                        op: IndexOp::Insert,
+                        index_key: index_key.clone(),
+                        pk_key: pk_key.clone(),
+                    });
+                }
+            }
+        }
+        out
+    }
 }
 
 pub fn encode_index_payload(entries: &[IndexEntry]) -> Vec<u8> {

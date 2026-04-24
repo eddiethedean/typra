@@ -10,6 +10,7 @@ use crate::manifest::decode_manifest_v0;
 use crate::publish::append_manifest_and_publish;
 use crate::segments::header::SegmentType;
 use crate::segments::reader::read_segment_header_at;
+use crate::segments::reader::read_segment_payload;
 use crate::storage::Store;
 use crate::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
 
@@ -65,6 +66,40 @@ pub(crate) fn read_manifest(store: &mut impl Store, sb: &Superblock) -> Result<(
     )?;
     let _m = decode_manifest_v0(&payload)?;
     Ok(())
+}
+
+fn try_load_checkpoint_state(
+    store: &mut impl Store,
+    sb: &Superblock,
+    segment_start: u64,
+) -> Result<Option<(u64, crate::catalog::Catalog, super::LatestMap, crate::index::IndexState)>, DbError>
+{
+    if sb.checkpoint_offset == 0 || sb.checkpoint_len == 0 {
+        return Ok(None);
+    }
+    let file_len = store.len()?;
+    if sb.checkpoint_offset < segment_start || sb.checkpoint_offset >= file_len {
+        return Ok(None);
+    }
+
+    let (_, header) = read_segment_header_at(store, sb.checkpoint_offset)?;
+    if header.segment_type != SegmentType::Checkpoint {
+        return Ok(None);
+    }
+
+    // Read checkpoint payload and decode.
+    let meta = crate::segments::reader::SegmentMeta {
+        offset: sb.checkpoint_offset,
+        header,
+    };
+    let payload = read_segment_payload(store, &meta)?;
+    let crc = crate::checksum::crc32c(&payload);
+    if crc != header.payload_crc32c {
+        return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum));
+    }
+    let (replay_from, catalog, latest, indexes) =
+        crate::checkpoint::state_from_checkpoint_payload(&payload)?;
+    Ok(Some((replay_from, catalog, latest, indexes)))
 }
 
 pub(crate) fn open_with_store<S: Store>(
@@ -162,15 +197,43 @@ pub(crate) fn open_with_store<S: Store>(
         }
     }
 
-    let (catalog, latest, indexes) = if len == 0 {
+    let flen = store.len()?;
+    let (mut catalog, mut latest, mut indexes, replay_from) = if flen == 0 {
         (
             crate::catalog::Catalog::default(),
             HashMap::new(),
             crate::index::IndexState::default(),
+            segment_start,
         )
     } else {
-        replay::load_catalog_latest_and_indexes(&mut store, segment_start, format_minor)?
+        let selected = read_and_select_superblock(&mut store)?;
+        match try_load_checkpoint_state(&mut store, &selected, segment_start) {
+            Ok(Some((from, cat, lat, idx))) => (cat, lat, idx, from),
+            Ok(None) => {
+                let (cat, lat, idx) =
+                    replay::load_catalog_latest_and_indexes(&mut store, segment_start, format_minor)?;
+                (cat, lat, idx, store.len()?)
+            }
+            Err(e) => match opts.recovery {
+                RecoveryMode::Strict => return Err(e),
+                RecoveryMode::AutoTruncate => {
+                    // If the checkpoint pointer is torn or the payload is corrupt, fall back to
+                    // full replay (recovery already truncated the log tail).
+                    let (cat, lat, idx) =
+                        replay::load_catalog_latest_and_indexes(&mut store, segment_start, format_minor)?;
+                    (cat, lat, idx, store.len()?)
+                }
+            },
+        }
     };
+
+    if flen != 0 {
+        // Apply any tail segments that were written after the checkpoint. (When no checkpoint is
+        // present, replay_from is set so this is a no-op.)
+        if replay_from < store.len()? && replay_from >= segment_start {
+            replay::replay_tail_into(&mut store, replay_from, format_minor, &mut catalog, &mut latest, &mut indexes)?;
+        }
+    }
 
     let db = Database {
         path,

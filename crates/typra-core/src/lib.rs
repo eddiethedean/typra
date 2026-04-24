@@ -7,6 +7,7 @@
 
 pub mod catalog;
 pub mod checksum;
+pub mod checkpoint;
 pub mod config;
 pub use config::{OpenOptions, RecoveryMode};
 pub mod db;
@@ -15,6 +16,7 @@ pub mod file_format;
 pub mod index;
 pub mod manifest;
 pub mod migration;
+pub mod pager;
 pub mod publish;
 pub mod query;
 pub mod record;

@@ -27,6 +27,9 @@ use crate::schema::{CollectionId, FieldDef, SchemaVersion};
 use crate::storage::{FileStore, Store, VecStore};
 use crate::validation;
 use crate::{MigrationPlan, MigrationStep};
+use crate::{checkpoint, publish};
+use crate::segments::header::{SegmentHeader, SegmentType, SEGMENT_HEADER_LEN};
+use crate::segments::writer::SegmentWriter;
 
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
 
@@ -1046,6 +1049,50 @@ impl Database<FileStore> {
         *self = reopened;
         Ok(())
     }
+
+    /// Write a durable checkpoint and publish it via the superblock.
+    ///
+    /// The checkpoint stores the logical state (catalog + latest rows + index state) so open can
+    /// avoid scanning/replaying the full log.
+    pub fn checkpoint(&mut self) -> Result<(), DbError> {
+        if self.txn_staging.is_some() {
+            return Err(DbError::Transaction(TransactionError::NestedTransaction));
+        }
+
+        write::ensure_header_v0_6(&mut self.store, &mut self.format_minor)?;
+
+        let mut cp = checkpoint::checkpoint_from_state(
+            self.catalog_for_read(),
+            self.latest_for_read(),
+            self.indexes_for_read(),
+        )?;
+
+        let file_len = self.store.len()?;
+        let mut writer = SegmentWriter::new(&mut self.store, file_len.max(self.segment_start));
+        let checkpoint_offset = writer.offset();
+
+        let payload_len = checkpoint::encode_checkpoint_payload_v0(&cp).len() as u64;
+        let replay_from = checkpoint_offset + SEGMENT_HEADER_LEN as u64 + payload_len;
+        cp.replay_from_offset = replay_from;
+        let payload = checkpoint::encode_checkpoint_payload_v0(&cp);
+
+        writer.append(
+            SegmentHeader {
+                segment_type: SegmentType::Checkpoint,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &payload,
+        )?;
+
+        let _ = publish::append_manifest_and_publish_with_checkpoint(
+            &mut self.store,
+            self.segment_start,
+            Some((checkpoint_offset, payload.len() as u32)),
+        )?;
+        self.store.sync()?;
+        Ok(())
+    }
 }
 
 pub struct Collection<'a, S: Store, T: crate::schema::DbModel> {
@@ -1719,5 +1766,140 @@ mod tests {
         assert_eq!(m.get("b"), Some(&RowValue::String("B".to_string())));
         assert_eq!(m.get("c"), Some(&RowValue::Int64(42)));
         assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn checkpoint_roundtrip_replays_only_tail() {
+        use crate::schema::{IndexDef, IndexKind};
+        use crate::{RowValue, ScalarValue};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+
+        // Create, write state, checkpoint, then append more.
+        {
+            let mut db = Database::open(&path).unwrap();
+            let fields = vec![path_field("title"), path_field("author")];
+            let indexes = vec![IndexDef {
+                name: "author_idx".to_string(),
+                path: crate::schema::FieldPath(vec![std::borrow::Cow::Owned("author".to_string())]),
+                kind: IndexKind::NonUnique,
+            }];
+            let (cid, _) = db
+                .register_collection_with_indexes("books", fields, indexes, "title")
+                .unwrap();
+            db.insert(cid, {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "title".to_string(),
+                    RowValue::String("Hello".to_string()),
+                );
+                m.insert(
+                    "author".to_string(),
+                    RowValue::String("Alice".to_string()),
+                );
+                m
+            })
+            .unwrap();
+            db.checkpoint().unwrap();
+            db.insert(cid, {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "title".to_string(),
+                    RowValue::String("World".to_string()),
+                );
+                m.insert(
+                    "author".to_string(),
+                    RowValue::String("Bob".to_string()),
+                );
+                m
+            })
+            .unwrap();
+        }
+
+        // Reopen; should load from checkpoint then replay tail insert.
+        let db = Database::open(&path).unwrap();
+        let cid = db.collection_id_named("books").unwrap();
+        let got = db
+            .get(cid, &ScalarValue::String("Hello".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            got.get("author"),
+            Some(&RowValue::String("Alice".to_string()))
+        );
+        let got2 = db
+            .get(cid, &ScalarValue::String("World".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            got2.get("author"),
+            Some(&RowValue::String("Bob".to_string()))
+        );
+    }
+
+    #[test]
+    fn corrupt_checkpoint_falls_back_in_auto_truncate_but_errors_in_strict() {
+        use crate::config::{OpenOptions, RecoveryMode};
+        use crate::segments::header::SEGMENT_HEADER_LEN;
+        use crate::superblock::decode_superblock;
+        use crate::RowValue;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+
+        // Create DB and checkpoint.
+        {
+            let mut db = Database::open(&path).unwrap();
+            let (cid, _) = db
+                .register_collection("books", vec![path_field("title")], "title")
+                .unwrap();
+            db.insert(cid, {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "title".to_string(),
+                    RowValue::String("Hello".to_string()),
+                );
+                m
+            })
+            .unwrap();
+            db.checkpoint().unwrap();
+        }
+
+        // Corrupt one byte inside the checkpoint payload.
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .unwrap();
+        let mut store = crate::storage::FileStore::new(file);
+        let mut sb_buf = [0u8; SUPERBLOCK_SIZE];
+        store.read_exact_at(FILE_HEADER_SIZE as u64, &mut sb_buf).unwrap();
+        let sb = decode_superblock(&sb_buf).unwrap();
+        assert!(sb.checkpoint_offset != 0);
+        let corrupt_at = sb.checkpoint_offset + SEGMENT_HEADER_LEN as u64 + 5;
+        store.write_all_at(corrupt_at, &[0xff]).unwrap();
+        store.sync().unwrap();
+
+        // Strict should error.
+        let strict = Database::open_with_options(
+            &path,
+            OpenOptions {
+                recovery: RecoveryMode::Strict,
+            },
+        );
+        assert!(strict.is_err());
+
+        // AutoTruncate should fall back to replay and still open.
+        let auto = Database::open_with_options(
+            &path,
+            OpenOptions {
+                recovery: RecoveryMode::AutoTruncate,
+            },
+        )
+        .unwrap();
+        assert_eq!(auto.collection_names(), vec!["books".to_string()]);
     }
 }

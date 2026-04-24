@@ -1,6 +1,7 @@
 use crate::checksum::crc32c_append;
 use crate::error::{DbError, FormatError};
 use crate::segments::header::{decode_segment_header, SegmentHeader, SEGMENT_HEADER_LEN};
+use crate::segments::header::SegmentType;
 use crate::storage::Store;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,7 +52,9 @@ pub fn scan_segments(store: &mut impl Store, start: u64) -> Result<Vec<SegmentMe
             cursor += to_read as u64;
             remaining -= to_read as u64;
         }
-        if crc != header.payload_crc32c {
+        // Checkpoint payload corruption should not prevent opening and replaying the log.
+        // (The checkpoint reader validates the payload checksum when it is actually used.)
+        if header.segment_type != SegmentType::Checkpoint && crc != header.payload_crc32c {
             return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum));
         }
 
