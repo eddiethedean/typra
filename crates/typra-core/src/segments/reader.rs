@@ -52,9 +52,12 @@ pub fn scan_segments(store: &mut impl Store, start: u64) -> Result<Vec<SegmentMe
             cursor += to_read as u64;
             remaining -= to_read as u64;
         }
-        // Checkpoint payload corruption should not prevent opening and replaying the log.
-        // (The checkpoint reader validates the payload checksum when it is actually used.)
-        if header.segment_type != SegmentType::Checkpoint && crc != header.payload_crc32c {
+        // Checkpoint/Temp payload corruption should not prevent opening and replaying the log.
+        // (Checkpoint is validated when used; Temp is ephemeral and ignored by replay.)
+        if header.segment_type != SegmentType::Checkpoint
+            && header.segment_type != SegmentType::Temp
+            && crc != header.payload_crc32c
+        {
             return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum));
         }
 

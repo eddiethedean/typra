@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-04-24
+
+### Added
+
+- **Bounded-memory scaffolding (v0)**: an internal streaming `query_iter` operator boundary, plus ephemeral `Temp` spill segments and a small spill helper to support future external algorithms.
+- **External sort (v0)**: `order_by` can spill to temporary segments for large inputs (on-disk databases) instead of forcing a full in-memory sort.
+- **DB-API cursor incremental fetch (v0)**: `typra.dbapi` now refills results incrementally instead of materializing the full result set on `execute`.
+
 ## [0.11.0] - 2026-04-24
 
 ### Added

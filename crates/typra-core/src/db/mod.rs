@@ -391,11 +391,12 @@ impl<S: Store> Database<S> {
         &self,
         q: &crate::query::Query,
     ) -> Result<crate::query::QueryRowIter<'_>, DbError> {
-        crate::query::execute_query_iter(
+        crate::query::execute_query_iter_with_spill_path(
             self.catalog_for_read(),
             self.indexes_for_read(),
             self.latest_for_read(),
             q,
+            Some(self.path.as_path()),
         )
     }
 
@@ -1722,6 +1723,56 @@ mod tests {
     }
 
     #[test]
+    fn query_iter_order_by_uses_external_sort_spill_for_large_inputs() {
+        use crate::query::{OrderBy, OrderDirection, Query};
+        use crate::{RowValue, ScalarValue};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+
+        let mut year_def = path_field("year");
+        year_def.ty = Type::Int64;
+        let fields = vec![path_field("title"), year_def];
+        let (cid, _) = db.register_collection("books", fields, "title").unwrap();
+        for i in 0..6000i64 {
+            db.insert(cid, {
+                let mut m = BTreeMap::new();
+                m.insert("title".to_string(), RowValue::String(format!("t{i}")));
+                m.insert("year".to_string(), RowValue::Int64(i));
+                m
+            })
+            .unwrap();
+        }
+
+        let q = Query {
+            collection: cid,
+            predicate: None,
+            order_by: Some(OrderBy {
+                path: crate::schema::FieldPath(vec![std::borrow::Cow::Borrowed("year")]),
+                direction: OrderDirection::Desc,
+            }),
+            limit: Some(50),
+        };
+
+        let from_vec = db.query(&q).unwrap();
+        let from_iter: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(from_iter, from_vec);
+
+        assert_eq!(from_iter[0].get("year"), Some(&RowValue::Int64(5999)));
+        assert_eq!(
+            from_iter.last().unwrap().get("year"),
+            Some(&RowValue::Int64(5950))
+        );
+
+        let got = db
+            .get(cid, &ScalarValue::String("t123".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.get("year"), Some(&RowValue::Int64(123)));
+    }
+
+    #[test]
     fn subset_projection_merges_nested_paths_under_shared_object() {
         use crate::schema::{DbModel, FieldDef, FieldPath, Type};
         use crate::RowValue;
@@ -1888,5 +1939,54 @@ mod tests {
         )
         .unwrap();
         assert_eq!(auto.collection_names(), vec!["books".to_string()]);
+    }
+
+    #[test]
+    fn temp_segments_are_ignored_on_reopen() {
+        use crate::segments::header::{SegmentHeader, SegmentType};
+        use crate::segments::writer::SegmentWriter;
+        use crate::{RowValue, ScalarValue};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+
+        // Create DB, write state, then append an ephemeral Temp segment.
+        {
+            let mut db = Database::open(&path).unwrap();
+            let (cid, _) = db
+                .register_collection("books", vec![path_field("title")], "title")
+                .unwrap();
+            db.insert(cid, {
+                let mut m = BTreeMap::new();
+                m.insert("title".to_string(), RowValue::String("Hello".to_string()));
+                m
+            })
+            .unwrap();
+
+            let off = db.store.len().unwrap();
+            let mut w = SegmentWriter::new(&mut db.store, off);
+            w.append(
+                SegmentHeader {
+                    segment_type: SegmentType::Temp,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                b"spill",
+            )
+            .unwrap();
+            db.store.sync().unwrap();
+        }
+
+        // Reopen should succeed and ignore the Temp segment.
+        let db = Database::open(&path).unwrap();
+        let cid = db.collection_id_named("books").unwrap();
+        let got = db
+            .get(cid, &ScalarValue::String("Hello".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            got.get("title"),
+            Some(&RowValue::String("Hello".to_string()))
+        );
     }
 }

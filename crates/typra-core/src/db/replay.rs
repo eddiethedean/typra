@@ -106,7 +106,7 @@ fn replay_tail_v6<S: Store>(
 
     for meta in &metas {
         match meta.header.segment_type {
-            SegmentType::Manifest | SegmentType::Checkpoint => {}
+            SegmentType::Manifest | SegmentType::Checkpoint | SegmentType::Temp => {}
             SegmentType::TxnBegin => {
                 if in_txn {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
@@ -239,7 +239,7 @@ fn load_catalog_latest_and_indexes_v6<S: Store>(
 
     for meta in &metas {
         match meta.header.segment_type {
-            SegmentType::Manifest | SegmentType::Checkpoint => {}
+            SegmentType::Manifest | SegmentType::Checkpoint | SegmentType::Temp => {}
             SegmentType::TxnBegin => {
                 if in_txn {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {

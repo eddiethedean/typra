@@ -19,6 +19,11 @@ pub enum SegmentType {
     TxnCommit = 7,
     /// Explicitly discard staged segments since matching begin (optional on disk).
     TxnAbort = 8,
+    /// Ephemeral spill segments written during bounded-memory query execution (0.12.0+).
+    ///
+    /// These segments are never published via the superblock/manifest and must be ignored by
+    /// replay/recovery scans.
+    Temp = 9,
 }
 
 impl SegmentType {
@@ -32,6 +37,7 @@ impl SegmentType {
             6 => SegmentType::TxnBegin,
             7 => SegmentType::TxnCommit,
             8 => SegmentType::TxnAbort,
+            9 => SegmentType::Temp,
             _ => return None,
         })
     }

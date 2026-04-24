@@ -40,8 +40,9 @@ impl Connection {
         }
         Ok(Cursor {
             conn: self.db.clone_ref(py),
-            rows: Vec::new(),
-            pos: 0,
+            planned: None,
+            buffer: Vec::new(),
+            offset: 0,
             description: None,
             closed: false,
         })
@@ -65,10 +66,20 @@ impl Connection {
 #[pyclass]
 pub struct Cursor {
     conn: Py<Database>,
-    rows: Vec<Py<PyTuple>>,
-    pos: usize,
+    // Streaming-ish DB-API cursor: re-run the underlying iterator and skip `offset`
+    // to fetch the next chunk. Avoids materializing full result sets in Rust.
+    planned: Option<PlannedSelect>,
+    buffer: Vec<Py<PyTuple>>,
+    offset: usize,
     description: Option<Py<PyAny>>,
     closed: bool,
+}
+
+#[derive(Clone)]
+struct PlannedSelect {
+    query: Query,
+    paths: Vec<FieldPath>,
+    allow_defs: Option<Vec<FieldDef>>,
 }
 
 fn sql_path_to_parts(p: &FieldPath) -> Vec<String> {
@@ -221,9 +232,44 @@ impl Cursor {
 
     fn close(&mut self) {
         self.closed = true;
-        self.rows.clear();
-        self.pos = 0;
+        self.planned = None;
+        self.buffer.clear();
+        self.offset = 0;
         self.description = None;
+    }
+
+    fn refill(&mut self, py: Python<'_>, want: usize) -> PyResult<()> {
+        if want == 0 || self.buffer.len() >= want {
+            return Ok(());
+        }
+        let Some(plan) = self.planned.clone() else {
+            return Ok(());
+        };
+
+        let start = self.offset;
+        let take = want - self.buffer.len();
+
+        let db_ref = self.conn.borrow(py);
+        let g = super::database::lock_inner(&db_ref.inner)?;
+        let it = g.query_iter(&plan.query).map_err(db_error_to_py)?;
+
+        for r in it.skip(start).take(take) {
+            let r = r.map_err(db_error_to_py)?;
+            let projected = match &plan.allow_defs {
+                None => r,
+                Some(defs) => row_subset_by_field_defs(&r, defs),
+            };
+            let d = row_values::row_to_dict(py, &projected)?;
+            let mut items = Vec::with_capacity(plan.paths.len());
+            for p in &plan.paths {
+                let parts = sql_path_to_parts(p);
+                let v = py_get_at_path(py, d.clone().into_any(), &parts)?;
+                items.push(v);
+            }
+            self.buffer.push(PyTuple::new_bound(py, items).unbind());
+            self.offset += 1;
+        }
+        Ok(())
     }
 
     #[pyo3(signature = (sql, params=None))]
@@ -260,7 +306,7 @@ impl Cursor {
             )));
         }
 
-        let (col, rows) = {
+        let (col, q) = {
             let db_ref = self.conn.borrow(py);
             let col = super::database::collection_info(&db_ref.inner, &parsed.collection)?;
             let g = super::database::lock_inner(&db_ref.inner)?;
@@ -277,8 +323,7 @@ impl Cursor {
                 limit: parsed.limit,
                 order_by: parsed.order_by.clone(),
             };
-            let rows = g.query(&q).map_err(db_error_to_py)?;
-            (col, rows)
+            (col, q)
         };
 
         // Projection: define column order + description.
@@ -307,53 +352,47 @@ impl Cursor {
         };
 
         self.description = Some(make_description(py, &names)?);
-        self.rows.clear();
-        self.pos = 0;
-
-        for r in rows {
-            let projected = match &allow_defs {
-                None => r,
-                Some(defs) => row_subset_by_field_defs(&r, defs),
-            };
-            // Convert dict -> tuple in selected column order.
-            let d = row_values::row_to_dict(py, &projected)?;
-            let mut items = Vec::with_capacity(paths.len());
-            for p in &paths {
-                let parts = sql_path_to_parts(p);
-                let v = py_get_at_path(py, d.clone().into_any(), &parts)?;
-                items.push(v);
-            }
-            self.rows.push(PyTuple::new_bound(py, items).unbind());
-        }
+        self.planned = Some(PlannedSelect {
+            query: q,
+            paths: paths.clone(),
+            allow_defs,
+        });
+        self.buffer.clear();
+        self.offset = 0;
 
         Ok(())
     }
 
     fn fetchone(&mut self, py: Python<'_>) -> PyResult<PyObject> {
-        if self.pos >= self.rows.len() {
+        self.refill(py, 1)?;
+        if self.buffer.is_empty() {
             return Ok(py.None());
         }
-        let r = self.rows[self.pos].clone_ref(py);
-        self.pos += 1;
+        let r = self.buffer.remove(0).clone_ref(py);
         Ok(r.into_py(py))
     }
 
     #[pyo3(signature = (size=1))]
     fn fetchmany(&mut self, py: Python<'_>, size: usize) -> PyResult<PyObject> {
-        let end = std::cmp::min(self.pos + size, self.rows.len());
         let out = PyList::empty_bound(py);
-        for i in self.pos..end {
-            out.append(self.rows[i].clone_ref(py))?;
+        self.refill(py, size)?;
+        let n = std::cmp::min(size, self.buffer.len());
+        for _ in 0..n {
+            out.append(self.buffer.remove(0).clone_ref(py))?;
         }
-        self.pos = end;
         Ok(out.into_py(py))
     }
 
     fn fetchall(&mut self, py: Python<'_>) -> PyResult<PyObject> {
         let out = PyList::empty_bound(py);
-        while self.pos < self.rows.len() {
-            out.append(self.rows[self.pos].clone_ref(py))?;
-            self.pos += 1;
+        loop {
+            self.refill(py, 1024)?;
+            if self.buffer.is_empty() {
+                break;
+            }
+            while !self.buffer.is_empty() {
+                out.append(self.buffer.remove(0).clone_ref(py))?;
+            }
         }
         Ok(out.into_py(py))
     }

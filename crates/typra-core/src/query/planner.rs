@@ -11,6 +11,7 @@ use crate::ScalarValue;
 
 use super::ast::{OrderBy, OrderDirection};
 use super::ast::{Predicate, Query};
+use super::operators::{LimitOp, RowKey, RowSource};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Plan {
@@ -168,8 +169,9 @@ pub fn execute_query(
 
 /// Pull-based row iterator for simple queries (0.7 execution boundary).
 ///
-/// This is **not** a full Volcano-style operator engine (no spill, joins, or async). It walks the
-/// same plans as [`execute_query`] and yields owned rows one at a time.
+/// This is **not** a full Volcano-style operator engine yet (no joins / async), but it does
+/// establish an internal streaming operator boundary by yielding `(collection_id, pk_key)` and
+/// materializing rows from `latest` at the edge.
 pub struct QueryRowIter<'a> {
     state: QueryRowIterState<'a>,
 }
@@ -179,27 +181,9 @@ enum QueryRowIterState<'a> {
         rows: Vec<BTreeMap<String, RowValue>>,
         pos: usize,
     },
-    IndexUnique {
+    Source {
         latest: &'a crate::db::LatestMap,
-        collection_id: u32,
-        pk: Option<Vec<u8>>,
-        residual: Option<Predicate>,
-        emitted: bool,
-    },
-    IndexNonUnique {
-        latest: &'a crate::db::LatestMap,
-        collection_id: u32,
-        pks: std::vec::IntoIter<Vec<u8>>,
-        residual: Option<Predicate>,
-        limit: Option<usize>,
-        yielded: usize,
-    },
-    Scan {
-        it: HashMapIter<'a, (u32, Vec<u8>), BTreeMap<String, RowValue>>,
-        collection_id: u32,
-        predicate: Option<Predicate>,
-        limit: Option<usize>,
-        yielded: usize,
+        source: Box<dyn RowSource + 'a>,
     },
 }
 
@@ -217,87 +201,90 @@ impl<'a> Iterator for QueryRowIter<'a> {
                     Some(Ok(out))
                 }
             }
-            QueryRowIterState::IndexUnique {
-                latest,
-                collection_id,
-                pk,
-                residual,
-                emitted,
-            } => {
-                if *emitted {
-                    return None;
-                }
-                let Some(pk_key) = pk.take() else {
-                    *emitted = true;
-                    return None;
-                };
-                let Some(row) = latest.get(&(*collection_id, pk_key)).cloned() else {
-                    *emitted = true;
-                    return None;
-                };
-                if let Some(pred) = residual {
-                    if !eval_predicate(&row, pred) {
-                        *emitted = true;
-                        return None;
-                    }
-                }
-                *emitted = true;
-                Some(Ok(row))
-            }
-            QueryRowIterState::IndexNonUnique {
-                latest,
-                collection_id,
-                pks,
-                residual,
-                limit,
-                yielded,
-            } => {
-                for pk_key in pks.by_ref() {
-                    if let Some(n) = *limit {
-                        if *yielded >= n {
-                            return None;
+            QueryRowIterState::Source { latest, source } => loop {
+                let rk = source.next_key()?;
+                match rk {
+                    Err(e) => return Some(Err(e)),
+                    Ok((cid, pk_key)) => {
+                        if let Some(row) = latest.get(&(cid.0, pk_key)).cloned() {
+                            return Some(Ok(row));
                         }
                     }
-                    let Some(row) = latest.get(&(*collection_id, pk_key)).cloned() else {
-                        continue;
-                    };
-                    if let Some(pred) = residual {
-                        if !eval_predicate(&row, pred) {
-                            continue;
-                        }
-                    }
-                    *yielded += 1;
-                    return Some(Ok(row));
                 }
-                None
-            }
-            QueryRowIterState::Scan {
-                it,
-                collection_id,
-                predicate,
-                limit,
-                yielded,
-            } => {
-                for (&(cid, _), row) in it.by_ref() {
-                    if cid != *collection_id {
-                        continue;
-                    }
-                    if let Some(ref p) = *predicate {
-                        if !eval_predicate(row, p) {
-                            continue;
-                        }
-                    }
-                    if let Some(n) = *limit {
-                        if *yielded >= n {
-                            return None;
-                        }
-                    }
-                    *yielded += 1;
-                    return Some(Ok(row.clone()));
-                }
-                None
+            },
+        }
+    }
+}
+
+struct IndexUniqueSource<'a> {
+    latest: &'a crate::db::LatestMap,
+    collection_id: u32,
+    pk: Option<Vec<u8>>,
+    residual: Option<Predicate>,
+    done: bool,
+}
+
+impl RowSource for IndexUniqueSource<'_> {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        if self.done {
+            return None;
+        }
+        self.done = true;
+        let pk_key = self.pk.take()?;
+        let row = self.latest.get(&(self.collection_id, pk_key.clone()))?;
+        if let Some(pred) = &self.residual {
+            if !eval_predicate(row, pred) {
+                return None;
             }
         }
+        Some(Ok((CollectionId(self.collection_id), pk_key)))
+    }
+}
+
+struct IndexNonUniqueSource<'a> {
+    latest: &'a crate::db::LatestMap,
+    collection_id: u32,
+    pks: std::vec::IntoIter<Vec<u8>>,
+    residual: Option<Predicate>,
+}
+
+impl RowSource for IndexNonUniqueSource<'_> {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        for pk_key in self.pks.by_ref() {
+            let Some(row) = self.latest.get(&(self.collection_id, pk_key.clone())) else {
+                continue;
+            };
+            if let Some(pred) = &self.residual {
+                if !eval_predicate(row, pred) {
+                    continue;
+                }
+            }
+            return Some(Ok((CollectionId(self.collection_id), pk_key)));
+        }
+        None
+    }
+}
+
+struct ScanSource<'a> {
+    it: HashMapIter<'a, (u32, Vec<u8>), BTreeMap<String, RowValue>>,
+    collection_id: u32,
+    predicate: Option<Predicate>,
+}
+
+impl RowSource for ScanSource<'_> {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        for (&(cid, ref pk_key), row) in self.it.by_ref() {
+            if cid != self.collection_id {
+                continue;
+            }
+            if let Some(p) = &self.predicate {
+                if !eval_predicate(row, p) {
+                    continue;
+                }
+            }
+            return Some(Ok((CollectionId(self.collection_id), pk_key.clone())));
+        }
+        None
     }
 }
 
@@ -323,57 +310,426 @@ pub fn execute_query_iter<'a>(
                 id: query.collection.0,
             }))?;
     let plan = plan_query(col.id, &col.indexes, query)?;
-    let state = match plan {
+    let mut source: Box<dyn RowSource + 'a> = match plan {
         Plan::IndexLookup {
             collection_id,
             index_name,
             kind,
             key,
             residual,
-            limit,
             ..
         } => match kind {
             IndexKind::Unique => {
                 let pk = indexes
                     .unique_lookup(collection_id, &index_name, &key)
                     .map(|p| p.to_vec());
-                QueryRowIterState::IndexUnique {
+                Box::new(IndexUniqueSource {
                     latest,
                     collection_id,
                     pk,
                     residual,
-                    emitted: false,
-                }
+                    done: false,
+                })
             }
             IndexKind::NonUnique => {
                 let pks = indexes
                     .non_unique_lookup(collection_id, &index_name, &key)
                     .unwrap_or_default()
                     .into_iter();
-                QueryRowIterState::IndexNonUnique {
+                Box::new(IndexNonUniqueSource {
                     latest,
                     collection_id,
                     pks,
                     residual,
-                    limit,
-                    yielded: 0,
-                }
+                })
             }
         },
         Plan::CollectionScan {
             collection_id,
             predicate,
-            limit,
             ..
-        } => QueryRowIterState::Scan {
+        } => Box::new(ScanSource {
             it: latest.iter(),
             collection_id,
             predicate,
-            limit,
-            yielded: 0,
-        },
+        }),
     };
-    Ok(QueryRowIter { state })
+
+    if let Some(n) = query.limit {
+        source = Box::new(LimitOp::new(source, n));
+    }
+
+    Ok(QueryRowIter {
+        state: QueryRowIterState::Source { latest, source },
+    })
+}
+
+/// Like [`execute_query_iter`], but when `q.order_by` is set this will attempt a bounded-memory
+/// external sort by spilling ephemeral `Temp` segments to the underlying DB file.
+///
+/// If `db_path` is `None` (e.g. in-memory), this falls back to the in-memory sort path.
+pub fn execute_query_iter_with_spill_path<'a>(
+    catalog: &'a Catalog,
+    indexes: &'a IndexState,
+    latest: &'a crate::db::LatestMap,
+    q: &Query,
+    db_path: Option<&std::path::Path>,
+) -> Result<QueryRowIter<'a>, DbError> {
+    if q.order_by.is_none() {
+        return execute_query_iter(catalog, indexes, latest, q);
+    }
+    let Some(order_by) = q.order_by.clone() else {
+        return execute_query_iter(catalog, indexes, latest, q);
+    };
+
+    // If we don't have a file path to spill into, fall back to the existing in-memory behavior.
+    let Some(path) = db_path else {
+        return Ok(QueryRowIter {
+            state: QueryRowIterState::Vec {
+                rows: execute_query(catalog, indexes, latest, q)?,
+                pos: 0,
+            },
+        });
+    };
+
+    let col = catalog
+        .get(q.collection)
+        .ok_or(DbError::Schema(SchemaError::UnknownCollection {
+            id: q.collection.0,
+        }))?;
+    let plan = plan_query(col.id, &col.indexes, q)?;
+
+    let base: Box<dyn RowSource + 'a> = match plan.clone() {
+        Plan::IndexLookup {
+            collection_id,
+            index_name,
+            kind,
+            key,
+            residual,
+            ..
+        } => match kind {
+            IndexKind::Unique => Box::new(IndexUniqueSource {
+                latest,
+                collection_id,
+                pk: indexes
+                    .unique_lookup(collection_id, &index_name, &key)
+                    .map(|p| p.to_vec()),
+                residual,
+                done: false,
+            }),
+            IndexKind::NonUnique => Box::new(IndexNonUniqueSource {
+                latest,
+                collection_id,
+                pks: indexes
+                    .non_unique_lookup(collection_id, &index_name, &key)
+                    .unwrap_or_default()
+                    .into_iter(),
+                residual,
+            }),
+        },
+        Plan::CollectionScan {
+            collection_id,
+            predicate,
+            ..
+        } => Box::new(ScanSource {
+            it: latest.iter(),
+            collection_id,
+            predicate,
+        }),
+    };
+
+    // Build a sorted key source (potentially spilling to Temp segments).
+    let spill_file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(false)
+        .open(path)
+        .map_err(DbError::Io)?;
+    let spill_store = crate::storage::FileStore::new(spill_file);
+    let spill = crate::spill::TempSpillFile::new(spill_store)?;
+
+    let sort_source = Box::new(ExternalSortSource::new(
+        spill, latest, base, col.id.0, order_by,
+    )?);
+
+    let mut source: Box<dyn RowSource + 'a> = sort_source;
+    if let Some(n) = q.limit {
+        source = Box::new(LimitOp::new(source, n));
+    }
+
+    Ok(QueryRowIter {
+        state: QueryRowIterState::Source { latest, source },
+    })
+}
+
+#[derive(Clone)]
+struct SortItem {
+    // `none_flag`: 0 for Some, 1 for None (so None sorts last on ascending).
+    none_flag: u8,
+    sort_key: Vec<u8>,
+    key: RowKey,
+}
+
+fn sort_item_for(
+    latest: &crate::db::LatestMap,
+    key: &RowKey,
+    order_by: &OrderBy,
+) -> Option<SortItem> {
+    let (cid, pk) = key;
+    let row = latest.get(&(cid.0, pk.clone()))?;
+    let (none_flag, sort_key) = match scalar_at_path(row, &order_by.path) {
+        None => (1u8, Vec::new()),
+        Some(s) => (0u8, scalar_sort_key_bytes(&s)),
+    };
+    Some(SortItem {
+        none_flag,
+        sort_key,
+        key: (CollectionId(cid.0), pk.clone()),
+    })
+}
+
+fn scalar_sort_key_bytes(s: &ScalarValue) -> Vec<u8> {
+    match s {
+        ScalarValue::Bool(b) => vec![0, if *b { 1 } else { 0 }],
+        ScalarValue::Int64(v) => {
+            let u = (*v as u64) ^ 0x8000_0000_0000_0000u64;
+            let mut out = vec![1];
+            out.extend_from_slice(&u.to_be_bytes());
+            out
+        }
+        ScalarValue::Uint64(v) => {
+            let mut out = vec![2];
+            out.extend_from_slice(&v.to_be_bytes());
+            out
+        }
+        ScalarValue::Float64(v) => {
+            let mut bits = v.to_bits();
+            if bits & (1u64 << 63) != 0 {
+                bits = !bits;
+            } else {
+                bits ^= 1u64 << 63;
+            }
+            let mut out = vec![3];
+            out.extend_from_slice(&bits.to_be_bytes());
+            out
+        }
+        ScalarValue::String(st) => {
+            let mut out = vec![4];
+            out.extend_from_slice(st.as_bytes());
+            out
+        }
+        ScalarValue::Bytes(b) => {
+            let mut out = vec![5];
+            out.extend_from_slice(b);
+            out
+        }
+        ScalarValue::Uuid(u) => {
+            let mut out = vec![6];
+            out.extend_from_slice(u);
+            out
+        }
+        ScalarValue::Timestamp(t) => {
+            let u = (*t as u64) ^ 0x8000_0000_0000_0000u64;
+            let mut out = vec![7];
+            out.extend_from_slice(&u.to_be_bytes());
+            out
+        }
+    }
+}
+
+fn cmp_sort_item(a: &SortItem, b: &SortItem, dir: OrderDirection) -> std::cmp::Ordering {
+    let ord = a
+        .none_flag
+        .cmp(&b.none_flag)
+        .then_with(|| a.sort_key.cmp(&b.sort_key))
+        .then_with(|| a.key.1.cmp(&b.key.1));
+    match dir {
+        OrderDirection::Asc => ord,
+        OrderDirection::Desc => ord.reverse(),
+    }
+}
+
+// Simple external sort: sort fixed-size runs, spill each run as one Temp segment,
+// then k-way merge those runs.
+struct ExternalSortSource<'a> {
+    _spill: crate::spill::TempSpillFile<crate::storage::FileStore>,
+    collection_id: u32,
+    dir: OrderDirection,
+    heap: std::collections::BinaryHeap<HeapItem>,
+    runs: Vec<RunReader>,
+    _latest: &'a crate::db::LatestMap,
+}
+
+#[derive(Clone)]
+struct RunMeta {
+    offset: u64,
+    payload_len: u64,
+}
+
+struct RunReader {
+    buf: Vec<u8>,
+    pos: usize,
+}
+
+impl RunReader {
+    fn new(buf: Vec<u8>) -> Self {
+        Self { buf, pos: 0 }
+    }
+
+    fn next_item(&mut self) -> Option<(u8, Vec<u8>, Vec<u8>)> {
+        fn read_u32(buf: &[u8], pos: &mut usize) -> Option<u32> {
+            let b = buf.get(*pos..*pos + 4)?;
+            *pos += 4;
+            Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        }
+        let none_flag = *self.buf.get(self.pos)?;
+        self.pos += 1;
+        let key_len = read_u32(&self.buf, &mut self.pos)? as usize;
+        let key = self.buf.get(self.pos..self.pos + key_len)?.to_vec();
+        self.pos += key_len;
+        let pk_len = read_u32(&self.buf, &mut self.pos)? as usize;
+        let pk = self.buf.get(self.pos..self.pos + pk_len)?.to_vec();
+        self.pos += pk_len;
+        Some((none_flag, key, pk))
+    }
+}
+
+#[derive(Clone)]
+struct HeapItem {
+    run_idx: usize,
+    none_flag: u8,
+    sort_key: Vec<u8>,
+    pk: Vec<u8>,
+    dir: OrderDirection,
+}
+
+impl PartialEq for HeapItem {
+    fn eq(&self, other: &Self) -> bool {
+        (self.none_flag, &self.sort_key, &self.pk) == (other.none_flag, &other.sort_key, &other.pk)
+    }
+}
+impl Eq for HeapItem {}
+
+impl PartialOrd for HeapItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for HeapItem {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // BinaryHeap is max-heap; invert to get min-heap behavior.
+        let a = SortItem {
+            none_flag: self.none_flag,
+            sort_key: self.sort_key.clone(),
+            key: (CollectionId(0), self.pk.clone()),
+        };
+        let b = SortItem {
+            none_flag: other.none_flag,
+            sort_key: other.sort_key.clone(),
+            key: (CollectionId(0), other.pk.clone()),
+        };
+        cmp_sort_item(&a, &b, self.dir).reverse()
+    }
+}
+
+impl<'a> ExternalSortSource<'a> {
+    fn new(
+        mut spill: crate::spill::TempSpillFile<crate::storage::FileStore>,
+        latest: &'a crate::db::LatestMap,
+        mut input: Box<dyn RowSource + 'a>,
+        collection_id: u32,
+        order_by: OrderBy,
+    ) -> Result<Self, DbError> {
+        const RUN_KEYS: usize = 2048;
+
+        let dir = order_by.direction;
+        let mut runs_meta: Vec<RunMeta> = Vec::new();
+        let mut run: Vec<SortItem> = Vec::with_capacity(RUN_KEYS);
+
+        while let Some(rk) = input.next_key() {
+            let rk = rk?;
+            if let Some(item) = sort_item_for(latest, &rk, &order_by) {
+                run.push(item);
+            }
+            if run.len() >= RUN_KEYS {
+                run.sort_by(|a, b| cmp_sort_item(a, b, dir));
+                let payload = encode_run(&run, dir);
+                let off = spill.append_temp_segment(&payload)?;
+                runs_meta.push(RunMeta {
+                    offset: off,
+                    payload_len: payload.len() as u64,
+                });
+                run.clear();
+            }
+        }
+
+        if !run.is_empty() {
+            run.sort_by(|a, b| cmp_sort_item(a, b, dir));
+            let payload = encode_run(&run, dir);
+            let off = spill.append_temp_segment(&payload)?;
+            runs_meta.push(RunMeta {
+                offset: off,
+                payload_len: payload.len() as u64,
+            });
+        }
+
+        // Load run buffers and seed heap.
+        let mut runs: Vec<RunReader> = Vec::new();
+        let mut heap = std::collections::BinaryHeap::new();
+        for (i, m) in runs_meta.into_iter().enumerate() {
+            let buf = spill.read_temp_payload(m.offset, m.payload_len)?;
+            let mut rr = RunReader::new(buf);
+            if let Some((none_flag, sort_key, pk)) = rr.next_item() {
+                heap.push(HeapItem {
+                    run_idx: i,
+                    none_flag,
+                    sort_key,
+                    pk: pk.clone(),
+                    dir,
+                });
+            }
+            runs.push(rr);
+        }
+
+        Ok(Self {
+            _spill: spill,
+            collection_id,
+            dir,
+            heap,
+            runs,
+            _latest: latest,
+        })
+    }
+}
+
+fn encode_run(run: &[SortItem], _dir: OrderDirection) -> Vec<u8> {
+    let mut out = Vec::new();
+    for it in run {
+        out.push(it.none_flag);
+        out.extend_from_slice(&(it.sort_key.len() as u32).to_le_bytes());
+        out.extend_from_slice(&it.sort_key);
+        out.extend_from_slice(&(it.key.1.len() as u32).to_le_bytes());
+        out.extend_from_slice(&it.key.1);
+    }
+    out
+}
+
+impl RowSource for ExternalSortSource<'_> {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        let top = self.heap.pop()?;
+        let run_idx = top.run_idx;
+        // refill from same run
+        if let Some((none_flag, sort_key, pk)) = self.runs[run_idx].next_item() {
+            self.heap.push(HeapItem {
+                run_idx,
+                none_flag,
+                sort_key,
+                pk: pk.clone(),
+                dir: self.dir,
+            });
+        }
+        Some(Ok((CollectionId(self.collection_id), top.pk)))
+    }
 }
 
 fn plan_query(

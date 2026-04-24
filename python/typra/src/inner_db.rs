@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use std::collections::BTreeMap;
 
 use typra_core::query::Query;
+use typra_core::query::QueryRowIter;
 use typra_core::record::{RowValue, ScalarValue};
 use typra_core::schema::{CollectionId, FieldDef, IndexDef, SchemaVersion};
 use typra_core::storage::{FileStore, VecStore};
@@ -156,6 +157,13 @@ impl InnerDb {
         match self {
             InnerDb::File(d) => d.query(q),
             InnerDb::Mem(d) => d.query(q),
+        }
+    }
+
+    pub(crate) fn query_iter(&self, q: &Query) -> Result<QueryRowIter<'_>, typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.query_iter(q),
+            InnerDb::Mem(d) => d.query_iter(q),
         }
     }
 

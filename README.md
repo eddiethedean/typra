@@ -9,7 +9,7 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-## Status (v0.11.x)
+## Status (v0.12.x)
 
 | Surface | What ships today |
 |---------|------------------|
@@ -86,11 +86,11 @@ Output:
 
 ```text
 {'title': 'Hello'}
-0.11.0
+0.12.0
 ```
 
 ```bash
-pip install "typra>=0.11.0,<0.12"
+pip install "typra>=0.12.0,<0.13"
 ```
 
 ---
@@ -103,7 +103,7 @@ Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(D
 
 ```toml
 [dependencies]
-typra = "0.11"
+typra = "0.12"
 ```
 
 Without proc-macros (engine only):

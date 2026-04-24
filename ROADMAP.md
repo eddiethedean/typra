@@ -2,7 +2,7 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.11.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **Current release**: `0.12.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
 - **Next milestone**: `0.12.0` — bounded-memory operators (spill/external algorithms) (see roadmap by release). **`0.11.0`** (pager/buffer pool + checkpoints) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
@@ -54,7 +54,7 @@ flowchart LR
   v060 --> v070 --> v080 --> v090 --> v100 --> v110
 ```
 
-## Status snapshot (current: 0.11.x)
+## Status snapshot (current: 0.12.x)
 
 **Implemented today:**
 - **Rust**: `Database::open` / **`open_with_options`** (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, schema compatibility classification + migration planning helpers, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints** and **v4** **index definitions** on new registrations / schema versions, and **`Catalog::lookup_name`** (name → id); **`insert` / `get` / `delete`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, query AST and execution (**equality**, **`And`**, **`Or`**, **range predicates**, **`order_by`**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; **transactions** (`TxnBegin` / `TxnCommit` / `TxnAbort`), **`Database::transaction`**, **read-your-writes** inside a txn, **`RecoveryMode`** on open; last-write-wins replay (legacy minor ≤5; chronological txn replay for minor **6**); **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; **compaction** (`compact_to`, `compact_in_place`); `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **6** for new DBs, with lazy upgrades from older minors (see [`CHANGELOG.md`](CHANGELOG.md)).

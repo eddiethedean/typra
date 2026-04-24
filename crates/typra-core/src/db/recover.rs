@@ -41,7 +41,10 @@ pub(crate) fn scan_segments_allow_tail_tear(
             cursor += to_read as u64;
             remaining -= to_read as u64;
         }
-        if header.segment_type != SegmentType::Checkpoint && crc != header.payload_crc32c {
+        if header.segment_type != SegmentType::Checkpoint
+            && header.segment_type != SegmentType::Temp
+            && crc != header.payload_crc32c
+        {
             return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum));
         }
 
@@ -114,7 +117,7 @@ pub(crate) fn truncate_end_for_recovery(
                 pending_txn_id = None;
                 safe_prefix_end = e;
             }
-            SegmentType::Manifest | SegmentType::Checkpoint => {
+            SegmentType::Manifest | SegmentType::Checkpoint | SegmentType::Temp => {
                 if txn_base.is_none() {
                     safe_prefix_end = e;
                 }
