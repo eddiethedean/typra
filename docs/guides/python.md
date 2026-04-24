@@ -12,7 +12,7 @@ For file-format and API compatibility expectations, see [Compatibility matrix](.
 
     pip install "typra>=1.0.0,<2"
 
-Pin the minor range you test against; pre-1.0 minors may include API or format changes.
+Pin the major range you test against; 1.x releases follow SemVer (breaking changes require 2.0).
 
 ## Quick start
 

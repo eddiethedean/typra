@@ -2,10 +2,10 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.13.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **Current release**: `1.0.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0**.
-- **Next milestone**: `0.14.0` — planner/operator growth + query hardening (see roadmap by release). **`0.13.0`** (hardening + spillable agg/join foundations) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
-- **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
+- **Next milestone**: `1.1.0` — planner/operator growth + query hardening (see roadmap by release). **`1.0.0`** is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Roadmap style**: release-based milestones (SemVer). Patch versions are bugfix-only; minor versions (`1.x`) may add features without breaking stable APIs.
 
 ## Guiding principles (from the specs)
 

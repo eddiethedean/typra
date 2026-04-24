@@ -31,7 +31,7 @@ You get a durable **schema catalog**, **validation**, nested **row values** (rec
 pip install "typra>=1.0.0,<2"
 ```
 
-Pin the minor range you test against; pre-1.0 releases may still change APIs or the on-disk format between minors.
+Pin the major range you test against; 1.x releases follow SemVer (breaking changes require 2.0).
 
 ## Quick start
 

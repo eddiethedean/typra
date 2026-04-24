@@ -14,7 +14,7 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 - **Prefer this crate** (`typra`) in applications. It is the stable facade for Typra’s Rust ecosystem.
 - **Feature flags** are intended to be **additive**:
   - Default features should be safe for most users.
-  - Experimental features should be clearly labeled in docs and may change faster than the default surface (especially pre-1.0).
+  - Experimental features should be clearly labeled in docs and may change faster than the default surface.
 
 | Resource | Link |
 |----------|------|

@@ -4,7 +4,7 @@ This guide explains how application models map to collections, how collection na
 
 ## Current status (important)
 
-As of **`0.13.x`**, Typra persists a **schema catalog** (append-only schema segments; catalogs store per-field **constraints** and **index definitions**), supports transaction framing, ships schema evolution helpers (compatibility checks + planning), supports richer query predicates, and has the first pieces of bounded-memory query execution scaffolding (ephemeral `Temp` spill segments + a streaming `query_iter` boundary).
+As of **`1.0.x`**, Typra persists a **schema catalog** (append-only schema segments; catalogs store per-field **constraints** and **index definitions**), supports transaction framing, ships schema evolution helpers (compatibility checks + planning), supports richer query predicates, and has the first pieces of bounded-memory query execution scaffolding (ephemeral `Temp` spill segments + a streaming `query_iter` boundary).
 
 For the Python surface, see the [Python guide](python.md) and [`python/typra/README.md`](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md). For overall milestones, see [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 

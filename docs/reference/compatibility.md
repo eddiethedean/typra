@@ -2,7 +2,7 @@
 
 This document describes **read/write compatibility** for Typra database files and **stability expectations** for public APIs.
 
-Typra is still **pre-1.0**: minor versions (`0.x`) may include breaking changes, but we aim to keep file-format evolution explicit and well-tested.
+Typra is **1.x**: breaking changes require a major version bump, and file-format evolution is explicit and well-tested.
 
 ## File-format compatibility
 
@@ -78,7 +78,7 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
 
 - **`typra`** (facade): preferred dependency for applications.
   - **Stability goal**: strongest compatibility guarantees in the Rust ecosystem for Typra.
-  - **Policy**: breaking changes should be rare and clearly called out, even pre-1.0.
+  - **Policy**: breaking changes require a major version bump and are called out explicitly.
 - **`typra-core`** (engine): lower-level APIs and internal types.
   - **Stability goal**: stable enough for power users, but expect more churn than `typra` before 1.0.
   - **Policy**: internal refactors are acceptable as long as `typra` remains stable and behavior is preserved.

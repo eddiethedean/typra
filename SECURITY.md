@@ -4,7 +4,7 @@ Typra is an embedded database intended to operate on **local files** that may be
 
 ## Supported versions
 
-Typra is currently **pre-1.0**. Security fixes are released on the active minor line.
+Typra is currently **1.x**. Security fixes are released on the active stable line.
 
 ## Reporting a vulnerability
 

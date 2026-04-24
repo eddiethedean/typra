@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.0.0] - 2026-04-24
+
+### Added
+
+- **Multi-segment schema field paths**: collection schemas may define nested leaf fields via multi-segment `FieldPath`s (e.g. `["profile","timezone"]`) end-to-end (write, replay, indexes, query, projections).
+- **Record payload v3**: new record encoding that persists values keyed by full `FieldPath`, enabling multi-segment schema field defs while retaining v1/v2 read compatibility.
+- **Python parity**: `fields_json`, inserts, and typed query builder now accept and resolve multi-segment schema paths; new parity tests cover nested paths and index-backed queries.
+- **Docs**: updated types matrix + added a 1.0 readiness checklist tying key guarantees to tests.
+
 ## [0.13.0] - 2026-04-24
 
 ### Added
