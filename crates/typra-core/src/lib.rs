@@ -20,6 +20,7 @@ pub mod query;
 pub mod record;
 pub mod schema;
 pub mod segments;
+pub mod sql;
 pub mod storage;
 pub mod superblock;
 pub mod txn;

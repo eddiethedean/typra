@@ -197,10 +197,32 @@ For **ephemeral** integration tests (CI, notebooks), prefer a temp file as above
 
 ## DB-API 2.0 (PEP 249) and SQLAlchemy
 
-Typra does **not** ship a DB-API or SQLAlchemy integration in 0.8.x. Planned direction:
+Typra ships an **experimental, read-only** DB-API 2.0 adapter (PEP 249) starting in **0.10.0**, exposed as **`typra.dbapi`**. The SQL surface is intentionally small and maps onto the engine’s typed query AST.
 
-- **DB-API 2.0** belongs after **transaction boundaries** (delivered in **0.8.0**) stabilize: a `typra.dbapi`-style module would expose connection/cursor semantics over the native **`Database`** API, not over arbitrary SQL text.
-- **SQLAlchemy** would require a dialect or shim once queries and transactions are far enough along; Typra remains **non-SQL** first—use **`collection(...).where(...)`** for structured filters.
+### Supported SQL subset (0.10.0)
+
+- **Only `SELECT`** is supported (read-only).
+- `SELECT <cols|*> FROM <collection>`
+- Optional `WHERE` with `=` / `AND` / `OR` and range predicates (`<`, `<=`, `>`, `>=`) using **`?` positional parameters**.
+- Optional `ORDER BY <field> [ASC|DESC]` (default `ASC`)
+- Optional `LIMIT n`
+
+Anything outside this subset raises `ValueError`.
+
+### DB-API usage (0.10.0)
+
+```python
+import typra
+
+conn = typra.dbapi.connect("app.typra")
+cur = conn.cursor()
+cur.execute("SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10", (2020,))
+rows = cur.fetchall()
+```
+
+### SQLAlchemy
+
+SQLAlchemy integration remains **planned**. For now, prefer the native non-SQL query builder (`collection(...).where(...)`) for application code.
 
 ## `fields_json` (schema descriptor)
 

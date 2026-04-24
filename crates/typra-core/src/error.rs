@@ -22,8 +22,16 @@ pub enum DbError {
     Validation(ValidationError),
     /// Transaction nesting or API misuse (0.8+).
     Transaction(TransactionError),
+    /// Query construction, parsing, or execution error (SQL adapter and query planner).
+    Query(QueryError),
     /// Requested capability is not implemented in this release (e.g. nested field paths in rows).
     NotImplemented,
+}
+
+/// Query errors: unsupported query forms, bad syntax, or invalid paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryError {
+    pub message: String,
 }
 
 /// Low-level decode/validation failures for bytes read from the store.
@@ -168,6 +176,7 @@ impl fmt::Display for DbError {
             DbError::Schema(e) => write!(f, "schema error: {e}"),
             DbError::Validation(e) => write!(f, "{e}"),
             DbError::Transaction(e) => write!(f, "transaction error: {e}"),
+            DbError::Query(e) => write!(f, "query error: {}", e.message),
             DbError::NotImplemented => write!(f, "not implemented"),
         }
     }
@@ -326,6 +335,7 @@ impl std::error::Error for DbError {
             DbError::Schema(_) => None,
             DbError::Validation(_) => None,
             DbError::Transaction(_) => None,
+            DbError::Query(_) => None,
             DbError::NotImplemented => None,
         }
     }

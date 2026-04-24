@@ -13,6 +13,7 @@ pub fn db_error_to_py(err: DbError) -> PyErr {
         DbError::Schema(e) => PyValueError::new_err(e.to_string()),
         DbError::Validation(e) => PyValueError::new_err(e.to_string()),
         DbError::Transaction(e) => PyRuntimeError::new_err(e.to_string()),
+        DbError::Query(e) => PyValueError::new_err(e.message),
         DbError::NotImplemented => PyRuntimeError::new_err("not implemented"),
     }
 }
