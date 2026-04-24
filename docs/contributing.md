@@ -36,6 +36,20 @@ cd python/typra && maturin develop --release && pytest -v
 
 CI runs the same Rust and Python checks via [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 
+## Fuzzing (hardening)
+
+Typra uses [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) for decoder and recovery hardening.
+
+From the repository root:
+
+```bash
+rustup toolchain install nightly
+cargo +nightly fuzz list
+cargo +nightly fuzz run decode_segment_header -- -max_total_time=30
+```
+
+Fuzz targets live under `fuzz/fuzz_targets/` and should treat decode errors as success; only panics/UB are failures.
+
 ## Versioning
 
 Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.12.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.

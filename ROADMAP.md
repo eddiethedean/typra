@@ -368,12 +368,23 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 - Workspace checks pass (`make check-full`), including doc example verification.
 - Tests cover: temp segments ignored on reopen, and external sort correctness on large inputs.
 
-**Deferred from 0.12.0 (still planned):**
-- Spillable aggregation (e.g. `COUNT`/`SUM`) and join foundations under a strict memory budget.
+**Delivered after 0.12.0 (implemented in `main`):**
+- Spillable aggregation v0 (group-by `int64` with `COUNT` + `SUM(int64)`), with forced-spill tests.
+- Join foundation v0 (spill-capable equi-join **match-count** on `int64`), with forced-spill tests.
 
 ### 0.13.0 — Hardening + compatibility matrix + pre-1.0 cleanup
 
 **Goal:** make the 1.0.0 jump mostly policy/guarantees rather than risky refactors.
+
+**Status:** **In progress** on `main` (hardening + bounded-memory foundations).
+
+**Shipped toward 0.13.0 (implemented in `main`):**
+- **Rust**
+  - `cargo-fuzz` harness under `fuzz/` with fuzz targets for header/superblock/segment decode and payload decoders.
+  - Property tests (initial `proptest` invariants) for snapshot roundtrips.
+  - Join/aggregation spill foundations with correctness tests under forced spilling.
+- **Docs**
+  - Compatibility matrix: [`docs/compatibility_matrix.md`](docs/compatibility_matrix.md).
 
 - **Rust**
   - Add dedicated **fuzz** targets (header/segments/catalog/record/index payloads).

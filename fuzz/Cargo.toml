@@ -1,0 +1,63 @@
+[package]
+name = "typra-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.typra-core]
+path = "../crates/typra-core"
+
+[[bin]]
+name = "decode_file_header"
+path = "fuzz_targets/decode_file_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_superblock"
+path = "fuzz_targets/decode_superblock.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_segment_header"
+path = "fuzz_targets/decode_segment_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scan_segments_vecstore"
+path = "fuzz_targets/scan_segments_vecstore.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_catalog_payload"
+path = "fuzz_targets/decode_catalog_payload.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_record_payload_v2"
+path = "fuzz_targets/decode_record_payload_v2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_index_payload"
+path = "fuzz_targets/decode_index_payload.rs"
+test = false
+doc = false
+bench = false

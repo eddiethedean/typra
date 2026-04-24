@@ -41,3 +41,27 @@ def test_dbapi_rejects_wrong_param_count(tmp_path):
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def test_dbapi_fetchmany_is_incremental_for_large_results(tmp_path):
+    db_path = tmp_path / "app.typra"
+    db = typra.Database.open(str(db_path))
+    db.register_collection(
+        "books",
+        '[{"path": ["id"], "type": "int64"}, {"path": ["year"], "type": "int64"}]',
+        "id",
+    )
+    for i in range(2000):
+        db.insert("books", {"id": i, "year": i % 5})
+
+    conn = typra.dbapi.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("SELECT id,year FROM books ORDER BY id ASC", None)
+
+    a = cur.fetchmany(7)
+    b = cur.fetchmany(7)
+    assert len(a) == 7
+    assert len(b) == 7
+    assert a[0] == (0, 0)
+    assert a[-1] == (6, 1)
+    assert b[0] == (7, 2)

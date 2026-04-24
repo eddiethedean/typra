@@ -4,6 +4,7 @@ members = [
     "crates/typra-derive",
     "crates/typra",
     "python/typra",
+    "fuzz",
 ]
 resolver = "2"
 

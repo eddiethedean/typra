@@ -12,6 +12,8 @@ As of **v0.12.x+**, Typra ships a **persisted schema catalog** (per-field **cons
 
 Contributor-oriented layout (Rust crates and `typra-core` modules): [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
 
+Compatibility and stability expectations (file-format minors + API policy): [`compatibility_matrix.md`](compatibility_matrix.md).
+
 ## Install (Rust)
 
 In your application `Cargo.toml`:

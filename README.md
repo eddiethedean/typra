@@ -21,7 +21,7 @@ Typra ships an **experimental, read-only DB-API 2.0 adapter** (minimal `SELECT` 
 
 | Resource | Link |
 |----------|------|
-| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) · [Record encoding v2](docs/07_record_encoding_v2.md) |
+| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Compatibility](docs/compatibility_matrix.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) · [Record encoding v2](docs/07_record_encoding_v2.md) |
 | **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) · [0.5.x → 0.6.x](docs/migration_0.5_to_0.6.md) · [0.6.x → 0.7.x](docs/migration_0.6_to_0.7.md) · [0.7.x → 0.8.x](docs/migration_0.7_to_0.8.md) |
 | **Contributing** | [docs/contributing.md](docs/contributing.md) |
 

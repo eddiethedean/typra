@@ -4,6 +4,8 @@ This guide covers the **`typra`** PyPI package: installation, the **`Database`**
 
 For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust-first usage, see [`guide_getting_started.md`](guide_getting_started.md). For how the engine is organized in Rust, see [`03_rust_crate_and_module_layout.md`](03_rust_crate_and_module_layout.md).
 
+For file-format and API compatibility expectations, see [`compatibility_matrix.md`](compatibility_matrix.md).
+
 ## Install
 
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
