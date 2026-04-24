@@ -9,6 +9,13 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 
 `Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get` / `delete`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, **`#[derive(DbModel)]`** (via the default `derive` feature), **secondary indexes**, typed **query** execution (**equality**, `And`, `Or`, ranges, `limit`, `order_by`, `explain`), **`Database::query_iter`**, and **subset projections**. Typra’s **SQL text** surface remains minimal (primarily to support Python DB-API); applications should prefer the typed query builder APIs.
 
+## Stability and feature policy
+
+- **Prefer this crate** (`typra`) in applications. It is the stable facade for Typra’s Rust ecosystem.
+- **Feature flags** are intended to be **additive**:
+  - Default features should be safe for most users.
+  - Experimental features should be clearly labeled in docs and may change faster than the default surface (especially pre-1.0).
+
 | Resource | Link |
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
@@ -77,6 +84,7 @@ Field attributes (`#[db(primary)]`, etc.) on `DbModel` are **not** implemented y
 | Feature | Role |
 |---------|------|
 | **`derive`** (default) | `#[derive(DbModel)]` via **`typra-derive`** |
+| **`async`** | Async wrapper API (`AsyncDatabase`) implemented via Tokio `spawn_blocking` |
 
 ## Related crates
 

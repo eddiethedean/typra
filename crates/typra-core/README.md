@@ -9,6 +9,15 @@ Core engine for **Typra**: typed, embedded storage with a persisted schema catal
 
 `Database<S: Store>` with default on-disk **`FileStore`** and in-memory **`VecStore`**; replayed **schema catalog** (including **`primary_field`** and **constraints**); **`insert` / `get` / `delete`** with **`RowValue`** and validation; **secondary indexes** and typed **query** execution (`Eq` / `And` / `Or` / ranges, plus `limit`, `order_by`, `explain`), **`Database::query_iter`**, subset projections; snapshot bytes; **`DbError`** / **`ValidationError`**. Typra includes a minimal SQL parser (for Python DB-API use); most consumers should use the typed query AST directly.
 
+## Stability and feature policy
+
+- Most applications should depend on **`typra`** (the facade) instead of **`typra-core`** directly.
+- **1.0-readiness goal**: `typra-core` is intended to be **stable and safe to depend on directly**.
+  - In particular, the crate-root exports (e.g. `Database`, schema types, and error types) are treated as the stable surface.
+  - Module-level APIs under `typra_core::*` are also public today; treat them as stable unless explicitly marked otherwise in docs.
+- **Feature flags** are intended to be **additive**.
+  - If a feature is experimental, it should be called out explicitly in docs and tests.
+
 | Resource | Link |
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |

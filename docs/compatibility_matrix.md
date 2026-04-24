@@ -11,6 +11,13 @@ Typra database files have a **format major** and **format minor** (see [`docs/02
 - **Format major (`FORMAT_MAJOR`)**: breaking changes. Typra will refuse to open unknown majors.
 - **Format minor (`FORMAT_MINOR`)**: compatible evolution within a major. Minors may gate new segment types, replay semantics, or publication metadata.
 
+### Compatibility terms
+
+- **Read**: the file can be opened and queried (subject to `OpenOptions.recovery` / `RecoveryMode`).
+- **Write**: the file can be opened *and* the engine will append new durable segments to it.
+- **Lazy upgrade**: the engine may update metadata or the file’s format minor as part of an operation that requires newer invariants.
+  - This is not a whole-file rewrite; it may include publishing newer metadata and/or appending newer segment types.
+
 ### Supported format minors
 
 | Minor | Read | Write | Notes |
@@ -18,15 +25,50 @@ Typra database files have a **format major** and **format minor** (see [`docs/02
 | **6** | ✅ | ✅ | Current for new databases. Transaction framing (`TxnBegin/Commit/Abort`) and strict replay rules. |
 | **≤ 5** | ✅ | ⚠️ | Read supported. New writes may lazily upgrade file header/minor when required by newer semantics (see migration docs). |
 
-### Upgrade behavior (high level)
+### Upgrade and write behavior (policy)
 
-- **Existing files** are opened without rewriting whenever possible.\n- Some operations may **lazily upgrade** metadata (e.g. header/minor) when newer invariants are required.\n- Recovery behavior is controlled by `OpenOptions.recovery` / `RecoveryMode` (`AutoTruncate` vs `Strict`).
+- **Existing files** are opened without rewriting whenever possible.
+- Typra prefers **preserving the file’s current minor** until an operation requires newer invariants.
+- When a **lazy upgrade** happens, Typra will make the post-upgrade behavior explicit in release notes and migration docs.
+
+#### Practical rules by minor
+
+- **Minor 6**
+  - **Writes** are fully supported.
+  - **Recovery** honors transaction framing. Tail corruption/incomplete txn tails are handled according to `RecoveryMode`.
+- **Minor ≤ 5**
+  - **Reads** are supported.
+  - **Writes are best-effort**: some write paths require **minor 6** invariants (notably around atomic multi-write durability).
+    - In those cases Typra may **lazily upgrade** the file to minor 6 before/while appending new durable state.
+
+### Recovery modes (contract)
+
+Recovery behavior is controlled by `OpenOptions.recovery` / `RecoveryMode`.
+
+- **`AutoTruncate`** (default)
+  - Open succeeds if a valid committed prefix can be identified.
+  - Torn tails / incomplete transaction tails may be **truncated** back to the last known-good committed state.
+  - If a checkpoint is corrupt, the engine should fall back to replaying from an earlier safe point (e.g. full replay) rather than producing silently-wrong results.
+- **`Strict`**
+  - Open refuses if integrity checks fail for required metadata, or if recovery would require truncation.
+  - Intended for environments that prefer fail-fast over best-effort salvage.
+
+### Forward compatibility (contract)
+
+- Unknown **format majors** are refused.
+- Unknown **format minors** within a known major are refused unless explicitly handled by the compatibility logic for that release line.
+- Unknown **segment types** are refused by default, unless explicitly declared ignorable/ephemeral by the format spec for that major/minor.
+
+Typra prefers **explicit compatibility** over “best guess” parsing.
 
 ## Segment types and stability
 
 Typra’s on-disk log is append-only segments with checksums.
 
-- **Stable/persistent segments** (part of the durable logical state): `Schema`, `Record`, `Index`, `Manifest`, `TxnBegin`, `TxnCommit`, `TxnAbort`, `Checkpoint`.\n- **Ephemeral segments**: `Temp` is **scratch spill storage** for bounded-memory operators. It is **ignored by replay** and should not affect reopen; it may be truncated/cleaned opportunistically.
+- **Stable/persistent segments** (part of the durable logical state): `Schema`, `Record`, `Index`, `Manifest`, `TxnBegin`, `TxnCommit`, `TxnAbort`, `Checkpoint`.
+- **Ephemeral segments**: `Temp` is **scratch spill storage** for bounded-memory operators.
+  - It is **ignored by replay** and must not affect durable state after reopen.
+  - It may be truncated/cleaned opportunistically (including at the end of an operator).
 
 Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should not prevent opening in `AutoTruncate` mode.
 
@@ -34,13 +76,23 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
 
 ### Rust crates
 
-- **`typra`** (facade): preferred dependency for applications.\n  - Stability: best-effort source compatibility within a minor series.\n- **`typra-core`** (engine): lower-level APIs and internal types.\n  - Stability: more churn pre-1.0; expect internal refactors.\n- **`typra-derive`**: proc macro for `#[derive(DbModel)]`.\n  - Stability: additive improvements; avoid breaking changes where possible.
+- **`typra`** (facade): preferred dependency for applications.
+  - **Stability goal**: strongest compatibility guarantees in the Rust ecosystem for Typra.
+  - **Policy**: breaking changes should be rare and clearly called out, even pre-1.0.
+- **`typra-core`** (engine): lower-level APIs and internal types.
+  - **Stability goal**: stable enough for power users, but expect more churn than `typra` before 1.0.
+  - **Policy**: internal refactors are acceptable as long as `typra` remains stable and behavior is preserved.
+- **`typra-derive`**: proc macro for `#[derive(DbModel)]`.
+  - **Stability goal**: mostly additive improvements (new attributes and validations) with minimal breakage.
 
 ### Python package (`typra` on PyPI)
 
-- The Python surface mirrors the engine where feasible.\n- DB-API (`typra.dbapi`) is **experimental** and implements a **read-only subset** of PEP 249 for a minimal `SELECT` grammar (see [`docs/guide_python.md`](guide_python.md)).
+- The Python surface mirrors the engine where feasible.
+- DB-API (`typra.dbapi`) is a read-only subset of PEP 249 for a minimal `SELECT` grammar (see [`docs/guide_python.md`](guide_python.md)).
 
 ## DB-API + SQL subset guarantees (current)
 
-- Supported: `SELECT <cols|*> FROM <collection>` with optional `WHERE` (=`?` params; `AND`/`OR` and ranges), optional `ORDER BY`, optional `LIMIT`.\n- Not supported: DDL/DML SQL, joins, group-by SQL, SQLAlchemy dialect.\n- Cursor behavior: `fetchone`/`fetchmany`/`fetchall` retrieve results incrementally (no forced full materialization on `execute`).
+- Supported: `SELECT <cols|*> FROM <collection>` with optional `WHERE` (=`?` params; `AND`/`OR` and ranges), optional `ORDER BY`, optional `LIMIT`.
+- Not supported: DDL/DML SQL, joins, group-by SQL, SQLAlchemy dialect.
+- Cursor behavior: `fetchone`/`fetchmany`/`fetchall` retrieve results incrementally (no forced full materialization on `execute`).
 

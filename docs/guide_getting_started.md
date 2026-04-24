@@ -14,6 +14,8 @@ Contributor-oriented layout (Rust crates and `typra-core` modules): [`03_rust_cr
 
 Compatibility and stability expectations (file-format minors + API policy): [`compatibility_matrix.md`](compatibility_matrix.md).
 
+Supported types, constraints, indexes, and query operators: [`types_matrix.md`](types_matrix.md).
+
 ## Install (Rust)
 
 In your application `Cargo.toml`:

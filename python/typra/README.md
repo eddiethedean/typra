@@ -9,7 +9,7 @@ Official **CPython** bindings for **Typra** (PyO3 native extension): a typed, em
 
 You get a durable **schema catalog**, **validation**, nested **row values** (record **v2** on insert; **v1** segments still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes.
 
-**Queries and secondary indexes (0.7+):** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection("name").where("field", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python user guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#realistic-workflow-indexed-queries-on-disk). Typra also ships an **experimental, read-only DB-API 2.0 adapter** (`typra.dbapi`) with a minimal `SELECT` subset—see the [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#db-api-20-pep-249-and-sqlalchemy).
+**Queries and secondary indexes (0.7+):** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection("name").where("field", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python user guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#realistic-workflow-indexed-queries-on-disk). Typra also ships a **read-only DB-API 2.0 adapter** (`typra.dbapi`) with a minimal `SELECT` subset—see the [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#db-api-20-pep-249-and-sqlalchemy).
 
 | Resource | Link |
 |----------|------|

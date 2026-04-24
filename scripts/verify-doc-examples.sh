@@ -355,4 +355,29 @@ PY
   exit 1
 }
 
-echo "verify-doc-examples: OK (Rust open + 10 Python snippets)"
+# --- Python: docs/guide_operations_and_failure_modes.md "Operational smoke test (Python)" ---
+read -r -d '' EXPECT_PY_OPS <<'EOF' || true
+opened: :memory:
+names: ['books']
+get: {'title': 'Hello'}
+
+EOF
+ACTUAL_PY_OPS=$("$PYTHON" <<'PY' | strip_cr
+import typra
+
+db = typra.Database.open_in_memory()
+db.register_collection("books", '[{"path": ["title"], "type": "string"}]', "title")
+db.insert("books", {"title": "Hello"})
+
+print("opened:", db.path())
+print("names:", db.collection_names())
+print("get:", db.get("books", "Hello"))
+PY
+)
+[[ "$ACTUAL_PY_OPS" == "$EXPECT_PY_OPS" ]] || {
+  echo "Python (guide_operations_and_failure_modes) output mismatch." >&2
+  diff -u <(printf '%s' "$EXPECT_PY_OPS") <(printf '%s' "$ACTUAL_PY_OPS") >&2 || true
+  exit 1
+}
+
+echo "verify-doc-examples: OK (Rust open + 11 Python snippets)"

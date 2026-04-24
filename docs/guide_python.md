@@ -199,7 +199,7 @@ For **ephemeral** integration tests (CI, notebooks), prefer a temp file as above
 
 ## DB-API 2.0 (PEP 249) and SQLAlchemy
 
-Typra ships an **experimental, read-only** DB-API 2.0 adapter (PEP 249) starting in **0.10.0**, exposed as **`typra.dbapi`**. The SQL surface is intentionally small and maps onto the engine’s typed query AST.
+Typra ships a **read-only** DB-API 2.0 adapter (PEP 249) starting in **0.10.0**, exposed as **`typra.dbapi`**. The SQL surface is intentionally small and maps onto the engine’s typed query AST.
 
 ### Supported SQL subset (0.10.0+)
 

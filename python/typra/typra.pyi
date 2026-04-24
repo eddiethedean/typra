@@ -4,7 +4,6 @@ from typing import Any, ContextManager, overload, Protocol, Sequence
 
 __version__: str
 __doc__: str
-dbapi: Any
 
 class Transaction(ContextManager[None]):
     def __enter__(self) -> None: ...
@@ -109,3 +108,8 @@ class _DbApiConnection(Protocol):
     def commit(self) -> None: ...
     def rollback(self) -> None: ...
     def close(self) -> None: ...
+
+class _DbApiModule(Protocol):
+    def connect(self, path: str) -> _DbApiConnection: ...
+
+dbapi: _DbApiModule

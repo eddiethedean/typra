@@ -50,4 +50,10 @@ proptest! {
             prop_assert_eq!(got, Some(row(*id, *x)));
         }
     }
+
+    // Basic hardening invariant: SQL parsing should never panic on arbitrary input.
+    #[test]
+    fn sql_parse_select_never_panics(s in ".*") {
+        let _ = typra_core::sql::parse_select(&s);
+    }
 }

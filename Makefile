@@ -12,6 +12,7 @@ TY ?= $(PYTHON) -m ty
 MATURIN ?= $(PYTHON) -m maturin
 
 .PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples bench
+.PHONY: check-1p0-ready
 .PHONY: coverage coverage-rust coverage-python
 .PHONY: coverage-rust-core
 .PHONY: ruff-format-check ruff-check ty-check
@@ -43,6 +44,12 @@ install-tools: venv
 	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5" >/dev/null
 
 check-full: check-python check-rust test verify-doc-examples
+
+# “1.0 readiness” suite (no version bump): contracts + docs + API surfaces.
+# - Runs the full cross-language check pipeline.
+# - Adds an explicit async-surface compile/test run for the Rust facade.
+check-1p0-ready: check-full
+	cargo test -p typra --features async
 
 check-python: install-tools ruff-format-check ruff-check ty-check
 

@@ -65,3 +65,42 @@ def test_dbapi_fetchmany_is_incremental_for_large_results(tmp_path):
     assert a[0] == (0, 0)
     assert a[-1] == (6, 1)
     assert b[0] == (7, 2)
+
+
+def test_dbapi_commit_and_rollback_are_callable(tmp_path):
+    db_path = tmp_path / "app.typra"
+    db = typra.Database.open(str(db_path))
+    db.register_collection(
+        "books",
+        '[{"path": ["id"], "type": "int64"}]',
+        "id",
+    )
+    db.insert("books", {"id": 1})
+
+    conn = typra.dbapi.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM books", None)
+    assert cur.fetchone() == (1,)
+
+    # Read-only adapter: commit/rollback should be no-ops but callable.
+    conn.commit()
+    conn.rollback()
+
+
+def test_dbapi_rejects_non_select_sql(tmp_path):
+    db_path = tmp_path / "app.typra"
+    db = typra.Database.open(str(db_path))
+    db.register_collection(
+        "books",
+        '[{"path": ["id"], "type": "int64"}]',
+        "id",
+    )
+    db.insert("books", {"id": 1})
+
+    conn = typra.dbapi.connect(str(db_path))
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM books", None)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass

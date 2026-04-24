@@ -19,9 +19,16 @@ It combines the ease of SQLite with **strict schemas, validation, and nested dat
 
 Typra ships an **experimental, read-only DB-API 2.0 adapter** (minimal `SELECT` subset) in **0.10.0**. Full SQL and SQLAlchemy integration remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
+## Guarantees and contracts (1.0-ready docs)
+
+- **Compatibility and recovery contract**: [`docs/compatibility_matrix.md`](docs/compatibility_matrix.md)
+- **Supported features matrix** (types, constraints, indexes, queries): [`docs/types_matrix.md`](docs/types_matrix.md)
+- **Operations and failure modes**: [`docs/guide_operations_and_failure_modes.md`](docs/guide_operations_and_failure_modes.md)
+- **Security posture** (threat model + disclosure): [`docs/security_threat_model.md`](docs/security_threat_model.md) and [`SECURITY.md`](SECURITY.md)
+
 | Resource | Link |
 |----------|------|
-| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Compatibility](docs/compatibility_matrix.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) · [Record encoding v2](docs/07_record_encoding_v2.md) |
+| **User guides** | [Getting started](docs/guide_getting_started.md) · [Concepts](docs/guide_concepts.md) · [Python](docs/guide_python.md) · [Operations & failure modes](docs/guide_operations_and_failure_modes.md) · [Models & collections](docs/guide_models_and_collections.md) · [Storage modes](docs/guide_storage_modes.md) · [Compatibility](docs/compatibility_matrix.md) · [Types matrix](docs/types_matrix.md) · [Rust module layout](docs/03_rust_crate_and_module_layout.md) · [Record encoding v2](docs/07_record_encoding_v2.md) |
 | **Migration** | [0.4.x → 0.5.x](docs/migration_0.4_to_0.5.md) · [0.5.x → 0.6.x](docs/migration_0.5_to_0.6.md) · [0.6.x → 0.7.x](docs/migration_0.6_to_0.7.md) · [0.7.x → 0.8.x](docs/migration_0.7_to_0.8.md) |
 | **Contributing** | [docs/contributing.md](docs/contributing.md) |
 
