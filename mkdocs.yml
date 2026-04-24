@@ -59,6 +59,7 @@ nav:
   - Reference:
       - Compatibility matrix: reference/compatibility.md
       - Types matrix: reference/types.md
+      - 1.0 readiness: reference/readiness.md
       - Security threat model: reference/security.md
       - CLI: reference/cli.md
       - Rust API (curated): reference/rust_api.md

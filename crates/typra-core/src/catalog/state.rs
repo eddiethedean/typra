@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::catalog::codec::{CatalogRecordWire, MAX_COLLECTION_NAME_BYTES};
 use crate::error::{DbError, SchemaError};
-use crate::schema::{CollectionId, FieldDef, IndexDef, SchemaVersion};
+use crate::schema::{validate_field_defs, CollectionId, FieldDef, IndexDef, SchemaVersion};
 
 /// Snapshot of one registered collection (latest schema version).
 #[derive(Debug, Clone, PartialEq)]
@@ -145,6 +145,7 @@ impl Catalog {
                 name: name.clone(),
             }));
         }
+        validate_field_defs(&fields)?;
         if let Some(ref pk) = primary_field {
             if !Catalog::has_top_level_field(&fields, pk) {
                 return Err(DbError::Schema(SchemaError::PrimaryFieldNotFound {
@@ -184,6 +185,7 @@ impl Catalog {
                 got: schema_version,
             }));
         }
+        validate_field_defs(&fields)?;
         if let Some(ref pk) = col.primary_field {
             if !Catalog::has_top_level_field(&fields, pk) {
                 return Err(DbError::Schema(SchemaError::PrimaryFieldMissingInSchema {

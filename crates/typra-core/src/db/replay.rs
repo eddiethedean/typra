@@ -350,11 +350,6 @@ fn apply_record_segment(
         Some(s) => s.as_str(),
         None => return Ok(()),
     };
-    for f in &col.fields {
-        if f.path.0.len() != 1 {
-            return Err(DbError::NotImplemented);
-        }
-    }
     let pk_ty = col
         .fields
         .iter()

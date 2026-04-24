@@ -3,9 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::error::{DbError, FormatError};
-use crate::record::payload_v1::{
-    decode_record_payload_v1_body, DecodedRecord, OP_DELETE, RECORD_PAYLOAD_VERSION,
-};
+use crate::record::payload_v1::{DecodedRecord, OP_DELETE};
+use crate::record::payload_v3::decode_record_payload_any;
 use crate::record::row_value::{decode_row_value, encode_row_value, RowValue};
 use crate::record::scalar::{decode_tagged_scalar, encode_tagged_scalar, Cursor, ScalarValue};
 use crate::schema::{FieldDef, Type};
@@ -109,17 +108,6 @@ pub fn decode_record_payload(
     pk_ty: &Type,
     fields: &[FieldDef],
 ) -> Result<DecodedRecord, DbError> {
-    if bytes.len() < 2 {
-        return Err(DbError::Format(FormatError::TruncatedRecordPayload));
-    }
-    let ver = u16::from_le_bytes([bytes[0], bytes[1]]);
-    let mut cur = Cursor::new(bytes);
-    cur.take_u16()?; // consume version
-    match ver {
-        RECORD_PAYLOAD_VERSION => decode_record_payload_v1_body(cur, pk_name, pk_ty, fields),
-        RECORD_PAYLOAD_VERSION_V2 => decode_record_payload_v2_body(cur, pk_name, pk_ty, fields),
-        _ => Err(DbError::Format(FormatError::UnknownRecordPayloadVersion {
-            got: ver,
-        })),
-    }
+    // Delegate to the central v1/v2/v3 dispatcher.
+    decode_record_payload_any(bytes, pk_name, pk_ty, fields)
 }

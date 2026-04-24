@@ -157,14 +157,17 @@ fn replay_errors_on_nested_field_paths_in_schema() {
             ty: Type::Int64,
             constraints: vec![],
         };
-        db.register_schema_version(id, vec![id_field(), title_field(), nested])
-            .unwrap();
+        // Adding a new required nested path should be classified as needing a migration.
+        let e = db
+            .register_schema_version(id, vec![id_field(), title_field(), nested])
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::MigrationRequired { .. })
+        ));
     }
-    let e = match Database::open(&path) {
-        Err(e) => e,
-        Ok(_) => panic!("expected NotImplemented for nested paths"),
-    };
-    assert!(matches!(e, DbError::NotImplemented));
+    // Reopen should still succeed (schema bump was rejected).
+    let _ = Database::open(&path).unwrap();
 }
 
 #[test]

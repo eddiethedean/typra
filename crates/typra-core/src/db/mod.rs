@@ -19,8 +19,9 @@ use crate::error::{DbError, FormatError, SchemaError, TransactionError};
 use crate::index::IndexState;
 use crate::index::{encode_index_payload, IndexEntry, IndexOp};
 use crate::record::{
-    encode_record_payload_v2, encode_record_payload_v2_op, non_pk_defs_in_order, RowValue,
-    ScalarValue, OP_DELETE, OP_REPLACE,
+    encode_record_payload_v2, encode_record_payload_v2_op, encode_record_payload_v3,
+    encode_record_payload_v3_op, non_pk_defs_in_order, RowValue, ScalarValue, OP_DELETE,
+    OP_REPLACE,
 };
 use crate::schema::{classify_schema_update, SchemaChange};
 use crate::schema::{CollectionId, FieldDef, SchemaVersion};
@@ -51,11 +52,6 @@ fn plan_insert_row(
             .ok_or(DbError::Schema(SchemaError::UnknownCollection {
                 id: collection_id.0,
             }))?;
-    for f in &col.fields {
-        if f.path.0.len() != 1 {
-            return Err(DbError::NotImplemented);
-        }
-    }
     let pk_name =
         col.primary_field
             .as_deref()
@@ -78,7 +74,52 @@ fn plan_insert_row(
             name: pk_name.to_string(),
         }))?;
     validation::validate_value(&mut pk_path, pk_ty, &pk_def.constraints, pk_cell)?;
-    validation::validate_top_level_row(&col.fields, pk_name, &row)?;
+    // Validate unknown fields: for nested schema paths we validate by traversing row objects.
+    // For legacy single-segment schemas, keep the existing top-level validation.
+    let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
+    if !has_multi_segment_schema {
+        validation::validate_top_level_row(&col.fields, pk_name, &row)?;
+    } else {
+        fn walk_row(out: &mut Vec<Vec<String>>, prefix: &mut Vec<String>, v: &RowValue) {
+            match v {
+                RowValue::Object(map) => {
+                    for (k, child) in map {
+                        prefix.push(k.clone());
+                        walk_row(out, prefix, child);
+                        prefix.pop();
+                    }
+                }
+                // Lists/enums/scalars/None are treated as leaves at this path.
+                _ => out.push(prefix.clone()),
+            }
+        }
+
+        let mut leaf_paths: Vec<Vec<String>> = Vec::new();
+        for (k, v) in &row {
+            if k == pk_name {
+                continue;
+            }
+            let mut prefix = vec![k.clone()];
+            walk_row(&mut leaf_paths, &mut prefix, v);
+        }
+
+        // Allowed leaf paths are exactly the schema field defs (excluding PK).
+        let mut allowed: std::collections::HashSet<Vec<String>> = std::collections::HashSet::new();
+        for f in &col.fields {
+            if f.path.0.len() == 1 && f.path.0[0] == pk_name {
+                continue;
+            }
+            allowed.insert(f.path.0.iter().map(|s| s.as_ref().to_string()).collect());
+        }
+
+        for p in &leaf_paths {
+            if !allowed.contains(p) {
+                return Err(DbError::Schema(SchemaError::RowUnknownField {
+                    name: p.join("."),
+                }));
+            }
+        }
+    }
 
     let pk_val = row
         .remove(pk_name)
@@ -87,36 +128,108 @@ fn plan_insert_row(
         }))?;
     let pk_scalar = pk_val.clone().into_scalar()?;
 
-    let non_pk_defs = non_pk_defs_in_order(&col.fields, pk_name);
+    // Build non-PK values in schema order.
+    // - legacy v2: single-segment top-level field defs
+    // - v3: full FieldPath for each non-PK def (multi-segment allowed)
+    let non_pk_defs = if has_multi_segment_schema {
+        col.fields
+            .iter()
+            .filter(|f| !(f.path.0.len() == 1 && f.path.0[0] == pk_name))
+            .collect::<Vec<_>>()
+    } else {
+        non_pk_defs_in_order(&col.fields, pk_name)
+    };
+
+    fn row_value_at_path(
+        row: &BTreeMap<String, RowValue>,
+        path: &[std::borrow::Cow<'static, str>],
+    ) -> Option<RowValue> {
+        if path.is_empty() {
+            return None;
+        }
+        let mut cur = row.get(path[0].as_ref())?;
+        for seg in path.iter().skip(1) {
+            cur = match cur {
+                RowValue::Object(m) => m.get(seg.as_ref())?,
+                RowValue::None => return None,
+                _ => return None,
+            };
+        }
+        Some(cur.clone())
+    }
+
     let mut non_pk: Vec<(FieldDef, RowValue)> = Vec::with_capacity(non_pk_defs.len());
     for def in &non_pk_defs {
-        let seg = def.path.0[0].as_ref();
-        let v = match row.remove(seg) {
+        let v = match row_value_at_path(&row, &def.path.0) {
             Some(x) => x,
             None if validation::allows_absent_root(&def.ty) => RowValue::None,
             None => {
                 return Err(DbError::Schema(SchemaError::RowMissingField {
-                    name: seg.to_string(),
+                    name: def
+                        .path
+                        .0
+                        .iter()
+                        .map(|s| s.as_ref())
+                        .collect::<Vec<_>>()
+                        .join("."),
                 }));
             }
         };
         non_pk.push(((*def).clone(), v));
     }
-    if let Some(name) = row.keys().next().cloned() {
-        return Err(DbError::Schema(SchemaError::RowUnknownField { name }));
-    }
 
-    let payload = encode_record_payload_v2(
-        collection_id.0,
-        col.current_version.0,
-        &pk_scalar,
-        pk_ty,
-        &non_pk,
-    )?;
+    let payload = if has_multi_segment_schema {
+        encode_record_payload_v3(
+            collection_id.0,
+            col.current_version.0,
+            &pk_scalar,
+            pk_ty,
+            &non_pk,
+        )?
+    } else {
+        encode_record_payload_v2(
+            collection_id.0,
+            col.current_version.0,
+            &pk_scalar,
+            pk_ty,
+            &non_pk,
+        )?
+    };
+
+    // Build full row map (top-level root objects as needed).
     let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();
     full_map.insert(pk_name.to_string(), pk_val);
     for (def, v) in &non_pk {
-        full_map.insert(def.path.0[0].to_string(), v.clone());
+        let parts: Vec<String> = def.path.0.iter().map(|s| s.as_ref().to_string()).collect();
+        if parts.is_empty() {
+            continue;
+        }
+        if parts.len() == 1 {
+            full_map.insert(parts[0].clone(), v.clone());
+        } else {
+            // Reuse local helper below (same as projection merge semantics).
+            let mut cur: &mut RowValue = full_map
+                .entry(parts[0].clone())
+                .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+            for seg in parts.iter().skip(1).take(parts.len() - 2) {
+                cur = match cur {
+                    RowValue::Object(m) => m
+                        .entry(seg.clone())
+                        .or_insert_with(|| RowValue::Object(BTreeMap::new())),
+                    other => {
+                        *other = RowValue::Object(BTreeMap::new());
+                        let RowValue::Object(m) = other else {
+                            unreachable!()
+                        };
+                        m.entry(seg.clone())
+                            .or_insert_with(|| RowValue::Object(BTreeMap::new()))
+                    }
+                };
+            }
+            if let RowValue::Object(m) = cur {
+                m.insert(parts.last().unwrap().clone(), v.clone());
+            }
+        }
     }
     let mut index_entries: Vec<IndexEntry> = Vec::new();
     for idx in &col.indexes {
@@ -785,13 +898,14 @@ impl<S: Store> Database<S> {
             .get(&(collection_id.0, full.0.clone()))
             .cloned();
         if existing.is_some() {
-            // Re-encode with explicit replace opcode (payload v2).
+            // Re-encode with explicit replace opcode.
             let col = self
                 .catalog_for_read()
                 .get(collection_id)
                 .ok_or(DbError::Schema(SchemaError::UnknownCollection {
                     id: collection_id.0,
                 }))?;
+            let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
             let pk_name =
                 col.primary_field
                     .as_deref()
@@ -805,24 +919,39 @@ impl<S: Store> Database<S> {
                 .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
                     name: pk_name.to_string(),
                 }))?;
-            let non_pk_defs = non_pk_defs_in_order(&col.fields, pk_name);
+
+            let non_pk_defs = if has_multi_segment_schema {
+                col.fields
+                    .iter()
+                    .filter(|f| !(f.path.0.len() == 1 && f.path.0[0] == pk_name))
+                    .collect::<Vec<_>>()
+            } else {
+                non_pk_defs_in_order(&col.fields, pk_name)
+            };
             let mut non_pk: Vec<(FieldDef, RowValue)> = Vec::with_capacity(non_pk_defs.len());
             for def in &non_pk_defs {
-                let seg = def.path.0[0].as_ref();
-                if let Some(v) = full.1.get(seg).cloned() {
-                    non_pk.push(((*def).clone(), v));
-                } else {
-                    non_pk.push(((*def).clone(), RowValue::None));
-                }
+                let v = row_value_at_path_segments(&full.1, &def.path.0).unwrap_or(RowValue::None);
+                non_pk.push(((*def).clone(), v));
             }
-            payload = encode_record_payload_v2_op(
-                collection_id.0,
-                col.current_version.0,
-                OP_REPLACE,
-                &pk_scalar,
-                &pk_def.ty,
-                &non_pk,
-            )?;
+            payload = if has_multi_segment_schema {
+                encode_record_payload_v3_op(
+                    collection_id.0,
+                    col.current_version.0,
+                    OP_REPLACE,
+                    &pk_scalar,
+                    &pk_def.ty,
+                    &non_pk,
+                )?
+            } else {
+                encode_record_payload_v2_op(
+                    collection_id.0,
+                    col.current_version.0,
+                    OP_REPLACE,
+                    &pk_scalar,
+                    &pk_def.ty,
+                    &non_pk,
+                )?
+            };
             // Prepend index deletes for any existing row.
             if let Some(ref old_row) = existing {
                 let mut deletes = index_deletes_for_existing_row(
@@ -928,14 +1057,26 @@ impl<S: Store> Database<S> {
         };
         let mut index_entries =
             index_deletes_for_existing_row(collection_id, pk, &col.indexes, &old_row);
-        let record_payload = encode_record_payload_v2_op(
-            collection_id.0,
-            col.current_version.0,
-            OP_DELETE,
-            pk,
-            &pk_def.ty,
-            &[],
-        )?;
+        let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
+        let record_payload = if has_multi_segment_schema {
+            encode_record_payload_v3_op(
+                collection_id.0,
+                col.current_version.0,
+                OP_DELETE,
+                pk,
+                &pk_def.ty,
+                &[],
+            )?
+        } else {
+            encode_record_payload_v2_op(
+                collection_id.0,
+                col.current_version.0,
+                OP_DELETE,
+                pk,
+                &pk_def.ty,
+                &[],
+            )?
+        };
 
         if let Some(st) = &mut self.txn_staging {
             if !index_entries.is_empty() {

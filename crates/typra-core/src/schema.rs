@@ -28,6 +28,40 @@ impl FieldPath {
     }
 }
 
+pub(crate) fn validate_field_defs(fields: &[FieldDef]) -> Result<(), DbError> {
+    // Basic path validation (in case callers constructed `FieldPath` directly).
+    for f in fields {
+        if f.path.0.is_empty() || f.path.0.iter().any(|s| s.is_empty()) {
+            return Err(DbError::Schema(SchemaError::InvalidFieldPath));
+        }
+    }
+
+    // Duplicates.
+    let mut seen: std::collections::HashSet<&FieldPath> = std::collections::HashSet::new();
+    for f in fields {
+        if !seen.insert(&f.path) {
+            return Err(DbError::Schema(SchemaError::InvalidFieldPath));
+        }
+    }
+
+    // Parent/child conflicts (e.g. `a` and `a.b`).
+    for (i, a) in fields.iter().enumerate() {
+        for b in fields.iter().skip(i + 1) {
+            let pa = &a.path.0;
+            let pb = &b.path.0;
+            let min = pa.len().min(pb.len());
+            if min == 0 {
+                continue;
+            }
+            if pa.len() != pb.len() && pa[..min] == pb[..min] {
+                return Err(DbError::Schema(SchemaError::InvalidFieldPath));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Logical type of a field in the catalog (mirrors encoding in record payloads where supported).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
@@ -204,11 +238,6 @@ pub fn classify_schema_update(
     // New fields: safe only if optional-at-root; otherwise migration required.
     for (path, new_def) in &new_map {
         if old_map.contains_key(path) {
-            continue;
-        }
-        // Nested field-path schema support is not fully implemented yet; allow the catalog bump
-        // (replay/insert paths will enforce their own constraints).
-        if new_def.path.0.len() != 1 {
             continue;
         }
         if validation::allows_absent_root(&new_def.ty) {

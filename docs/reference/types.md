@@ -37,9 +37,12 @@ It is intentionally conservative: if something is partially implemented or shape
 
 ### Schema path shape (important limitation)
 
-- **Top-level field defs** in a collection schema must currently be **single-segment** paths (e.g. `["title"]`).
-  - Nested structure should be expressed via `Type::Object(...)` on a top-level field (e.g. `["profile"] : Object([...])`), not via multi-segment top-level field paths.
-  - Multi-segment field paths are supported in **queries/projections/indexes**, but defining them as *top-level schema fields* is not fully supported yet.
+- **Top-level field defs** in a collection schema may be **multi-segment** paths (e.g. `["profile","timezone"]`).
+  - This is a first-class way to define nested leaf fields without requiring a top-level `Type::Object(...)` field.
+  - Field paths must be non-empty and have no empty segments.
+  - Field paths must be unique (no duplicates).
+  - Parent/child conflicts are rejected (e.g. defining both `["a"]` and `["a","b"]`).
+  - The primary key must remain a **single-segment** top-level scalar field (1.0 contract simplification).
 
 ## Constraints (`schema::Constraint`)
 

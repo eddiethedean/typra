@@ -90,7 +90,7 @@ fn get_pk_type_mismatch_errors() {
 }
 
 #[test]
-fn insert_nested_path_schema_not_implemented() {
+fn insert_nested_path_schema_requires_value_or_optional() {
     let dir = tempfile::tempdir().unwrap();
     let mut db = Database::open(dir.path().join("n.typra")).unwrap();
     let nested = FieldDef {
@@ -104,7 +104,10 @@ fn insert_nested_path_schema_not_implemented() {
     let mut row = BTreeMap::new();
     row.insert("title".into(), RowValue::String("t".into()));
     let e = db.insert(id, row).unwrap_err();
-    assert!(matches!(e, DbError::NotImplemented));
+    assert!(matches!(
+        e,
+        DbError::Schema(SchemaError::RowMissingField { .. })
+    ));
 }
 
 #[test]

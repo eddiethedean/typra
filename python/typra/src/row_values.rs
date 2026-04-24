@@ -8,7 +8,7 @@ use pyo3::types::{PyAnyMethods, PyBytes, PyDict, PyDictMethods, PyList, PyListMe
 use pyo3::IntoPy;
 use typra_core::catalog::CollectionInfo;
 use typra_core::record::{RowValue, ScalarValue};
-use typra_core::schema::Type;
+use typra_core::schema::{FieldDef, Type};
 
 /// Build a full row map from a Python `dict` using top-level field names from `col`.
 pub fn row_from_dict(
@@ -16,17 +16,124 @@ pub fn row_from_dict(
     dict: &Bound<'_, PyDict>,
     col: &CollectionInfo,
 ) -> PyResult<BTreeMap<String, RowValue>> {
+    let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
+    if !has_multi_segment_schema {
+        let mut out = BTreeMap::new();
+        for (k, v) in dict.iter() {
+            let name: String = k.extract()?;
+            let def = col
+                .fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == name.as_str())
+                .ok_or_else(|| PyValueError::new_err(format!("unknown field {name:?}")))?;
+            let rv = value_from_py(py, &v, &def.ty)?;
+            out.insert(name, rv);
+        }
+        return Ok(out);
+    }
+
+    let pk_name = col.primary_field.as_deref();
+
+    // Group schema defs by root segment.
+    let mut by_root: BTreeMap<String, Vec<&FieldDef>> = BTreeMap::new();
+    for f in &col.fields {
+        if f.path.0.is_empty() {
+            continue;
+        }
+        let root = f.path.0[0].as_ref().to_string();
+        by_root.entry(root).or_default().push(f);
+    }
+
+    fn build_nested_object(
+        py: Python<'_>,
+        obj: &Bound<'_, PyAny>,
+        defs: &[&FieldDef],
+        prefix_len: usize,
+    ) -> PyResult<RowValue> {
+        let d = obj
+            .downcast::<PyDict>()
+            .map_err(|_| PyValueError::new_err("expected dict for nested object"))?;
+        let mut out = BTreeMap::new();
+
+        // Group by next segment.
+        let mut by_seg: BTreeMap<String, Vec<&FieldDef>> = BTreeMap::new();
+        for def in defs {
+            if def.path.0.len() <= prefix_len {
+                continue;
+            }
+            let seg = def.path.0[prefix_len].as_ref().to_string();
+            by_seg.entry(seg).or_default().push(*def);
+        }
+
+        // Convert known keys.
+        for (seg, group) in &by_seg {
+            // If there is an exact leaf def at this level, use its type directly.
+            let leaf_def = group.iter().find(|f| f.path.0.len() == prefix_len + 1);
+            match d.get_item(seg)? {
+                None => {
+                    if let Some(ld) = leaf_def {
+                        if matches!(ld.ty, Type::Optional(_)) {
+                            out.insert(seg.clone(), RowValue::None);
+                            continue;
+                        }
+                    }
+                    // If there are deeper defs, missing object implies missing required leafs unless all are optional.
+                    let all_optional = group.iter().all(|f| matches!(f.ty, Type::Optional(_)));
+                    if all_optional {
+                        out.insert(seg.clone(), RowValue::None);
+                        continue;
+                    }
+                    return Err(PyValueError::new_err(format!("missing field {seg:?}")));
+                }
+                Some(v) => {
+                    if let Some(ld) = leaf_def {
+                        out.insert(seg.clone(), value_from_py(py, &v, &ld.ty)?);
+                    } else {
+                        out.insert(
+                            seg.clone(),
+                            build_nested_object(py, &v, group, prefix_len + 1)?,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Reject unknown keys in this object.
+        for (k, _v) in d.iter() {
+            let ks: String = k.extract()?;
+            if !by_seg.contains_key(&ks) {
+                return Err(PyValueError::new_err(format!(
+                    "unknown field in object: {ks:?}"
+                )));
+            }
+        }
+
+        Ok(RowValue::Object(out))
+    }
+
     let mut out = BTreeMap::new();
     for (k, v) in dict.iter() {
         let name: String = k.extract()?;
-        let def = col
-            .fields
-            .iter()
-            .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == name.as_str())
-            .ok_or_else(|| PyValueError::new_err(format!("unknown field {name:?}")))?;
-        let rv = value_from_py(py, &v, &def.ty)?;
-        out.insert(name, rv);
+        let Some(defs) = by_root.get(&name) else {
+            return Err(PyValueError::new_err(format!("unknown field {name:?}")));
+        };
+        // PK must remain a top-level scalar field def.
+        if pk_name == Some(name.as_str()) {
+            let pk_def = defs
+                .iter()
+                .find(|d| d.path.0.len() == 1)
+                .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
+            out.insert(name, value_from_py(py, &v, &pk_def.ty)?);
+            continue;
+        }
+        let top_level_def = defs.iter().find(|d| d.path.0.len() == 1);
+        if let Some(d0) = top_level_def {
+            out.insert(name, value_from_py(py, &v, &d0.ty)?);
+        } else {
+            out.insert(name, build_nested_object(py, &v, defs, 1)?);
+        }
     }
+
     Ok(out)
 }
 

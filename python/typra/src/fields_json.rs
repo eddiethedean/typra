@@ -182,6 +182,11 @@ fn type_is_indexable_scalar(ty: &Type) -> bool {
 }
 
 fn resolve_type_at_path<'a>(fields: &'a [FieldDef], path: &FieldPath) -> Option<&'a Type> {
+    // If the schema defines this exact path as a field def (including multi-segment paths),
+    // prefer it directly.
+    if let Some(def) = fields.iter().find(|f| f.path == *path) {
+        return Some(&def.ty);
+    }
     let segs = &path.0;
     if segs.is_empty() {
         return None;

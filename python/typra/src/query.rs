@@ -46,6 +46,11 @@ fn resolve_leaf_type<'a>(
     col: &'a typra_core::catalog::CollectionInfo,
     fp: &FieldPath,
 ) -> Option<&'a Type> {
+    // If the schema defines this exact path as a field def (including multi-segment paths),
+    // prefer it directly.
+    if let Some(def) = col.fields.iter().find(|f| f.path == *fp) {
+        return Some(&def.ty);
+    }
     if fp.0.is_empty() {
         return None;
     }
