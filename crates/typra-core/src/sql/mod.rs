@@ -1,4 +1,4 @@
-//! Minimal SQL adapter for DB-API (0.10.0).
+//! Minimal SQL adapter for DB-API (0.10.0+).
 //!
 //! This is intentionally small: a `SELECT` subset that maps onto the existing typed query AST.
 

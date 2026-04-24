@@ -9,7 +9,7 @@ For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
 
 ```bash
-pip install "typra>=0.10.0,<0.11"
+pip install "typra>=0.11.0,<0.12"
 ```
 
 Pin the minor range you test against; pre-1.0 minors may include API or format changes.
@@ -199,7 +199,7 @@ For **ephemeral** integration tests (CI, notebooks), prefer a temp file as above
 
 Typra ships an **experimental, read-only** DB-API 2.0 adapter (PEP 249) starting in **0.10.0**, exposed as **`typra.dbapi`**. The SQL surface is intentionally small and maps onto the engine’s typed query AST.
 
-### Supported SQL subset (0.10.0)
+### Supported SQL subset (0.10.0+)
 
 - **Only `SELECT`** is supported (read-only).
 - `SELECT <cols|*> FROM <collection>`
@@ -209,7 +209,7 @@ Typra ships an **experimental, read-only** DB-API 2.0 adapter (PEP 249) starting
 
 Anything outside this subset raises `ValueError`.
 
-### DB-API usage (0.10.0)
+### DB-API usage (0.10.0+)
 
 ```python
 import typra

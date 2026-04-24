@@ -31,7 +31,7 @@ You get a durable **schema catalog**, **validation**, nested **row values** (rec
 ## Install
 
 ```bash
-pip install "typra>=0.10.0,<0.11"
+pip install "typra>=0.11.0,<0.12"
 ```
 
 Pin the minor range you test against; pre-1.0 releases may still change APIs or the on-disk format between minors.
@@ -60,7 +60,7 @@ Output (the version line matches the installed wheel):
 ```text
 registered 1 1
 {'title': 'Typra'}
-0.10.0
+0.11.0
 ```
 
 On disk, use **`Database.open("app.typra")`** instead; registrations are **persisted** across process restarts for that path.

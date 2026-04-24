@@ -38,7 +38,7 @@ CI runs the same Rust and Python checks via [`.github/workflows/ci.yml`](../.git
 
 ## Versioning
 
-Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.10.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.11.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Coverage (practical 100%)
 
@@ -143,7 +143,10 @@ Version is taken from `Cargo.toml` via `dynamic = ["version"]` in `pyproject.tom
 
 1. ~~Validation engine and constraint errors~~ (**delivered in `0.6.0`**).
 2. ~~Secondary indexes and simple filters~~ (**delivered in `0.7.0`**).
-3. Transactions (`0.8.0`) and later crash-safe checkpoints / compaction (see `0.9+`).
+3. ~~Transactions~~ (**delivered in `0.8.0`**).
+4. ~~Schema evolution tooling, record ops, and compaction prototype~~ (**delivered in `0.9.0`**).
+5. ~~DB-API 2.0 + minimal SQL text~~ (**delivered in `0.10.0`**).
+6. ~~Pager/buffer pool boundary + checkpoints~~ (**delivered in `0.11.0`**).
 
 See [`ROADMAP.md`](../ROADMAP.md) for the full release breakdown.
 

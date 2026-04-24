@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-24
+
+### Added
+
+- **Pager / buffer pool boundary (v1)**: on-disk reads go through a fixed-size page cache (initially 16 KiB pages) to reduce random I/O and prepare for streaming/bounded-memory work.
+- **Checkpoints (v1)**: a new `Checkpoint` segment payload persists a logical state snapshot (catalog + latest rows + index state) and is published via superblock pointers.
+- **Checkpointed open**: opening a database can now load the latest checkpoint and replay only the log tail after the checkpoint’s `replay_from_offset`.
+- **Operational hook**: `Database::checkpoint()` to write and publish a new checkpoint.
+
+### Changed
+
+- **Recovery behavior**: corrupted checkpoint payloads are rejected in `RecoveryMode::Strict`; `AutoTruncate` falls back to full replay.
+- **Docs**: updated READMEs and guides to reflect 0.11.0 and checkpointed open.
+
 ## [0.10.0] - 2026-04-24
 
 ### Added

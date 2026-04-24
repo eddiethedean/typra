@@ -27,7 +27,7 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<query::Collection>()?;
     m.add_class::<query::QueryBuilder>()?;
 
-    // DB-API 2.0 (PEP 249) read-only adapter (0.10.0).
+    // DB-API 2.0 (PEP 249) read-only adapter (0.10.0+).
     let dbapi_mod = PyModule::new_bound(m.py(), "dbapi")?;
     dbapi_mod.add_function(wrap_pyfunction!(dbapi::connect, &dbapi_mod)?)?;
     dbapi_mod.add_class::<dbapi::Connection>()?;
