@@ -9,7 +9,7 @@ Official **CPython** bindings for **Typra** (PyO3 native extension): a typed, em
 
 You get a durable **schema catalog**, **validation**, nested **row values** (record **v2** on insert; **v1** segments still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes.
 
-**Queries and secondary indexes (0.7+):** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection("name").where("field", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python user guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#realistic-workflow-indexed-queries-on-disk). **SQL** text and **DB-API** layers are still out of scope—see the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
+**Queries and secondary indexes (0.7+):** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection("name").where("field", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python user guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#realistic-workflow-indexed-queries-on-disk). Typra also ships an **experimental, read-only DB-API 2.0 adapter** (`typra.dbapi`) with a minimal `SELECT` subset—see the [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#db-api-20-pep-249-and-sqlalchemy).
 
 | Resource | Link |
 |----------|------|
@@ -31,7 +31,7 @@ You get a durable **schema catalog**, **validation**, nested **row values** (rec
 ## Install
 
 ```bash
-pip install "typra>=0.9.0,<0.10"
+pip install "typra>=0.10.0,<0.11"
 ```
 
 Pin the minor range you test against; pre-1.0 releases may still change APIs or the on-disk format between minors.
@@ -60,7 +60,7 @@ Output (the version line matches the installed wheel):
 ```text
 registered 1 1
 {'title': 'Typra'}
-0.9.0
+0.10.0
 ```
 
 On disk, use **`Database.open("app.typra")`** instead; registrations are **persisted** across process restarts for that path.

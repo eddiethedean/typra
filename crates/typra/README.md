@@ -5,9 +5,9 @@
 
 User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get, secondary indexes, minimal typed queries).
 
-## Status (v0.8.x)
+## Status (v0.10.x)
 
-`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, **`#[derive(DbModel)]`** (via the default `derive` feature), **secondary indexes**, minimal **query** execution (**equality**, **`limit`**, **`explain`**), **`Database::query_iter`**, and **subset projections**. SQL text and DB-API layers are **not** implemented yet.
+`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get` / `delete`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, **`#[derive(DbModel)]`** (via the default `derive` feature), **secondary indexes**, typed **query** execution (**equality**, `And`, `Or`, ranges, `limit`, `order_by`, `explain`), **`Database::query_iter`**, and **subset projections**. Typra’s **SQL text** surface remains minimal (primarily to support Python DB-API); applications should prefer the typed query builder APIs.
 
 | Resource | Link |
 |----------|------|
@@ -19,13 +19,13 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 
 ```toml
 [dependencies]
-typra = "0.8"
+typra = "0.10"
 ```
 
 Disable the default `derive` feature if you only need the engine:
 
 ```toml
-typra = { version = "0.8", default-features = false }
+typra = { version = "0.10", default-features = false }
 ```
 
 ## Example

@@ -16,9 +16,10 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add(
         "__doc__",
         "Typra Python bindings: typed embedded database built on the Rust engine.\n\n\
-         Import ``Database`` for ``open``, ``open_in_memory``, ``register_collection``, ``insert``, ``get``, \
-         ``transaction`` (context manager), ``collection`` (query builder), and ``collection_names``. \
-         See the package README for ``fields_json`` and error mapping.",
+         Import ``Database`` for ``open``, ``open_in_memory``, ``register_collection``, ``register_schema_version``, \
+         ``insert``, ``get``, ``delete``, ``transaction`` (context manager), ``collection`` (query builder), \
+         and ``collection_names``. The experimental ``typra.dbapi`` module provides a small read-only DB-API 2.0 \
+         adapter (minimal SELECT subset). See the package README for ``fields_json`` and error mapping.",
     )?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<database::Database>()?;

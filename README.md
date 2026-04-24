@@ -9,15 +9,15 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-## Status (v0.9.x)
+## Status (v0.10.x)
 
 | Surface | What ships today |
 |---------|------------------|
 | **Rust** | Persisted **catalog** (create + schema versions; **constraints** + **index definitions**), **schema compatibility checks** + migration planning helpers, **`insert` / `get` / `delete`**, **`RowValue`** + validation, **`open_in_memory`** + snapshots, **secondary indexes** + replay, **queries** (**equality**, **`And`**, **`Or`**, **range**, **`limit`**, **`order_by`**, **`explain`**), **`Database::query_iter`**, **subset row projection**, **compaction** |
-| **Python** | **`Database.open`**, **`register_collection`**, **`register_schema_version`** + planning/backfill helpers, **`insert` / `get` / `delete`**, **`with db.transaction():`**, query builder (**`where` / `and_where` / `limit` / `explain` / `all`**), in-memory + snapshots, **compaction**, **`collection_names()`** |
+| **Python** | **`Database.open`**, **`register_collection`**, **`register_schema_version`** + planning/backfill helpers, **`insert` / `get` / `delete`**, **`with db.transaction():`**, query builder (**`where` / `and_where` / `limit` / `explain` / `all`**), **`typra.dbapi`** (PEP 249, read-only minimal `SELECT`), in-memory + snapshots, **compaction**, **`collection_names()`** |
 | **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2**; **index** segment batches (**0.7.0+**); **transaction markers** (**0.8.0+**); file format minor **6** (lazy upgrades from older minors) |
 
-**SQL** text and **DB-API** layers remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
+Typra ships an **experimental, read-only DB-API 2.0 adapter** (minimal `SELECT` subset) in **0.10.0**. Full SQL and SQLAlchemy integration remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
 | Resource | Link |
 |----------|------|
@@ -86,11 +86,11 @@ Output:
 
 ```text
 {'title': 'Hello'}
-0.9.0
+0.10.0
 ```
 
 ```bash
-pip install "typra>=0.9.0,<0.10"
+pip install "typra>=0.10.0,<0.11"
 ```
 
 ---
@@ -103,13 +103,13 @@ Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(D
 
 ```toml
 [dependencies]
-typra = "0.9"
+typra = "0.10"
 ```
 
 Without proc-macros (engine only):
 
 ```toml
-typra = { version = "0.9", default-features = false }
+typra = { version = "0.10", default-features = false }
 ```
 
 ### Lower-level crates
