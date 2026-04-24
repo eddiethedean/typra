@@ -2,9 +2,9 @@
 
 This document is the **project roadmap** for Typra: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.8.0` (see [`CHANGELOG.md`](CHANGELOG.md))
+- **Current release**: `0.9.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
-- **Next milestone**: `0.9.0` — schema evolution / compaction / migration tooling (see roadmap by release). **`0.8.0`** (transactions + recovery) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md) and [`docs/migration_0.7_to_0.8.md`](docs/migration_0.7_to_0.8.md).
+- **Next milestone**: `0.10.0` (TBD; see roadmap by release). **`0.9.0`** (schema evolution tooling + compaction prototype + richer queries/record ops) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -41,26 +41,26 @@ Primary design references:
 
 ## Near-term focus
 
-**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints), **`0.7.0`** (secondary indexes, minimal queries, subset projection), and **`0.8.0`** (transactions, format minor 6, recovery) are **delivered**. The next milestone is **`0.9.0`** (see [Roadmap by release](#roadmap-by-release)). **`1.0.0`** sections below call out **what is already partially done** vs **what remains** so planning matches the repo’s actual baseline.
+**`0.6.0`** (validation, `RowValue`, record v2, catalog constraints), **`0.7.0`** (secondary indexes, minimal queries, subset projection), **`0.8.0`** (transactions, format minor 6, recovery), and **`0.9.0`** (schema evolution tooling, compaction prototype, richer queries and record ops) are **delivered**. **`1.0.0`** sections below call out **what is already partially done** vs **what remains** so planning matches the repo’s actual baseline.
 
 ```mermaid
 flowchart LR
   v060["0.6.0 validation ✓"]
   v070["0.7.0 indexes ✓"]
   v080["0.8.0 transactions ✓"]
-  v090["0.9.0 migrations"]
+  v090["0.9.0 migrations ✓"]
   v060 --> v070 --> v080 --> v090
 ```
 
-## Status snapshot (current: 0.8.x)
+## Status snapshot (current: 0.9.x)
 
 **Implemented today:**
-- **Rust**: `Database::open` / **`open_with_options`** (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints** and **v4** **index definitions** on new registrations / schema versions, and **`Catalog::lookup_name`** (name → id); **`insert` / `get`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, minimal **query AST** and execution (**equality**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; **transactions** (`TxnBegin` / `TxnCommit` / `TxnAbort`), **`Database::transaction`**, **read-your-writes** inside a txn, **`RecoveryMode`** on open; last-write-wins replay (legacy minor ≤5; chronological txn replay for minor **6**); **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **6** for new DBs, with lazy upgrades from older minors (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Rust**: `Database::open` / **`open_with_options`** (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, schema compatibility classification + migration planning helpers, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints** and **v4** **index definitions** on new registrations / schema versions, and **`Catalog::lookup_name`** (name → id); **`insert` / `get` / `delete`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, query AST and execution (**equality**, **`And`**, **`Or`**, **range predicates**, **`order_by`**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; **transactions** (`TxnBegin` / `TxnCommit` / `TxnAbort`), **`Database::transaction`**, **read-your-writes** inside a txn, **`RecoveryMode`** on open; last-write-wins replay (legacy minor ≤5; chronological txn replay for minor **6**); **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; **compaction** (`compact_to`, `compact_in_place`); `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **6** for new DBs, with lazy upgrades from older minors (see [`CHANGELOG.md`](CHANGELOG.md)).
 - **Rust workspace policy**: root [`Cargo.toml`](Cargo.toml) sets **`unsafe_code = forbid`** via **`[workspace.lints.rust]`** (no `unsafe` in workspace crates).
-- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field, indexes_json=None)`**, **`insert`**, **`get`**, **`with db.transaction():`**, **`db.collection(name).where(...).and_where(...).limit(...).explain()`**, **`all()`** / **`all(fields=[...])`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
+- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field, indexes_json=None)`**, **`register_schema_version`** + migration helpers, **`insert` / `get` / `delete`**, **`with db.transaction():`**, **`db.collection(name).where(...).and_where(...).limit(...).explain()`**, **`all()`** / **`all(fields=[...])`**, **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **compaction** helpers, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
 - **CI / coverage**: multi-OS Rust and Python CI; **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from **`cargo run -p typra --example open`** and the embedded Python snippets matches the documented **`text`** output blocks (root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`**, **`python/typra/README.md`**).
 
-**Not yet:** crash-safe **checkpoints** / compaction, SQL text / DB-API—see [Roadmap by release](#roadmap-by-release).
+**Not yet:** crash-safe **checkpoints**, SQL text / DB-API—see [Roadmap by release](#roadmap-by-release).
 
 **Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
 - **`0.8.0`**: **TxnBegin** / **TxnCommit** / **TxnAbort** segments, format minor **6**, **`Database::transaction`** + staged read-your-writes, **`OpenOptions` / `RecoveryMode`**, **`Store::truncate`**, Python **`with db.transaction():`**; autocommit **insert** / **register** use single txn batch + one **sync**.
@@ -288,30 +288,18 @@ Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`
 
 ### 0.9.0 — Schema evolution & migrations (safe changes), plus compaction prototype
 
-**Status:** **Planned** after **0.8.0**. **Baseline:** transactional commit boundaries (**0.8**), plus today’s **`register_schema_version`** (catalog events exist, but **no** user migration tooling, **no** compatibility classifier, **no** compaction).
+**Status:** **Delivered** (see [`CHANGELOG.md`](CHANGELOG.md)).
 
-**Goal:** safe **schema evolution** in real apps, **file health** (compaction / rebuild), and **optional** first steps toward **large-than-RAM** execution—without collapsing all query-engine work into this single minor.
+**What shipped in 0.9.0**
 
-**Already in place (partial — 0.4–0.7)**  
-- **`register_schema_version`** persists a new schema version in the catalog; engine validates **inserts** against the **current** version.
-- **Indexes** persist as **append-only** `Index` segments (no online **rebuild** / **compact** yet).
+- **Schema compatibility rules**: schema diffs are classified as **safe**, **needs migration**, or **breaking**, and enforced on schema-version registration (with an explicit escape hatch for “force”).
+- **Migration tooling**: a **plan** API plus minimal helpers (backfill and index rebuild) to support safe upgrades.
+- **Record ops**: **replace/delete** semantics with consistent **secondary index** maintenance (index deltas).
+- **Query expansion**: `OR`, **range predicates**, and `order_by` (in-memory sorting initially).
+- **Compaction prototype**: whole-file rewrite (`compact_to`, `compact_in_place`) with correctness tests for rows + indexes.
 
-**Rust — remaining work**
-- **Compatibility rules**: classify schema diffs as safe vs breaking; enforce on **`register_schema_version`** (and document escape hatches).
-- **Migrations**: user-facing plans (e.g. backfill, dual-read) and optional **data rewrite** helpers—not only “bump version number.”
-- **Compaction prototype**: rewrite tail or whole file policy; **rebuild `IndexState`** from compacted record + index history; reclaim space.
-- **Query / execution expansion (optional in 0.9 vs follow-up minor)**  
-  - **Still missing after 0.7:** **`order_by`**, **range** predicates, **`OR`**, **replace/delete** record ops, **update** path for indexes.  
-  - **Bounded-memory operators** (external sort, spillable hash agg/join) depend on **pager / streaming** groundwork—**schedule only after** compaction + txn stories are stable; may land as **0.9.x** or **0.10** if 0.9 is migration-heavy.
-
-**Python — remaining work**
-- Migration UX: “what changed / what breaks / what’s safe” guides and helpers aligned with Rust rules.
-- Admin-style tooling: **compact** / **inspect** / stats (may start as **CLI** in `typra-cli` story or thin Python wrappers).
-
-**Definition of done**
-- Migration tests (e.g. add optional field, add enum variant, add index) with explicit **allowed** vs **rejected** outcomes.
-- Compaction tests: **no data loss**, **indexes** consistent with records after compact.
-- If bounded-memory work ships in 0.9: at least one **CI**-friendly “constrained memory” scenario (otherwise defer criteria to the minor that lands spill).
+**Still future work (post-0.9)**
+- More complete migration execution primitives (beyond backfill/rebuild), richer index planning for ranges, and bounded-memory operators (external sort/spill) once pager/streaming groundwork is scheduled.
 
 Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
 
