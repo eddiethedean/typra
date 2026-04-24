@@ -4,7 +4,7 @@ This document is the **project roadmap** for Typra: a typed, embedded, single-fi
 
 - **Current release**: `0.9.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0** (see [`migration_0.5_to_0.6.md`](docs/migration_0.5_to_0.6.md)).
-- **Next milestone**: `0.10.0` (TBD; see roadmap by release). **`0.9.0`** (schema evolution tooling + compaction prototype + richer queries/record ops) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Next milestone**: `0.10.0` — DB-API 2.0 + minimal SQL text (see roadmap by release). **`0.9.0`** (schema evolution tooling + compaction prototype + richer queries/record ops) is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Minor versions (`0.x`) may still contain breaking changes.
 
 ## Guiding principles (from the specs)
@@ -303,9 +303,74 @@ Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`
 
 Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
 
+### 0.10.0 — DB-API 2.0 + minimal SQL text (read-only)
+
+**Goal:** make Typra usable via standard Python DB tooling while keeping the engine’s non-SQL query AST as the source of truth.
+
+- **Rust**
+  - Introduce a **SQL-to-Query adapter** (internal module) that parses a small `SELECT` subset into the existing `typra-core` query AST.
+  - Define a stable mapping from SQL constructs → `Query` / `Predicate`:
+    - `SELECT <cols|*> FROM <collection>`
+    - `WHERE` with `=` / `AND` / `OR` and range predicates (`< <= > >=`)
+    - `ORDER BY <field> [ASC|DESC]`
+    - `LIMIT n`
+  - Enforce schema/path validation as today (fail fast with clear errors).
+- **Python**
+  - Add `typra.dbapi` implementing **PEP 249** for the supported read-only subset:
+    - `connect(path)` (maps to `Database.open`)
+    - `cursor.execute(sql, params)` (parameter binding for the supported subset)
+    - `fetchone` / `fetchmany` / `fetchall` and predictable `cursor.description`
+    - transactions via `commit` / `rollback` mapped to `Database::transaction` boundaries (single-writer semantics)
+  - Decide result row shape: tuples by default, with an opt-in dict row factory.
+- **Definition of done**
+  - Cross-platform CI tests for DB-API + SQL subset.
+  - Docs: supported SQL grammar, parameter rules, and limitations.
+
+### 0.11.0 — Pager/buffer pool + checkpoints (durability + performance)
+
+**Goal:** shift from “replay everything” toward bounded replay time and a foundation for streaming execution.
+
+- **Rust**
+  - Add a **pager/buffer pool** layer for `FileStore` reads (and any needed write buffering), keeping append-only log semantics intact.
+  - Add **checkpoint** machinery (manifest/superblock driven) so open can load a checkpointed state + replay tail.
+  - Define and test compatibility rules for checkpoint format evolution.
+- **Python**
+  - Expose operational hooks where needed (e.g. `db.checkpoint()`), or keep it automatic with documented behavior.
+- **Definition of done**
+  - Recovery/corruption tests covering checkpoints.
+  - Benchmarks showing improved open/replay performance for medium datasets.
+
+### 0.12.0 — Bounded-memory operators (spill/external algorithms)
+
+**Goal:** enable queries and DB-API reads to operate when datasets exceed memory.
+
+- **Rust**
+  - Implement **external sort** to back `order_by` under memory constraints.
+  - Implement at least one **spillable** operator family (aggregation and/or join foundation) aligned to target workloads.
+  - Introduce operator-level execution traits so `query_iter` can stream without materializing full result sets.
+- **Python**
+  - Ensure DB-API cursor iteration streams results for large scans/sorts (no forced materialization).
+- **Definition of done**
+  - CI-friendly tests that simulate constrained memory and verify correctness.
+  - Document spill behavior (temp segments vs sidecar, cleanup rules).
+
+### 0.13.0 — Hardening + compatibility matrix + pre-1.0 cleanup
+
+**Goal:** make the 1.0.0 jump mostly policy/guarantees rather than risky refactors.
+
+- **Rust**
+  - Add dedicated **fuzz** targets (header/segments/catalog/record/index payloads).
+  - Add **property tests** (index invariants, replay idempotence, txn + checkpoint interactions).
+  - Publish a **compatibility matrix** (read/write policy per file-format minor; API policy per crate).
+- **Python**
+  - Finalize typing story for DB-API rows and `typra.pyi` stability guarantees.
+- **Definition of done**
+  - `make check-full` remains green across platforms.
+  - Docs consolidated: Getting Started, Queries, Transactions, Migrations, Operations, DB-API + SQL subset.
+
 ### 1.0.0 — Stable public API + format guarantees
 
-**Status:** **Planned** after **0.9.x** stabilizes migrations + compaction (+ any agreed query/durability follow-ups). **Baseline:** **0.8** transactions/recovery and **0.9** migration/compaction story **shipped**; **0.7** query/index subset is **not** “1.0 complete” by itself—1.0 is about **policy + hardening + documented guarantees**, not only feature count.
+**Status:** **Planned** after **0.10–0.13** land DB-API + minimal SQL, checkpoints/pager work, bounded-memory operators, and hardening. **Baseline:** **0.8** transactions/recovery and **0.9** migration/compaction story **shipped**; 1.0 is about **policy + hardening + documented guarantees**, not only feature count.
 
 **Goal:** “Safe to ship in production apps”: semver + **file-format compatibility policy**, security posture, and **operational** docs.
 
