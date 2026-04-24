@@ -250,7 +250,7 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/t
 - **Index maintenance**: no **update**/logical **delete** ops yet—indexes reflect **insert** / replace-by-PK only (same as rows).
 - **Schema paths**: collection **`FieldDef.path`** is still **single-segment** for inserts (`NotImplemented` for multi-segment schema paths); index and predicate **`FieldPath`** can target scalars under top-level **`Object`** values where data and indexes agree.
 - **Typed subset `DbModel` handles** on the facade and **Pydantic-class subset models** in Python—ergonomics beyond dict projection are still roadmap, not required API in 0.7.
-- **Operators**: no inequality, sort, join, or aggregation; **SQL** string and **DB-API** implementation wait on **0.8.0** transaction boundaries (design text for DB-API/SQLAlchemy scope is in the Python guide).
+- **Operators**: no join or aggregation yet; sorting is currently **in-memory** (`order_by`) and range predicates ship, but more complete **index-driven range planning**, pagination (`offset` / cursors), and bounded-memory operators remain future work. Minimal SQL text + DB-API ship in **0.10.0** (see below).
 
 Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 
@@ -279,7 +279,7 @@ Append-only segments + checksums, dual superblocks, manifest pointer, schema + r
 - **`with db.transaction(): ...`** maps to Rust txn boundaries; **exception → rollback** (no durable commit).
 
 **Deferred / optional follow-ups (0.8.x+)**
-- **DB-API 2.0 (PEP 249)**: optional **opt-in** module (e.g. `typra.dbapi`) after txn semantics exist.
+- **DB-API 2.0 (PEP 249)**: shipped as an experimental, read-only opt-in module (`typra.dbapi`) in **0.10.0** (minimal `SELECT` subset).
 
 **Definition of done** *(met for 0.8.0 scope)*
 - **Crash / partial-write tests**: deterministic recovery behavior for incomplete transaction tails (auto-truncate) and deterministic failure in strict mode.
