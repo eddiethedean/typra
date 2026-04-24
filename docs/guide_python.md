@@ -9,7 +9,7 @@ For project-wide status and roadmap, see [`ROADMAP.md`](../ROADMAP.md). For Rust
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
 
 ```bash
-pip install "typra>=0.8.0,<0.9"
+pip install "typra>=0.9.0,<0.10"
 ```
 
 Pin the minor range you test against; pre-1.0 minors may include API or format changes.
@@ -291,7 +291,7 @@ Always catch **`ValueError`** and **`OSError`** around `open`, `register_collect
 ## What is not exposed in Python yet
 
 - Arbitrary **SQL** (use the structured query builder; see [Queries and the `Collection` handle](#queries-and-the-collection-handle) above).
-- **`register_schema_version`** (Rust-only for now).
+- **Schema migrations beyond basic helpers** (the Python surface includes `plan_schema_version`, `register_schema_version(..., force=...)`, and `backfill_top_level_field`, but richer migration workflows are still evolving).
 - Pydantic model inference (you pass explicit `fields_json`; the Rust engine still validates on insert).
 
 See [`ROADMAP.md`](../ROADMAP.md) for upcoming milestones.

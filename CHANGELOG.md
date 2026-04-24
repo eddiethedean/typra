@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-24
+
+### Added
+
+- **Schema evolution safety**: compatibility classifier for schema diffs enforced on schema-version registration, with explicit **migration required** vs **breaking** errors.
+- **Migrations (helpers)**: schema migration planning plus helpers for **backfill** and **index rebuild**.
+- **Record ops**: delete support and index delta maintenance for replace/delete semantics.
+- **Query upgrades**: `OR`, range predicates (`<`, `<=`, `>`, `>=`), and `order_by` (in-memory sort).
+- **Compaction prototype**: rewrite a database into a compacted image (`compact_to`, `compact_in_place`).
+- **Python**: bindings for schema version registration/planning, backfill/index rebuild helpers, delete, and compaction; updated type stubs and tests.
+
 ## [0.8.0] - 2026-04-22
 
 ### Added

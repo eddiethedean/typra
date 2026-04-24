@@ -46,7 +46,7 @@ ACTUAL_RUST=$(cargo run -q -p typra --example open | strip_cr)
 read -r -d '' EXPECT_PY_GUIDE <<'EOF' || true
 registered collection_id= 1 schema_version= 1
 get: {'title': 'Hello'}
-typra 0.8.0
+typra 0.9.0
 
 EOF
 ACTUAL_PY_GUIDE=$("$PYTHON" <<'PY' | strip_cr
@@ -75,7 +75,7 @@ PY
 # --- Python: root README.md (Python section) ---
 read -r -d '' EXPECT_PY_ROOT <<'EOF' || true
 {'title': 'Hello'}
-0.8.0
+0.9.0
 
 EOF
 ACTUAL_PY_ROOT=$("$PYTHON" <<'PY' | strip_cr
@@ -104,7 +104,7 @@ PY
 read -r -d '' EXPECT_PY_PKG <<'EOF' || true
 registered 1 1
 {'title': 'Typra'}
-0.8.0
+0.9.0
 
 EOF
 ACTUAL_PY_PKG=$("$PYTHON" <<'PY' | strip_cr
