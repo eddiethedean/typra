@@ -12,6 +12,7 @@ TY ?= $(PYTHON) -m ty
 MATURIN ?= $(PYTHON) -m maturin
 
 .PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples bench
+.PHONY: docs-lint
 .PHONY: check-1p0-ready
 .PHONY: docs-install docs-check docs
 .PHONY: coverage coverage-rust coverage-python
@@ -44,7 +45,7 @@ venv:
 install-tools: venv
 	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5" >/dev/null
 
-check-full: check-python check-rust test verify-doc-examples docs-check
+check-full: check-python check-rust test verify-doc-examples docs-lint docs-check
 
 # “1.0 readiness” suite (no version bump): contracts + docs + API surfaces.
 # - Runs the full cross-language check pipeline.
@@ -91,6 +92,9 @@ test: python-develop
 
 verify-doc-examples: python-develop
 	bash ./scripts/verify-doc-examples.sh
+
+docs-lint:
+	bash ./scripts/docs-lint.sh
 
 docs-install: venv
 	@$(PYTHON) -m pip -q install -r docs/requirements.txt >/dev/null

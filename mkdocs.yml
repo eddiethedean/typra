@@ -10,6 +10,8 @@ theme:
     - navigation.tracking
     - navigation.sections
     - navigation.top
+    - navigation.indexes
+    - navigation.footer
     - content.code.copy
 
 markdown_extensions:
@@ -17,6 +19,8 @@ markdown_extensions:
   - attr_list
   - fenced_code
   - codehilite
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
   - tables
   - toc:
       permalink: true
@@ -27,6 +31,7 @@ plugins:
   - search
 
 exclude_docs: |
+  # Legacy doc copies kept for history; use `docs/specs/*` and `docs/reference/*`.
   01_full_architecture_spec.md
   02_on_disk_file_format.md
   03_rust_crate_and_module_layout.md
@@ -34,15 +39,21 @@ exclude_docs: |
   05_query_planner_and_execution_spec.md
   06_record_encoding_v1.md
   07_record_encoding_v2.md
-  contributing.md
-  guide_storage_modes.md
   typed_embedded_db_spec.md
+
+  # Legacy guide duplicates (superseded by `docs/guides/*`).
+  guide_storage_modes.md
   guide_getting_started.md
   guide_operations_and_failure_modes.md
   guide_python.md
+
+  # Legacy reference duplicates (superseded by `docs/reference/*`).
   compatibility_matrix.md
   security_threat_model.md
   types_matrix.md
+
+  # Legacy contributing doc (superseded by `docs/dev/contributing_guide.md`).
+  contributing.md
 
 nav:
   - Home: index.md
@@ -73,6 +84,7 @@ nav:
       - Query planner/execution: specs/query_planner.md
       - Record encoding v1: specs/record_encoding_v1.md
       - Record encoding v2: specs/record_encoding_v2.md
+      - Record encoding v3: specs/record_encoding_v3.md
       - Typed embedded DB: specs/typed_embedded_db.md
   - Dev:
       - Contributing: dev/contributing_guide.md

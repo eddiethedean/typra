@@ -17,6 +17,7 @@ This checklist ties Typra’s 1.0 contract to concrete tests and documentation.
 - **Multi-segment field paths supported end-to-end**
   - Rust: `crates/typra-core/tests/schema_paths_multi_segment.rs`
   - Python: `python/typra/tests/test_multi_segment_schema_paths.py`
+  - Spec: `docs/specs/record_encoding_v3.md`
 - **Schema update classification is conservative and migration-aware**
   - Rust: `crates/typra-core/tests/schema_compatibility.rs`
 

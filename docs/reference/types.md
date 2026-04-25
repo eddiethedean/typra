@@ -44,6 +44,14 @@ It is intentionally conservative: if something is partially implemented or shape
   - Parent/child conflicts are rejected (e.g. defining both `["a"]` and `["a","b"]`).
   - The primary key must remain a **single-segment** top-level scalar field (1.0 contract simplification).
 
+### Record payload versions (on disk)
+
+- **v1**: primitives-only, schema-ordered non-PK values (read compatibility)
+- **v2**: composite `RowValue` encoding, schema-ordered non-PK values (default for single-segment schema field defs)
+- **v3**: encodes each non-PK value with its full `FieldPath` (required for multi-segment schema field defs)
+
+See: [`docs/specs/record_encoding_v3.md`](../specs/record_encoding_v3.md).
+
 ## Constraints (`schema::Constraint`)
 
 Constraints are enforced **on write** (insert/replace), after type checks:

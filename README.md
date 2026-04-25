@@ -10,13 +10,13 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-## Status (v0.13.x)
+## Status (v1.0.x)
 
 | Surface | What ships today |
 |---------|------------------|
 | **Rust** | Persisted **catalog** (create + schema versions; **constraints** + **index definitions**), **schema compatibility checks** + migration planning helpers, **`insert` / `get` / `delete`**, **`RowValue`** + validation, **`open_in_memory`** + snapshots, **secondary indexes** + replay, **queries** (**equality**, **`And`**, **`Or`**, **range**, **`limit`**, **`order_by`**, **`explain`**), **`Database::query_iter`**, **subset row projection**, **compaction** |
 | **Python** | **`Database.open`**, **`register_collection`**, **`register_schema_version`** + planning/backfill helpers, **`insert` / `get` / `delete`**, **`with db.transaction():`**, query builder (**`where` / `and_where` / `limit` / `explain` / `all`**), **`typra.dbapi`** (PEP 249, read-only minimal `SELECT`), in-memory + snapshots, **compaction**, **`collection_names()`** |
-| **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2**; **index** segment batches (**0.7.0+**); **transaction markers** (**0.8.0+**); file format minor **6** (lazy upgrades from older minors) |
+| **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2 + v3** (v3 enables multi-segment schema paths); **index** segment batches (**0.7.0+**); **transaction markers** (**0.8.0+**); file format minor **6** (lazy upgrades from older minors) |
 
 Typra ships a read-only **DB-API 2.0 adapter** (minimal `SELECT` subset) in **0.10.0**. Full SQL and SQLAlchemy integration remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
 
