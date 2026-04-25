@@ -10,27 +10,32 @@
 Typra is a **typed, embedded database** for application data.  
 It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
 
-## Status (v1.0.x)
+## What ships (v1.0.x)
 
-| Surface | What ships today |
-|---------|------------------|
-| **Rust** | Persisted **catalog** (create + schema versions; **constraints** + **index definitions**), **schema compatibility checks** + migration planning helpers, **`insert` / `get` / `delete`**, **`RowValue`** + validation, **`open_in_memory`** + snapshots, **secondary indexes** + replay, **queries** (**equality**, **`And`**, **`Or`**, **range**, **`limit`**, **`order_by`**, **`explain`**), **`Database::query_iter`**, **subset row projection**, **compaction** |
-| **Python** | **`Database.open`**, **`register_collection`**, **`register_schema_version`** + planning/backfill helpers, **`insert` / `get` / `delete`**, **`with db.transaction():`**, query builder (**`where` / `and_where` / `limit` / `explain` / `all`**), **`typra.dbapi`** (PEP 249, read-only minimal `SELECT`), in-memory + snapshots, **compaction**, **`collection_names()`** |
-| **Format** | Catalog **v4** on new writes (constraints from **v3** + **indexes**); record payload **v1 + v2 + v3** (v3 enables multi-segment schema paths); **index** segment batches (**0.7.0+**); **transaction markers** (**0.8.0+**); file format minor **6** (lazy upgrades from older minors) |
+- **Typed schemas + validation on write** (constraints, nested objects/lists)
+- **Single-file durability** with transactions, recovery modes, checkpoints, and compaction
+- **Secondary indexes** (unique + non-unique) and **typed queries** (equality/AND/OR/ranges/order_by/limit)
+- **Rust facade** (`typra`) with optional `#[derive(DbModel)]`
+- **Python package** (`typra`) with `typra.models` (recommended) plus `fields_json` and a minimal read-only DB-API adapter
 
-Typra ships a read-only **DB-API 2.0 adapter** (minimal `SELECT` subset) in **0.10.0**. Full SQL and SQLAlchemy integration remain **out of scope** for now. See **[CHANGELOG.md](CHANGELOG.md)** and **[ROADMAP.md](ROADMAP.md)**.
+### Non-goals (for now)
 
-## Guarantees and contracts (1.0-ready docs)
+- Full SQL surface / SQLAlchemy dialect support (DB-API is a minimal read-only `SELECT` subset)
+- General-purpose OLAP engine features (joins/group-by SQL, etc.)
+
+## Guarantees and contracts
 
 - **Compatibility and recovery contract**: [`docs/reference/compatibility.md`](docs/reference/compatibility.md)
 - **Supported features matrix** (types, constraints, indexes, queries): [`docs/reference/types.md`](docs/reference/types.md)
 - **Operations and failure modes**: [`docs/ops/operations_and_failure_modes.md`](docs/ops/operations_and_failure_modes.md)
 - **Security posture** (threat model + disclosure): [`docs/reference/security.md`](docs/reference/security.md) and [`SECURITY.md`](SECURITY.md)
 
-| Resource | Link |
-|----------|------|
-| **User guides** | [Quickstart](docs/guides/quickstart.md) · [Concepts](docs/guides/concepts.md) · [Python](docs/guides/python.md) · [Operations & failure modes](docs/ops/operations_and_failure_modes.md) · [Models & collections](docs/guides/models_and_collections.md) · [Storage modes](docs/guides/storage_modes.md) · [Compatibility](docs/reference/compatibility.md) · [Types matrix](docs/reference/types.md) · [Rust module layout](docs/specs/rust_crate_layout.md) · [Record encoding v2](docs/specs/record_encoding_v2.md) |
-| **Contributing** | [docs/contributing.md](docs/contributing.md) |
+## Start here
+
+- **Quickstart**: [`docs/guides/quickstart.md`](docs/guides/quickstart.md)
+- **Python guide**: [`docs/guides/python.md`](docs/guides/python.md)
+- **Operations**: [`docs/ops/operations_and_failure_modes.md`](docs/ops/operations_and_failure_modes.md)
+- **1.0 readiness checklist**: [`docs/reference/readiness.md`](docs/reference/readiness.md)
 
 ---
 
@@ -39,30 +44,6 @@ Typra ships a read-only **DB-API 2.0 adapter** (minimal `SELECT` subset) in **0.
 Modern applications already define their data using Rust structs, Pydantic models, or TypeScript schemas—but many databases accept loosely typed rows anyway.
 
 **Typra** targets **models as schema**, **validation on write**, **nested data as first-class**, and **single-file** deployment.
-
----
-
-## Features (roadmap)
-
-Many items below are **goals**; see the changelog for what each release actually ships.
-
-- Type-first design  
-- Validation on write  
-- Nested objects and lists  
-- Embedded, zero-config, single file  
-- Safe schema evolution  
-- Typed queries  
-
----
-
-## Typra vs SQLite (vision)
-
-| Feature | SQLite | Typra (target) |
-|---------|--------|----------------|
-| Typing | Weak | Strong |
-| Validation | Minimal | Built-in |
-| Nested data | JSON | Native |
-| API | SQL | Model-first |
 
 ---
 

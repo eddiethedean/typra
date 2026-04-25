@@ -9,15 +9,15 @@ Official **CPython** bindings for **Typra** (PyO3 native extension): a typed, em
 
 You get a durable **schema catalog**, **validation**, nested **row values** (record **v2** on insert; **v1** segments still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes.
 
-**Queries and secondary indexes (0.7+):** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection("name").where("field", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python user guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#realistic-workflow-indexed-queries-on-disk). Typra also ships a **read-only DB-API 2.0 adapter** (`typra.dbapi`) with a minimal `SELECT` subset—see the [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md#db-api-20-pep-249-and-sqlalchemy).
+**Queries and secondary indexes:** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection(\"name\").where(\"field\", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#realistic-workflow-indexed-queries-on-disk). Typra also ships a **read-only DB-API 2.0 adapter** (`typra.dbapi`) with a minimal `SELECT` subset—see the [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#db-api-20-pep-249-and-sqlalchemy).
 
 | Resource | Link |
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
 | **Rust crates** | [`typra` on crates.io](https://crates.io/crates/typra) |
-| **Full Python guide** | [docs/guide_python.md](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md) |
-| **Getting started** | [docs/guide_getting_started.md](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) |
-| **Rust module layout** | [docs/03_rust_crate_and_module_layout.md](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md) |
+| **Full Python guide** | [docs/guides/python.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md) |
+| **Quickstart** | [docs/guides/quickstart.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/quickstart.md) |
+| **Rust module layout** | [docs/specs/rust_crate_layout.md](https://github.com/eddiethedean/typra/blob/main/docs/specs/rust_crate_layout.md) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
 
 ## Requirements
@@ -96,7 +96,7 @@ Output:
 [{'id': 1, 'sku': 'abc'}]
 ```
 
-See **[`docs/guide_python.md`](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md)** for `and_where`, `limit`, `explain`, and subset projections.
+See **[`docs/guides/python.md`](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md)** for `and_where`, `limit`, `explain`, subset projections, and the DB-API adapter.
 
 ## API overview
 
@@ -112,7 +112,7 @@ See **[`docs/guide_python.md`](https://github.com/eddiethedean/typra/blob/main/d
 | `Database.open_in_memory()` / `Database.open_snapshot_bytes(data)` / `db.snapshot_bytes()` | In-memory DB and byte snapshots. |
 | `db.collection_names() -> list[str]` | All registered names, **sorted** alphabetically. |
 
-For behavior details (errors, edge cases, development), see the **[Python user guide](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md)**.
+For behavior details (errors, edge cases, development), see the **[Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md)**.
 
 ## `fields_json` (schema descriptor)
 

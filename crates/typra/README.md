@@ -9,6 +9,12 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 
 `Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get` / `delete`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, **`#[derive(DbModel)]`** (via the default `derive` feature), **secondary indexes**, typed **query** execution (**equality**, `And`, `Or`, ranges, `limit`, `order_by`, `explain`), **`Database::query_iter`**, and **subset projections**. Typra’s **SQL text** surface remains minimal (primarily to support Python DB-API); applications should prefer the typed query builder APIs.
 
+For guarantees and operational behavior, see the repo docs:
+
+- [`docs/reference/compatibility.md`](../../docs/reference/compatibility.md)
+- [`docs/reference/types.md`](../../docs/reference/types.md)
+- [`docs/ops/operations_and_failure_modes.md`](../../docs/ops/operations_and_failure_modes.md)
+
 ## Stability and feature policy
 
 - **Prefer this crate** (`typra`) in applications. It is the stable facade for Typra’s Rust ecosystem.
@@ -20,7 +26,7 @@ User-facing crate for **Typra**: a typed, embedded database (single file, append
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
-| **User guides** | [Getting started](https://github.com/eddiethedean/typra/blob/main/docs/guide_getting_started.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guide_concepts.md) · [Python](https://github.com/eddiethedean/typra/blob/main/docs/guide_python.md) · [Rust module layout](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+| **User guides** | [Quickstart](https://github.com/eddiethedean/typra/blob/main/docs/guides/quickstart.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guides/concepts.md) · [Python](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md) · [Operations](https://github.com/eddiethedean/typra/blob/main/docs/ops/operations_and_failure_modes.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
 
 ## Install
 
@@ -85,6 +91,13 @@ Field attributes (`#[db(primary)]`, etc.) on `DbModel` are **not** implemented y
 |---------|------|
 | **`derive`** (default) | `#[derive(DbModel)]` via **`typra-derive`** |
 | **`async`** | Async wrapper API (`AsyncDatabase`) implemented via Tokio `spawn_blocking` |
+
+## When to use `typra-core` directly
+
+Use `typra-core` instead of `typra` if you need:
+
+- a minimal dependency graph (no proc-macros, no facade re-exports)
+- access to lower-level engine types that the facade intentionally doesn’t surface
 
 ## Related crates
 
