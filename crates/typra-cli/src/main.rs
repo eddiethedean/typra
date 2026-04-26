@@ -127,7 +127,9 @@ fn parse_fields_json(s: &str) -> Result<Vec<typra_core::FieldDef>, typra_core::D
             })?;
             segs.push(std::borrow::Cow::Owned(s.to_string()));
         }
-        fn parse_type(v: &serde_json::Value) -> Result<typra_core::schema::Type, typra_core::DbError> {
+        fn parse_type(
+            v: &serde_json::Value,
+        ) -> Result<typra_core::schema::Type, typra_core::DbError> {
             use typra_core::schema::Type;
             match v {
                 serde_json::Value::String(s) => match s.as_str() {
@@ -152,7 +154,9 @@ fn parse_fields_json(s: &str) -> Result<Vec<typra_core::FieldDef>, typra_core::D
                     }
                     if let Some(fields) = m.get("object") {
                         let arr = fields.as_array().ok_or_else(|| {
-                            typra_core::DbError::Io(std::io::Error::other("object must be an array"))
+                            typra_core::DbError::Io(std::io::Error::other(
+                                "object must be an array",
+                            ))
                         })?;
                         let mut out: Vec<typra_core::FieldDef> = Vec::with_capacity(arr.len());
                         for item in arr {
@@ -330,9 +334,9 @@ fn parse_indexes_json(s: &str) -> Result<Vec<typra_core::schema::IndexDef>, typr
                 )))
             }
         };
-        let path_v = obj.get("path").ok_or_else(|| {
-            typra_core::DbError::Io(std::io::Error::other("index missing path"))
-        })?;
+        let path_v = obj
+            .get("path")
+            .ok_or_else(|| typra_core::DbError::Io(std::io::Error::other("index missing path")))?;
         let path_arr = path_v.as_array().ok_or_else(|| {
             typra_core::DbError::Io(std::io::Error::other("index path must be an array"))
         })?;

@@ -119,9 +119,10 @@ fn migrate_plan_then_apply_force_backfill_works() {
     // Validate row contains the backfilled field.
     let db = typra_core::Database::open(&path).unwrap();
     let cid = db.collection_id_named("books").unwrap();
-    let got = db
-        .get(cid, &typra_core::ScalarValue::Int64(1))
-        .unwrap();
+    let got = db.get(cid, &typra_core::ScalarValue::Int64(1)).unwrap();
     let obj = got.unwrap();
-    assert_eq!(obj.get("genre"), Some(&typra_core::RowValue::String("unknown".to_string())));
+    assert_eq!(
+        obj.get("genre"),
+        Some(&typra_core::RowValue::String("unknown".to_string()))
+    );
 }
