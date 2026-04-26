@@ -33,8 +33,8 @@ jobs:
         working-directory: fuzz
         run: |
           set -euo pipefail
-          cargo fuzz run decode_file_header -- -max_total_time=10
-          cargo fuzz run decode_superblock -- -max_total_time=10
-          cargo fuzz run decode_segment_header -- -max_total_time=10
-          cargo fuzz run scan_segments_vecstore -- -max_total_time=10
+          cargo +nightly fuzz run decode_file_header -- -max_total_time=10
+          cargo +nightly fuzz run decode_superblock -- -max_total_time=10
+          cargo +nightly fuzz run decode_segment_header -- -max_total_time=10
+          cargo +nightly fuzz run scan_segments_vecstore -- -max_total_time=10
 
