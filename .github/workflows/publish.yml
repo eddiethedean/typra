@@ -117,6 +117,15 @@ jobs:
 
       - name: Build wheels and sdist (maturin)
         uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
+        with:
+          working-directory: python/typra
+          target: x86_64-unknown-linux-gnu
+          command: build
+          args: >-
+            --release --sdist --compatibility pypi -o ../../dist
+            -i python3.9
+          manylinux: "2_17"
+
       - name: Write SHA256SUMS
         shell: bash
         run: |
@@ -131,14 +140,6 @@ jobs:
           (dist / 'SHA256SUMS').write_text(\"\\n\".join(lines) + \"\\n\")
           print((dist / 'SHA256SUMS').read_text())
           PY
-        with:
-          working-directory: python/typra
-          target: x86_64-unknown-linux-gnu
-          command: build
-          args: >-
-            --release --sdist --compatibility pypi -o ../../dist
-            -i python3.9
-          manylinux: "2_17"
 
       - name: Publish to PyPI (twine)
         shell: bash
