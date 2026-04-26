@@ -8,9 +8,9 @@ fn second_writer_fails_fast_and_read_only_shared_lock_blocks_while_writer_active
     // First writer opens and holds lock for the duration of the test.
     let _db = typra_core::Database::open(&path).unwrap();
 
-    // Same-process read-only can open (we avoid taking an overlapping shared lock when the
-    // writer lock is already held by this process).
-    let _ro_same_process = typra_core::Database::open_read_only(&path).unwrap();
+    // Same-process read-only fails explicitly while holding the writer lock (to avoid lock
+    // downgrades/overlaps).
+    assert!(typra_core::Database::open_read_only(&path).is_err());
 
     // A read-only open in another process should fail while a writer holds the lock.
     let exe = std::env::current_exe().unwrap();

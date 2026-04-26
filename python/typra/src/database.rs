@@ -438,6 +438,14 @@ impl Database {
         g.export_snapshot_to_path(dest_path)
     }
 
+    /// Restore a snapshot file to `dest_path` by atomically replacing the destination.
+    ///
+    /// This is an operational helper intended for backup/restore workflows.
+    #[staticmethod]
+    fn restore_snapshot(snapshot_path: &str, dest_path: &str) -> PyResult<()> {
+        InnerDb::restore_snapshot_to_path(snapshot_path, dest_path)
+    }
+
     /// Rewrite the database file into a compacted image at `dest_path`.
     fn compact_to(&self, dest_path: &str) -> PyResult<()> {
         let g = lock_inner(&self.inner)?;

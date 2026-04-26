@@ -189,28 +189,37 @@ impl FileStore {
         let reader_lock = match mode {
             OpenMode::ReadWrite => None,
             OpenMode::ReadOnly => {
-                // If this process already holds the writer lock, don't attempt to also take a
-                // shared lock: some platforms do not support upgrading/downgrading locks or taking
-                // overlapping locks from the same process reliably.
+                // Always attempt a shared lock for read-only opens so readers block new writers.
+                //
+                // Important: on some platforms, acquiring a second lock in the same process while
+                // an exclusive lock is held may downgrade/replace the existing lock. We avoid that
+                // foot-gun by failing explicitly if this process already holds the writer lock.
                 let already_writer = writer_locks()
                     .lock()
                     .ok()
                     .and_then(|g| g.get(&lock_path).map(|_| ()))
                     .is_some();
                 if already_writer {
-                    None
-                } else {
-                    let lock_file = std::fs::OpenOptions::new()
-                        .read(true)
-                        .write(true)
-                        .create(true)
-                        .truncate(false)
-                        .open(&lock_path)?;
-                    // Map lock errors into an IO error so callers get a consistent `DbError`.
-                    lock_file
-                        .try_lock_shared()
-                        .map_err(std::io::Error::other)?;
-                    Some(lock_file)
+                    return Err(DbError::Io(std::io::Error::other(
+                        "cannot open read-only while holding writer lock in the same process",
+                    )));
+                }
+
+                let lock_file = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(&lock_path)?;
+                match lock_file.try_lock_shared() {
+                    Ok(()) => Some(lock_file),
+                    Err(std::fs::TryLockError::WouldBlock) => {
+                        return Err(DbError::Io(std::io::Error::new(
+                            std::io::ErrorKind::WouldBlock,
+                            "database is locked by another process",
+                        )));
+                    }
+                    Err(std::fs::TryLockError::Error(e)) => return Err(DbError::Io(e)),
                 }
             }
         };

@@ -223,6 +223,17 @@ impl InnerDb {
         }
     }
 
+    pub(crate) fn restore_snapshot_to_path(
+        snapshot_path: &str,
+        dest_path: &str,
+    ) -> Result<(), PyErr> {
+        typra_core::Database::<typra_core::storage::FileStore>::restore_snapshot_to_path(
+            snapshot_path,
+            dest_path,
+        )
+        .map_err(|e| PyValueError::new_err(format!("{e}")))
+    }
+
     pub(crate) fn begin_transaction(&mut self) -> Result<(), typra_core::DbError> {
         match self {
             InnerDb::File(d) => d.begin_transaction(),

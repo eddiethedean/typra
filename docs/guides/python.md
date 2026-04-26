@@ -42,6 +42,11 @@ Output:
 
 A longer insert/get snippet with **`typra.__version__`** is in [Quickstart — Minimal Python example](quickstart.md#minimal-python-example) (also verified in CI).
 
+## Backup and restore (snapshots)
+
+- **Backup**: use `db.export_snapshot("/path/to/backup.typra")` (file-backed DBs checkpoint then copy).
+- **Restore**: use `typra.Database.restore_snapshot("/path/to/backup.typra", "/path/to/app.typra")` to atomically replace the destination file.
+
 ## Defining schemas with Python classes
 
 Typra’s core Python API takes a JSON schema descriptor (`fields_json`). If you prefer defining schemas as Python classes, use **`typra.models`**.

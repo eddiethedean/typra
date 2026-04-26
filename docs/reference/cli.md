@@ -75,3 +75,20 @@ Write a compacted copy to `<dest>`.
 Create a consistent snapshot at `<dest>` (checkpoint + copy). If `--verify` is set, runs `typra verify`
 on the produced snapshot.
 
+### `typra migrate plan <path> --collection <name> --schema-json <file> [--indexes-json <file>]`
+
+Print a JSON payload describing whether a proposed schema update is safe and what steps are required.
+
+Typical uses:
+
+- Integrate Typra migrations into a deployment pipeline.
+- Preview whether a schema change requires a backfill or index rebuild.
+
+### `typra migrate apply <path> --collection <name> --schema-json <file> [--indexes-json <file>] [--backfill-field <field> --backfill-value <json>] [--rebuild-indexes] [--force]`
+
+Apply simple migration steps using engine helpers, then register the new schema version.
+
+Notes:
+
+- If the schema update is `NeedsMigration`, you will typically need `--force` after performing the required rewrite/backfill steps.
+
