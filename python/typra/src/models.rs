@@ -206,8 +206,11 @@ fn origin_and_args<'py>(
 }
 
 fn is_none_type(py: Python<'_>, t: &Bound<'_, PyAny>) -> PyResult<bool> {
-    let types = PyModule::import_bound(py, "types")?;
-    let none_type = types.getattr("NoneType")?;
+    // `types.NoneType` exists on Python 3.10+, but Typra supports Python 3.9+.
+    // Use `type(None)` via the runtime singleton instead.
+    let builtins = PyModule::import_bound(py, "builtins")?;
+    let none_obj = py.None();
+    let none_type = builtins.getattr("type")?.call1((none_obj,))?;
     Ok(t.is(&none_type))
 }
 
