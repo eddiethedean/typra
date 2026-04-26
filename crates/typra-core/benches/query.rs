@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::borrow::Cow;
 use typra_core::query::{Predicate, Query};
 use typra_core::record::RowValue;
@@ -48,7 +48,7 @@ fn bench_query_paths(c: &mut Criterion) {
 
     let pk = ScalarValue::Int64((N / 2) as i64);
     c.bench_function("get_pk", |b| {
-        b.iter(|| black_box(db.get(cid, black_box(&pk)).unwrap()))
+        b.iter(|| std::hint::black_box(db.get(cid, std::hint::black_box(&pk)).unwrap()))
     });
 
     let q_indexed = Query {
@@ -61,7 +61,7 @@ fn bench_query_paths(c: &mut Criterion) {
         order_by: None,
     };
     c.bench_function("query_indexed_eq", |b| {
-        b.iter(|| black_box(db.query(black_box(&q_indexed)).unwrap()))
+        b.iter(|| std::hint::black_box(db.query(std::hint::black_box(&q_indexed)).unwrap()))
     });
 
     let q_scan = Query {
@@ -74,7 +74,7 @@ fn bench_query_paths(c: &mut Criterion) {
         order_by: None,
     };
     c.bench_function("query_scan_eq_on_non_indexed_field", |b| {
-        b.iter(|| black_box(db.query(black_box(&q_scan)).unwrap()))
+        b.iter(|| std::hint::black_box(db.query(std::hint::black_box(&q_scan)).unwrap()))
     });
 }
 
