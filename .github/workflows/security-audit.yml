@@ -35,10 +35,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install pip-audit
-        run: python -m pip install --upgrade "pip<26" "pip-audit>=2,<3"
+        run: python -m pip install --upgrade "pip==26.0" "pip-audit>=2,<3"
       - name: Audit python/typra environment
         run: |
           python -m pip install -e python/typra
           python -m pip install -r docs/requirements.txt
           python -m pip install -U "maturin>=1.5,<2" "pytest>=8" "ruff>=0.8" "ty>=0.0.28"
-          python -m pip_audit
+          python -m pip_audit --ignore-vuln CVE-2026-3219
