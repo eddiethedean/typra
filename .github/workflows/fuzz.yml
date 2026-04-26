@@ -31,12 +31,10 @@ jobs:
 
       - name: Run fuzz targets (short budget)
         working-directory: fuzz
-        env:
-          CARGO_BUILD_TARGET: x86_64-unknown-linux-gnu
         run: |
           set -euo pipefail
-          cargo +nightly fuzz run decode_file_header -- -max_total_time=10
-          cargo +nightly fuzz run decode_superblock -- -max_total_time=10
-          cargo +nightly fuzz run decode_segment_header -- -max_total_time=10
-          cargo +nightly fuzz run scan_segments_vecstore -- -max_total_time=10
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu decode_file_header -- -max_total_time=10
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu decode_superblock -- -max_total_time=10
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu decode_segment_header -- -max_total_time=10
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu scan_segments_vecstore -- -max_total_time=10
 
