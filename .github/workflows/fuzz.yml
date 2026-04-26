@@ -1,0 +1,40 @@
+name: Fuzz (smoke)
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 7 * * 1" # weekly
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust (nightly for cargo-fuzz/ASAN)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          toolchain: nightly
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1
+        with:
+          tool: cargo-fuzz
+
+      - name: Run fuzz targets (short budget)
+        working-directory: fuzz
+        run: |
+          set -euo pipefail
+          cargo fuzz run decode_file_header -- -max_total_time=10
+          cargo fuzz run decode_superblock -- -max_total_time=10
+          cargo fuzz run decode_segment_header -- -max_total_time=10
+          cargo fuzz run scan_segments_vecstore -- -max_total_time=10
+

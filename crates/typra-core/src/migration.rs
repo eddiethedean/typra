@@ -1,4 +1,4 @@
-//! Migration planning and helpers (0.9.0).
+//! Migration planning and helpers.
 //!
 //! Typra keeps schema evolution conservative by default. When a proposed schema change requires
 //! rewriting existing data (e.g. adding a required field), callers can plan and then execute a

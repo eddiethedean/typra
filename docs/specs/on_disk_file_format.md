@@ -1,6 +1,15 @@
 # On-disk file format
 
-Canonical spec: [`docs/02_on_disk_file_format.md`](../02_on_disk_file_format.md).
+This section describes the **implemented** on-disk format and links to deeper historical/design notes.
+
+**Normative (implemented) references:**
+
+- Engine constants and header decode: `crates/typra-core/src/file_format.rs`
+- Compatibility policy: [`docs/reference/compatibility.md`](../reference/compatibility.md)
+
+**Design / historical notes (not a strict compatibility contract):**
+
+- Legacy long-form spec: [`docs/02_on_disk_file_format.md`](../02_on_disk_file_format.md)
 
 ## Record payload versions (implemented)
 

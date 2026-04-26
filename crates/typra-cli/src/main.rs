@@ -29,6 +29,27 @@ enum Command {
         #[arg(long, default_value_t = true)]
         json: bool,
     },
+    /// Write a durable checkpoint to the database file.
+    Checkpoint { path: PathBuf },
+    /// Compact a database file.
+    Compact {
+        path: PathBuf,
+        /// Compact in-place (atomic replace).
+        #[arg(long, default_value_t = false)]
+        in_place: bool,
+        /// Compact to a new destination path.
+        #[arg(long)]
+        to: Option<PathBuf>,
+    },
+    /// Create a consistent backup snapshot to `--to` (checkpoint + copy).
+    Backup {
+        path: PathBuf,
+        #[arg(long)]
+        to: PathBuf,
+        /// Verify the produced snapshot with `typra verify`.
+        #[arg(long, default_value_t = false)]
+        verify: bool,
+    },
 }
 
 fn open_readonly_store(path: &PathBuf) -> Result<FileStore, typra_core::DbError> {
@@ -201,7 +222,51 @@ fn dump_catalog(path: PathBuf) -> Result<(), typra_core::DbError> {
             })
         }).collect::<Vec<_>>(),
     });
-    println!("{}", serde_json::to_string_pretty(&v).unwrap());
+    let s = serde_json::to_string_pretty(&v)
+        .map_err(|e| typra_core::DbError::Io(std::io::Error::other(e)))?;
+    println!("{s}");
+    Ok(())
+}
+
+fn checkpoint(path: PathBuf) -> Result<(), typra_core::DbError> {
+    let mut db = typra_core::Database::open(&path)?;
+    db.checkpoint()?;
+    println!("ok: checkpoint written");
+    Ok(())
+}
+
+fn compact(path: PathBuf, in_place: bool, to: Option<PathBuf>) -> Result<(), typra_core::DbError> {
+    let mut db = typra_core::Database::open(&path)?;
+    match (in_place, to) {
+        (true, None) => {
+            db.compact_in_place()?;
+            println!("ok: compacted_in_place");
+        }
+        (false, Some(dest)) => {
+            db.compact_to(dest)?;
+            println!("ok: compacted_to");
+        }
+        (true, Some(_)) => {
+            return Err(typra_core::DbError::Io(std::io::Error::other(
+                "choose either --in-place or --to, not both",
+            )));
+        }
+        (false, None) => {
+            return Err(typra_core::DbError::Io(std::io::Error::other(
+                "missing mode: pass --in-place or --to <dest>",
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn backup(path: PathBuf, to: PathBuf, verify_after: bool) -> Result<(), typra_core::DbError> {
+    let mut db = typra_core::Database::open(&path)?;
+    db.export_snapshot_to_path(&to)?;
+    println!("ok: backup_written path={}", to.display());
+    if verify_after {
+        verify(to)?;
+    }
     Ok(())
 }
 
@@ -211,6 +276,9 @@ fn main() {
         Command::Inspect { path } => inspect(path),
         Command::Verify { path } => verify(path),
         Command::DumpCatalog { path, .. } => dump_catalog(path),
+        Command::Checkpoint { path } => checkpoint(path),
+        Command::Compact { path, in_place, to } => compact(path, in_place, to),
+        Command::Backup { path, to, verify } => backup(path, to, verify),
     };
     if let Err(e) = res {
         eprintln!("error: {e:?}");

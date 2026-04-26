@@ -1,5 +1,9 @@
 # Typed Embedded Database – On-Disk File Format Specification
 
+> Note: this document contains a mix of **historical design** and **implementation notes**.
+> The **normative compatibility contract** is in [`docs/reference/compatibility.md`](reference/compatibility.md),
+> and the implemented header/version constants live in `crates/typra-core/src/file_format.rs`.
+
 ## Goals
 The on-disk format should be:
 - crash-safe
@@ -37,7 +41,17 @@ This spec assumes a **single database file** containing metadata, append-only re
 Use alternating superblocks so metadata updates are crash-safe.
 
 ## File Header
-Fixed-size header, e.g. 4 KB.
+Fixed-size header.
+
+**Implemented today:** Typra uses a **32-byte header** (`FILE_HEADER_SIZE = 32`) with:
+
+- magic: `TDB0`
+- `format_major: u16`
+- `format_minor: u16`
+- `header_size: u32`
+- `flags: u64`
+
+The extended 4KB header sketch below is **design intent** (not implemented in the 1.0 file format).
 
 ### Fields
 - magic bytes: `TDB0`

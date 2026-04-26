@@ -53,6 +53,9 @@ Recovery behavior is controlled by `OpenOptions.recovery` / `RecoveryMode`.
   - Open refuses if integrity checks fail for required metadata, or if recovery would require truncation.
   - Intended for environments that prefer fail-fast over best-effort salvage.
 
+Note: `Database::open_read_only(...)` uses **`Strict`** recovery by default (read-only opens never
+truncate the underlying file).
+
 ### Forward compatibility (contract)
 
 - Unknown **format majors** are refused.
@@ -80,8 +83,10 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
   - **Stability goal**: strongest compatibility guarantees in the Rust ecosystem for Typra.
   - **Policy**: breaking changes require a major version bump and are called out explicitly.
 - **`typra-core`** (engine): lower-level APIs and internal types.
-  - **Stability goal**: stable enough for power users, but expect more churn than `typra` before 1.0.
-  - **Policy**: internal refactors are acceptable as long as `typra` remains stable and behavior is preserved.
+  - **Stability goal (1.x)**: stable for direct use by power users. Breaking changes require a
+    major version bump (2.0), same as `typra`.
+  - **Policy**: internal refactors are acceptable, but **public exports** and documented behavior
+    remain compatible within 1.x.
 - **`typra-derive`**: proc macro for `#[derive(DbModel)]`.
   - **Stability goal**: mostly additive improvements (new attributes and validations) with minimal breakage.
 

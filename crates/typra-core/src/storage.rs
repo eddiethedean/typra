@@ -71,6 +71,7 @@ impl Store for RawFileStore {
 pub struct FileStore {
     inner: crate::pager::PagedStore<RawFileStore>,
     _writer_lock: Option<WriterLockGuard>,
+    _reader_lock: Option<File>,
 }
 
 #[derive(Debug)]
@@ -115,6 +116,7 @@ impl FileStore {
                 crate::pager::DEFAULT_PAGE_SIZE,
             ),
             _writer_lock: None,
+            _reader_lock: None,
         }
     }
 
@@ -126,8 +128,14 @@ impl FileStore {
 
     /// Open a file store and acquire the process-level lock for the database path.
     ///
-    /// - `ReadWrite`: creates the database file if missing and takes an exclusive lock on `<path>.lock`.
-    /// - `ReadOnly`: opens an existing file read-only and takes a shared lock on `<path>.lock`.
+    /// Locking policy (cross-process):
+    /// - `ReadWrite`: takes an **exclusive** advisory lock on the sidecar file
+    ///   `<db_path>.writer.lock` (fail-fast; does not block indefinitely).
+    /// - `ReadOnly`: opens the database read-only and takes a **shared** advisory lock on the same
+    ///   sidecar file. This prevents new writers from opening while readers are active.
+    ///
+    /// This excludes concurrent writers, but does not prevent read-only opens while a writer is
+    /// active. Callers that require stronger coordination should implement it at a higher layer.
     pub fn open_locked(path: impl AsRef<Path>, mode: OpenMode) -> Result<Self, DbError> {
         use fs2::FileExt;
 
@@ -142,16 +150,19 @@ impl FileStore {
             OpenMode::ReadOnly => std::fs::OpenOptions::new().read(true).open(path)?,
         };
 
+        let lock_path = Self::lock_path_for_db_path(path);
+
         let writer_lock = match mode {
             OpenMode::ReadOnly => None,
             OpenMode::ReadWrite => {
-                let lock_path = Self::lock_path_for_db_path(path);
                 let mut g = writer_locks()
                     .lock()
                     .map_err(|_| std::io::Error::other("lock poisoned"))?;
                 if let Some(st) = g.get_mut(&lock_path) {
                     st.refs = st.refs.saturating_add(1);
-                    Some(WriterLockGuard { lock_path })
+                    Some(WriterLockGuard {
+                        lock_path: lock_path.clone(),
+                    })
                 } else {
                     let lock_file = std::fs::OpenOptions::new()
                         .read(true)
@@ -168,7 +179,38 @@ impl FileStore {
                             refs: 1,
                         },
                     );
-                    Some(WriterLockGuard { lock_path })
+                    Some(WriterLockGuard {
+                        lock_path: lock_path.clone(),
+                    })
+                }
+            }
+        };
+
+        let reader_lock = match mode {
+            OpenMode::ReadWrite => None,
+            OpenMode::ReadOnly => {
+                // If this process already holds the writer lock, don't attempt to also take a
+                // shared lock: some platforms do not support upgrading/downgrading locks or taking
+                // overlapping locks from the same process reliably.
+                let already_writer = writer_locks()
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.get(&lock_path).map(|_| ()))
+                    .is_some();
+                if already_writer {
+                    None
+                } else {
+                    let lock_file = std::fs::OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .truncate(false)
+                        .open(&lock_path)?;
+                    // Map lock errors into an IO error so callers get a consistent `DbError`.
+                    lock_file
+                        .try_lock_shared()
+                        .map_err(std::io::Error::other)?;
+                    Some(lock_file)
                 }
             }
         };
@@ -179,6 +221,7 @@ impl FileStore {
                 crate::pager::DEFAULT_PAGE_SIZE,
             ),
             _writer_lock: writer_lock,
+            _reader_lock: reader_lock,
         })
     }
 }

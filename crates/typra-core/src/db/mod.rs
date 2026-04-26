@@ -1181,13 +1181,78 @@ impl Database<FileStore> {
 
     /// Compact and rewrite this database in place.
     pub fn compact_in_place(&mut self) -> Result<(), DbError> {
+        // Crash-safety: write a full new image to a sidecar file, fsync it, then atomically
+        // replace the live path via rename (using a backup on platforms where rename does not
+        // overwrite an existing destination).
         let bytes = self.compact_snapshot_bytes()?;
-        self.store.truncate(0)?;
-        self.store.write_all_at(0, &bytes)?;
-        self.store.truncate(bytes.len() as u64)?;
-        self.store.sync()?;
-        // Refresh in-memory state by reopening.
-        let reopened = Database::open_with_options(self.path.clone(), OpenOptions::default())?;
+        let live_path = self.path.clone();
+        let parent = live_path
+            .parent()
+            .ok_or_else(|| DbError::Io(std::io::Error::other("no parent")))?;
+
+        // Pick unique temp + backup names in the same directory (so rename stays atomic on POSIX).
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let base = live_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("db.typra");
+        let tmp_path = parent.join(format!("{base}.compact.{pid}.{nanos}.tmp"));
+        let bak_path = parent.join(format!("{base}.compact.{pid}.{nanos}.bak"));
+
+        // 1) Write the compacted image to tmp and fsync it.
+        {
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&tmp_path)?;
+            let mut store = FileStore::new(file);
+            store.write_all_at(0, &bytes)?;
+            store.truncate(bytes.len() as u64)?;
+            store.sync()?;
+        }
+
+        // 2) Replace the live file path with the tmp image, preserving a backup until success.
+        //
+        // We do not rely on "rename over existing" being supported across platforms. Instead:
+        // - move live → bak
+        // - move tmp → live
+        // - fsync directory (best-effort)
+        // - remove bak
+        //
+        // If tmp → live fails, attempt to restore bak → live.
+        if bak_path.exists() {
+            let _ = std::fs::remove_file(&bak_path);
+        }
+        std::fs::rename(&live_path, &bak_path)?;
+        let replace_res = std::fs::rename(&tmp_path, &live_path);
+        if let Err(e) = replace_res {
+            // Best-effort restore: move backup back into place.
+            let _ = std::fs::rename(&bak_path, &live_path);
+            // Clean up tmp if it still exists.
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(DbError::Io(e));
+        }
+
+        // Best-effort directory sync: helps make the rename durable on POSIX.
+        #[cfg(unix)]
+        {
+            // Best-effort: on many Unix platforms, opening a directory and syncing it will persist
+            // the rename in the directory entry. If this fails, the data file itself is still
+            // fsync'd and the operation remains logically correct; only rename durability is weaker.
+            if let Ok(dir_f) = std::fs::File::open(parent) {
+                let _ = dir_f.sync_all();
+            }
+        }
+
+        let _ = std::fs::remove_file(&bak_path);
+
+        // 3) Refresh in-memory state by reopening.
+        let reopened = Database::open_with_options(live_path, OpenOptions::default())?;
         *self = reopened;
         Ok(())
     }
@@ -1242,7 +1307,79 @@ impl Database<FileStore> {
     /// underlying file bytes to `dest_path`.
     pub fn export_snapshot_to_path(&mut self, dest_path: impl AsRef<Path>) -> Result<(), DbError> {
         self.checkpoint()?;
-        std::fs::copy(&self.path, dest_path.as_ref())?;
+        let dest_path = dest_path.as_ref();
+        std::fs::copy(&self.path, dest_path)?;
+        // Strengthen durability of the copied snapshot: fsync the destination and best-effort
+        // fsync its parent directory so the directory entry is persisted.
+        if let Ok(f) = std::fs::OpenOptions::new().read(true).open(dest_path) {
+            let _ = f.sync_all();
+        }
+        #[cfg(unix)]
+        {
+            if let Some(parent) = dest_path.parent() {
+                if let Ok(dir_f) = std::fs::File::open(parent) {
+                    let _ = dir_f.sync_all();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Restore a snapshot file into `dest_path` by atomically replacing the destination.
+    ///
+    /// This is a file operation helper intended for operational tooling.
+    pub fn restore_snapshot_to_path(
+        snapshot_path: impl AsRef<Path>,
+        dest_path: impl AsRef<Path>,
+    ) -> Result<(), DbError> {
+        let snapshot_path = snapshot_path.as_ref();
+        let dest_path = dest_path.as_ref();
+        let parent = dest_path
+            .parent()
+            .ok_or_else(|| DbError::Io(std::io::Error::other("no parent")))?;
+
+        let pid = std::process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let base = dest_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("db.typra");
+        let tmp_path = parent.join(format!("{base}.restore.{pid}.{nanos}.tmp"));
+        let bak_path = parent.join(format!("{base}.restore.{pid}.{nanos}.bak"));
+
+        // Copy snapshot bytes into a temp file and fsync it.
+        std::fs::copy(snapshot_path, &tmp_path)?;
+        if let Ok(f) = std::fs::OpenOptions::new().read(true).open(&tmp_path) {
+            let _ = f.sync_all();
+        }
+
+        // Replace destination with backup/restore semantics.
+        if dest_path.exists() {
+            if bak_path.exists() {
+                let _ = std::fs::remove_file(&bak_path);
+            }
+            std::fs::rename(dest_path, &bak_path)?;
+        }
+        let replace_res = std::fs::rename(&tmp_path, dest_path);
+        if let Err(e) = replace_res {
+            // Best-effort restore original.
+            if bak_path.exists() {
+                let _ = std::fs::rename(&bak_path, dest_path);
+            }
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(DbError::Io(e));
+        }
+
+        #[cfg(unix)]
+        {
+            if let Ok(dir_f) = std::fs::File::open(parent) {
+                let _ = dir_f.sync_all();
+            }
+        }
+        let _ = std::fs::remove_file(&bak_path);
         Ok(())
     }
 }
@@ -1466,8 +1603,8 @@ impl Database<FileStore> {
         Self::open_with_options(
             path,
             crate::config::OpenOptions {
+                recovery: crate::config::RecoveryMode::Strict,
                 mode: OpenMode::ReadOnly,
-                ..crate::config::OpenOptions::default()
             },
         )
     }

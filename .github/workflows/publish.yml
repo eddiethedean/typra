@@ -18,7 +18,7 @@ jobs:
   assert-tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Assert tag matches workspace version
         run: |
@@ -41,13 +41,13 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
 
       - name: cargo test
         run: cargo test --workspace --all-features
@@ -62,10 +62,10 @@ jobs:
         python-version: ["3.9", "3.12"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -94,13 +94,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [assert-tag, release-rust, release-python]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
 
       - name: Publish crates to crates.io
         env:
@@ -113,10 +113,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: [publish-crates]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Build wheels and sdist (maturin)
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
+      - name: Write SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, pathlib
+          dist = pathlib.Path('dist')
+          lines = []
+          for p in sorted(dist.glob('typra-*')):
+            h = hashlib.sha256(p.read_bytes()).hexdigest()
+            lines.append(f\"{h}  {p.name}\")
+          (dist / 'SHA256SUMS').write_text(\"\\n\".join(lines) + \"\\n\")
+          print((dist / 'SHA256SUMS').read_text())
+          PY
         with:
           working-directory: python/typra
           target: x86_64-unknown-linux-gnu
@@ -140,10 +154,10 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs: [publish-crates]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Build wheels (maturin)
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
         with:
           working-directory: python/typra
           target: aarch64-unknown-linux-gnu
@@ -171,10 +185,10 @@ jobs:
       matrix:
         target: [x86_64-apple-darwin, aarch64-apple-darwin]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Build wheels (maturin)
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
         with:
           working-directory: python/typra
           target: ${{ matrix.target }}
@@ -197,15 +211,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: [publish-crates]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.9"
 
       - name: Build wheels (maturin)
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
         with:
           working-directory: python/typra
           target: x86_64-unknown-linux-musl
@@ -228,15 +242,15 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs: [publish-crates]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.9"
 
       - name: Build wheels (maturin)
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
         with:
           working-directory: python/typra
           target: aarch64-unknown-linux-musl
@@ -259,15 +273,15 @@ jobs:
     runs-on: windows-latest
     needs: [publish-crates]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.9"
 
       - name: Build wheels (maturin)
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
         with:
           working-directory: python/typra
           target: x86_64-pc-windows-msvc
@@ -289,15 +303,15 @@ jobs:
     runs-on: windows-11-arm
     needs: [publish-crates]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
 
       - name: Build wheels (maturin)
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@423a6347767a8b16e65c2a7a7042e4a921528da8
         with:
           working-directory: python/typra
           target: aarch64-pc-windows-msvc

@@ -1,0 +1,4 @@
+[toolchain]
+# Keep CI and contributors on a consistent stable toolchain.
+channel = "stable"
+components = ["rustfmt", "clippy"]

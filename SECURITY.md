@@ -17,6 +17,13 @@ Include:
 - Expected vs actual behavior
 - Any crash logs / backtraces
 
+## Scope
+
+In addition to classic memory-safety issues, we treat the following as security-relevant:
+
+- Crashes/panics triggered by opening untrusted `.typra` files
+- Infinite loops or unbounded resource consumption (CPU, memory, disk) from untrusted input
+
 ## Coordinated disclosure
 
 - We will acknowledge receipt within **7 days**.

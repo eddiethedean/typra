@@ -47,6 +47,22 @@ Assume the attacker **cannot**:
 - **Property/invariant tests**: snapshot roundtrips and other invariants are validated via `proptest`.
 - **Coverage + doc verification**: CI runs `scripts/verify-doc-examples.sh` to prevent doc drift in supported user workflows.
 
+## Supply chain and release risks
+
+Typra’s attacker model is primarily “malicious local file”, but production deployments should also
+consider supply-chain threats:
+
+- Compromised GitHub Actions / CI runners
+- Malicious or vulnerable Rust/Python dependencies
+- Stolen crates.io / PyPI publishing credentials
+- Artifact substitution/tampering between CI and registries
+
+Mitigations used (or recommended) in this repo:
+
+- Dependency update automation (Dependabot) and vulnerability scanning (`cargo audit`, `pip-audit`)
+- Prefer least-privilege release tokens and regular rotation
+- Keep release automation and checks reproducible and documented
+
 ## Operational guidance
 
 - Treat `.typra` files as **untrusted input** when sourced externally.

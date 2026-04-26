@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::io::Seek;
 use tempfile::tempdir;
 use typra_core::config::{OpenOptions, RecoveryMode};
+use typra_core::error::{DbError, FormatError};
 use typra_core::schema::{FieldDef, FieldPath, Type};
 use typra_core::{Database, RowValue, ScalarValue};
 
@@ -58,6 +59,13 @@ fn strict_rejects_trailing_garbage_and_autotruncate_recovers() {
         },
     );
     assert!(strict.is_err());
+
+    // Read-only open should also fail (it uses Strict recovery).
+    let ro = Database::open_read_only(&path);
+    assert!(matches!(
+        ro,
+        Err(DbError::Format(FormatError::UncleanLogTail { .. }))
+    ));
 
     // AutoTruncate should open and preserve committed state.
     let db = Database::open_with_options(

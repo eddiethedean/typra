@@ -11,16 +11,29 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
 
       - name: Run Criterion benches (typra-core)
         run: |
           cargo bench -p typra-core --bench query -- --nocapture
           cargo bench -p typra-core --bench workflows -- --nocapture
+
+      - name: Upload Criterion artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: criterion-${{ matrix.os }}
+          path: |
+            target/criterion
+
+      - name: Compare note (how to diff)
+        if: ${{ always() }}
+        run: |
+          echo "To compare two runs locally:"
+          echo "  python scripts/bench_compare.py --base <criterion_old> --new <criterion_new>"
 

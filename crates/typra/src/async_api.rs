@@ -4,6 +4,16 @@ use std::sync::{Arc, Mutex};
 use typra_core::storage::{FileStore, Store, VecStore};
 use typra_core::{Database, DbError, OpenOptions, RowValue, ScalarValue};
 
+fn map_join_err(e: tokio::task::JoinError) -> DbError {
+    DbError::Io(std::io::Error::other(format!(
+        "tokio spawn_blocking join error: {e}"
+    )))
+}
+
+fn map_mutex_poisoned() -> DbError {
+    DbError::Io(std::io::Error::other("typra database mutex poisoned"))
+}
+
 /// Async wrapper over [`Database`].
 ///
 /// This is an integration convenience for async applications. Internally, operations execute on
@@ -17,7 +27,7 @@ impl AsyncDatabase<FileStore> {
         let path = path.as_ref().to_path_buf();
         let db = tokio::task::spawn_blocking(move || Database::open(path))
             .await
-            .expect("spawn_blocking failed")?;
+            .map_err(map_join_err)??;
         Ok(Self {
             inner: Arc::new(Mutex::new(db)),
         })
@@ -30,7 +40,7 @@ impl AsyncDatabase<FileStore> {
         let path = path.as_ref().to_path_buf();
         let db = tokio::task::spawn_blocking(move || Database::open_with_options(path, opts))
             .await
-            .expect("spawn_blocking failed")?;
+            .map_err(map_join_err)??;
         Ok(Self {
             inner: Arc::new(Mutex::new(db)),
         })
@@ -41,7 +51,7 @@ impl AsyncDatabase<VecStore> {
     pub async fn open_in_memory() -> Result<Self, DbError> {
         let db = tokio::task::spawn_blocking(Database::<VecStore>::open_in_memory)
             .await
-            .expect("spawn_blocking failed")?;
+            .map_err(map_join_err)??;
         Ok(Self {
             inner: Arc::new(Mutex::new(db)),
         })
@@ -51,7 +61,7 @@ impl AsyncDatabase<VecStore> {
         let db =
             tokio::task::spawn_blocking(move || Database::<VecStore>::from_snapshot_bytes(data))
                 .await
-                .expect("spawn_blocking failed")?;
+                .map_err(map_join_err)??;
         Ok(Self {
             inner: Arc::new(Mutex::new(db)),
         })
@@ -70,23 +80,22 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
         tokio::task::spawn_blocking(move || {
             inner
                 .lock()
-                .expect("typra db mutex poisoned")
-                .path()
-                .display()
-                .to_string()
+                .map_err(|_| map_mutex_poisoned())
+                .map(|db| db.path().display().to_string())
+                .unwrap_or_else(|e| format!("error:{e:?}"))
         })
         .await
-        .expect("spawn_blocking failed")
+        .unwrap_or_else(|e| format!("error:{:?}", map_join_err(e)))
     }
 
     pub async fn collection_names(&self) -> Result<Vec<String>, DbError> {
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let db = inner.lock().expect("typra db mutex poisoned");
+            let db = inner.lock().map_err(|_| map_mutex_poisoned())?;
             Ok(db.collection_names())
         })
         .await
-        .expect("spawn_blocking failed")
+        .map_err(map_join_err)?
     }
 
     pub async fn register_collection(
@@ -97,11 +106,11 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
     ) -> Result<(typra_core::CollectionId, typra_core::SchemaVersion), DbError> {
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().expect("typra db mutex poisoned");
+            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
             db.register_collection(&name, fields, &primary_field)
         })
         .await
-        .expect("spawn_blocking failed")
+        .map_err(map_join_err)?
     }
 
     pub async fn insert(
@@ -111,11 +120,11 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
     ) -> Result<(), DbError> {
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().expect("typra db mutex poisoned");
+            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
             db.insert(collection_id, row)
         })
         .await
-        .expect("spawn_blocking failed")
+        .map_err(map_join_err)?
     }
 
     pub async fn get(
@@ -125,11 +134,11 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
     ) -> Result<Option<std::collections::BTreeMap<String, RowValue>>, DbError> {
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let db = inner.lock().expect("typra db mutex poisoned");
+            let db = inner.lock().map_err(|_| map_mutex_poisoned())?;
             db.get(collection_id, &pk)
         })
         .await
-        .expect("spawn_blocking failed")
+        .map_err(map_join_err)?
     }
 
     pub async fn delete(
@@ -139,11 +148,11 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
     ) -> Result<(), DbError> {
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().expect("typra db mutex poisoned");
+            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
             db.delete(collection_id, &pk)
         })
         .await
-        .expect("spawn_blocking failed")
+        .map_err(map_join_err)?
     }
 
     pub async fn transaction<R: Send + 'static>(
@@ -152,10 +161,10 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
     ) -> Result<R, DbError> {
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().expect("typra db mutex poisoned");
+            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
             db.transaction(f)
         })
         .await
-        .expect("spawn_blocking failed")
+        .map_err(map_join_err)?
     }
 }
