@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::borrow::Cow;
 
 use typra_core::record::RowValue;
@@ -44,7 +44,7 @@ fn bench_txn_batch_insert(c: &mut Criterion) {
                 Ok::<(), typra_core::DbError>(())
             })
             .unwrap();
-            black_box(db.collection_names());
+            std::hint::black_box(db.collection_names());
         })
     });
 }
@@ -68,7 +68,7 @@ fn bench_checkpointed_open(c: &mut Criterion) {
     }
 
     c.bench_function("open_checkpointed_10k", |b| {
-        b.iter(|| black_box(Database::open(black_box(&path)).unwrap()))
+        b.iter(|| std::hint::black_box(Database::open(std::hint::black_box(&path)).unwrap()))
     });
 }
 
@@ -100,7 +100,7 @@ fn bench_compaction_in_place(c: &mut Criterion) {
 
     c.bench_function("compact_in_place_20k", |b| {
         b.iter(|| {
-            let mut db = Database::open(black_box(&path)).unwrap();
+            let mut db = Database::open(std::hint::black_box(&path)).unwrap();
             db.compact_in_place().unwrap();
         })
     });
@@ -148,7 +148,7 @@ fn bench_indexed_query_on_disk(c: &mut Criterion) {
         order_by: None,
     };
     c.bench_function("indexed_eq_on_disk_50k", |b| {
-        b.iter(|| black_box(db.query(black_box(&q)).unwrap()))
+        b.iter(|| std::hint::black_box(db.query(std::hint::black_box(&q)).unwrap()))
     });
 }
 
