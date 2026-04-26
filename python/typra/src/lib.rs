@@ -33,27 +33,27 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Stable error kinds via distinct exception subclasses (still `isinstance(..., ValueError)` etc).
     m.add(
         "TypraFormatError",
-        m.py().get_type_bound::<errors::TypraFormatError>(),
+        m.py().get_type::<errors::TypraFormatError>(),
     )?;
     m.add(
         "TypraSchemaError",
-        m.py().get_type_bound::<errors::TypraSchemaError>(),
+        m.py().get_type::<errors::TypraSchemaError>(),
     )?;
     m.add(
         "TypraValidationError",
-        m.py().get_type_bound::<errors::TypraValidationError>(),
+        m.py().get_type::<errors::TypraValidationError>(),
     )?;
     m.add(
         "TypraQueryError",
-        m.py().get_type_bound::<errors::TypraQueryError>(),
+        m.py().get_type::<errors::TypraQueryError>(),
     )?;
     m.add(
         "TypraTransactionError",
-        m.py().get_type_bound::<errors::TypraTransactionError>(),
+        m.py().get_type::<errors::TypraTransactionError>(),
     )?;
 
     // Python model helpers (class-based schemas).
-    let models_mod = PyModule::new_bound(m.py(), "models")?;
+    let models_mod = PyModule::new(m.py(), "models")?;
     models_mod.add_function(wrap_pyfunction!(models::collection, &models_mod)?)?;
     models_mod.add_function(wrap_pyfunction!(models::plan, &models_mod)?)?;
     models_mod.add_function(wrap_pyfunction!(models::apply, &models_mod)?)?;
@@ -69,7 +69,7 @@ fn typra(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("models", models_mod)?;
 
     // DB-API 2.0 (PEP 249) read-only adapter (0.10.0+).
-    let dbapi_mod = PyModule::new_bound(m.py(), "dbapi")?;
+    let dbapi_mod = PyModule::new(m.py(), "dbapi")?;
     dbapi_mod.add_function(wrap_pyfunction!(dbapi::connect, &dbapi_mod)?)?;
     dbapi_mod.add_class::<dbapi::Connection>()?;
     dbapi_mod.add_class::<dbapi::Cursor>()?;

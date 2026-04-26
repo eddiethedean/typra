@@ -175,8 +175,7 @@ impl Database {
     ) -> PyResult<query_api::Collection> {
         // Validate early that the collection exists.
         let _ = collection_info(&slf.inner, name)?;
-        let any: Py<PyAny> = slf.into_py(py);
-        let db: Py<Database> = any.bind(py).downcast::<Database>()?.clone().unbind();
+        let db: Py<Database> = slf.into_pyobject(py)?.unbind();
         Ok(query_api::Collection {
             db,
             name: name.to_string(),
@@ -280,7 +279,7 @@ impl Database {
         let plan = g
             .plan_schema_version_with_indexes(cid, fields, indexes)
             .map_err(db_error_to_py)?;
-        let d = PyDict::new_bound(py);
+        let d = PyDict::new(py);
         let (kind, reason) = schema_change_to_str(&plan.change);
         d.set_item("change", kind)?;
         if let Some(r) = reason {
@@ -426,7 +425,7 @@ impl Database {
     fn snapshot_bytes(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let g = lock_inner(&self.inner)?;
         let v = g.snapshot_bytes()?;
-        Ok(PyBytes::new_bound(py, &v).unbind())
+        Ok(PyBytes::new(py, &v).unbind())
     }
 
     /// Export a consistent snapshot of this database to `dest_path`.
@@ -461,8 +460,7 @@ impl Database {
     /// Return a context manager for a multi-write transaction (commits on success, rolls back on exception).
     #[pyo3(name = "transaction")]
     fn py_transaction(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyTransaction>> {
-        let any: Py<PyAny> = slf.into_py(py);
-        let db: Py<Database> = any.bind(py).downcast::<Database>()?.clone().unbind();
+        let db: Py<Database> = slf.into_pyobject(py)?.unbind();
         Py::new(py, PyTransaction { db })
     }
 }

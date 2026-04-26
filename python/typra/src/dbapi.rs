@@ -182,51 +182,49 @@ fn py_get_at_path(
     py: Python<'_>,
     mut obj: Bound<'_, PyAny>,
     parts: &[String],
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     for (i, seg) in parts.iter().enumerate() {
         if obj.is_none() {
             return Ok(py.None());
         }
         let d = obj
-            .downcast::<PyDict>()
+            .cast::<PyDict>()
             .map_err(|_| PyValueError::new_err(format!("expected dict at path segment {i}")))?;
         match d.get_item(seg)? {
             Some(v) => obj = v,
             None => return Ok(py.None()),
         }
     }
-    Ok(obj.into_py(py))
+    Ok(obj.into_pyobject(py)?.unbind().into())
 }
 
 fn make_description(py: Python<'_>, names: &[String]) -> PyResult<Py<PyAny>> {
     let mut cols = Vec::with_capacity(names.len());
     for n in names {
         // PEP 249: 7-item sequence; only name is required by most consumers.
-        let item = PyTuple::new_bound(
-            py,
-            [
-                n.into_py(py),
-                py.None(),
-                py.None(),
-                py.None(),
-                py.None(),
-                py.None(),
-                py.None(),
-            ],
-        );
+        let items: Vec<Py<PyAny>> = vec![
+            n.into_pyobject(py)?.unbind().into(),
+            py.None(),
+            py.None(),
+            py.None(),
+            py.None(),
+            py.None(),
+            py.None(),
+        ];
+        let item = PyTuple::new(py, items)?;
         cols.push(item.unbind());
     }
-    Ok(PyTuple::new_bound(py, cols).into_any().unbind())
+    Ok(PyTuple::new(py, cols)?.into_any().unbind())
 }
 
 #[pymethods]
 impl Cursor {
     #[getter]
-    fn description(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn description(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         Ok(self
             .description
             .as_ref()
-            .map(|x| x.clone_ref(py).into_py(py))
+            .map(|x| x.clone_ref(py).into_any())
             .unwrap_or_else(|| py.None()))
     }
 
@@ -266,7 +264,7 @@ impl Cursor {
                 let v = py_get_at_path(py, d.clone().into_any(), &parts)?;
                 items.push(v);
             }
-            self.buffer.push(PyTuple::new_bound(py, items).unbind());
+            self.buffer.push(PyTuple::new(py, items)?.unbind());
             self.offset += 1;
         }
         Ok(())
@@ -285,13 +283,13 @@ impl Cursor {
         let parsed = typra_core::sql::parse_select(&sql).map_err(db_error_to_py)?;
 
         let params_obj = match params {
-            None => PyTuple::empty_bound(py).into_any(),
+            None => PyTuple::empty(py).into_any(),
             Some(p) => {
                 if p.is_none() {
-                    PyTuple::empty_bound(py).into_any()
-                } else if let Ok(t) = p.downcast::<PyTuple>() {
+                    PyTuple::empty(py).into_any()
+                } else if let Ok(t) = p.cast::<PyTuple>() {
                     t.clone().into_any()
-                } else if let Ok(l) = p.downcast::<PyList>() {
+                } else if let Ok(l) = p.cast::<PyList>() {
                     l.clone().into_any()
                 } else {
                     return Err(PyValueError::new_err("params must be a tuple or list"));
@@ -363,28 +361,28 @@ impl Cursor {
         Ok(())
     }
 
-    fn fetchone(&mut self, py: Python<'_>) -> PyResult<PyObject> {
+    fn fetchone(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         self.refill(py, 1)?;
         if self.buffer.is_empty() {
             return Ok(py.None());
         }
         let r = self.buffer.remove(0).clone_ref(py);
-        Ok(r.into_py(py))
+        Ok(r.into_any())
     }
 
     #[pyo3(signature = (size=1))]
-    fn fetchmany(&mut self, py: Python<'_>, size: usize) -> PyResult<PyObject> {
-        let out = PyList::empty_bound(py);
+    fn fetchmany(&mut self, py: Python<'_>, size: usize) -> PyResult<Py<PyAny>> {
+        let out = PyList::empty(py);
         self.refill(py, size)?;
         let n = std::cmp::min(size, self.buffer.len());
         for _ in 0..n {
             out.append(self.buffer.remove(0).clone_ref(py))?;
         }
-        Ok(out.into_py(py))
+        Ok(out.into_any().unbind())
     }
 
-    fn fetchall(&mut self, py: Python<'_>) -> PyResult<PyObject> {
-        let out = PyList::empty_bound(py);
+    fn fetchall(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let out = PyList::empty(py);
         loop {
             self.refill(py, 1024)?;
             if self.buffer.is_empty() {
@@ -394,6 +392,6 @@ impl Cursor {
                 out.append(self.buffer.remove(0).clone_ref(py))?;
             }
         }
-        Ok(out.into_py(py))
+        Ok(out.into_any().unbind())
     }
 }
