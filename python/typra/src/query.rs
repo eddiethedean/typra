@@ -107,11 +107,11 @@ fn field_defs_allowlist(
     fields: &Bound<'_, PyAny>,
 ) -> PyResult<Vec<FieldDef>> {
     let mut out = Vec::new();
-    if let Ok(list) = fields.downcast::<PyList>() {
+    if let Ok(list) = fields.cast::<PyList>() {
         for item in list.iter() {
             out.push(one_path_to_field_def(col, &item)?);
         }
-    } else if let Ok(tup) = fields.downcast::<PyTuple>() {
+    } else if let Ok(tup) = fields.cast::<PyTuple>() {
         for item in tup.iter() {
             out.push(one_path_to_field_def(col, &item)?);
         }

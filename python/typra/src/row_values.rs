@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyBytes, PyDict, PyDictMethods, PyList, PyListMethods};
-use pyo3::IntoPy;
 use typra_core::catalog::CollectionInfo;
 use typra_core::record::{RowValue, ScalarValue};
 use typra_core::schema::{FieldDef, Type};
@@ -51,7 +50,7 @@ pub fn row_from_dict(
         prefix_len: usize,
     ) -> PyResult<RowValue> {
         let d = obj
-            .downcast::<PyDict>()
+            .cast::<PyDict>()
             .map_err(|_| PyValueError::new_err("expected dict for nested object"))?;
         let mut out = BTreeMap::new();
 
@@ -148,7 +147,7 @@ pub fn value_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>, ty: &Type) -> PyRes
         }
         Type::List(inner) => {
             let list = obj
-                .downcast::<PyList>()
+                .cast::<PyList>()
                 .map_err(|_| PyValueError::new_err("expected list for list type"))?;
             let mut items = Vec::with_capacity(list.len());
             for item in list.iter() {
@@ -158,7 +157,7 @@ pub fn value_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>, ty: &Type) -> PyRes
         }
         Type::Object(fields) => {
             let d = obj
-                .downcast::<PyDict>()
+                .cast::<PyDict>()
                 .map_err(|_| PyValueError::new_err("expected dict for object type"))?;
             let mut map = BTreeMap::new();
             for sub in fields {
@@ -220,10 +219,10 @@ pub fn scalar_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>, ty: &Type) -> PyRe
         Type::String => obj.extract::<String>().map(ScalarValue::String),
         Type::Bytes => obj.extract::<Vec<u8>>().map(ScalarValue::Bytes),
         Type::Uuid => {
-            let uuid_cls = py.import_bound("uuid")?.getattr("UUID")?;
+            let uuid_cls = py.import("uuid")?.getattr("UUID")?;
             let bytes: Vec<u8> = if let Ok(b) = obj.extract::<[u8; 16]>() {
                 b.to_vec()
-            } else if let Ok(b) = obj.downcast::<PyBytes>() {
+            } else if let Ok(b) = obj.cast::<PyBytes>() {
                 b.as_bytes().to_vec()
             } else if obj.is_instance(&uuid_cls)? {
                 obj.getattr("bytes")?.extract::<Vec<u8>>()?
@@ -250,7 +249,7 @@ pub fn row_to_dict<'py>(
     py: Python<'py>,
     row: &BTreeMap<String, RowValue>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let d = PyDict::new_bound(py);
+    let d = PyDict::new(py);
     for (k, v) in row {
         d.set_item(k, row_value_to_py(py, v)?)?;
     }
@@ -259,34 +258,34 @@ pub fn row_to_dict<'py>(
 
 fn row_value_to_py(py: Python<'_>, v: &RowValue) -> PyResult<Py<PyAny>> {
     match v {
-        RowValue::Bool(b) => Ok(b.into_py(py)),
-        RowValue::Int64(n) => Ok(n.into_py(py)),
-        RowValue::Uint64(n) => Ok(n.into_py(py)),
-        RowValue::Float64(n) => Ok(n.into_py(py)),
-        RowValue::String(s) => Ok(s.into_py(py)),
-        RowValue::Bytes(b) => Ok(PyBytes::new_bound(py, b.as_slice()).into_any().unbind()),
+        RowValue::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().unbind().into()),
+        RowValue::Int64(n) => Ok(n.into_pyobject(py)?.unbind().into()),
+        RowValue::Uint64(n) => Ok(n.into_pyobject(py)?.unbind().into()),
+        RowValue::Float64(n) => Ok(n.into_pyobject(py)?.unbind().into()),
+        RowValue::String(s) => Ok(s.into_pyobject(py)?.unbind().into()),
+        RowValue::Bytes(b) => Ok(PyBytes::new(py, b.as_slice()).into_any().unbind()),
         RowValue::Uuid(u) => {
-            let uuid_mod = py.import_bound("uuid")?;
+            let uuid_mod = py.import("uuid")?;
             let uuid_cls = uuid_mod.getattr("UUID")?;
-            let kwargs = PyDict::new_bound(py);
-            kwargs.set_item("bytes", PyBytes::new_bound(py, u))?;
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("bytes", PyBytes::new(py, u))?;
             let uu = uuid_cls.call((), Some(&kwargs))?;
             Ok(uu.unbind())
         }
-        RowValue::Timestamp(t) => Ok(t.into_py(py)),
+        RowValue::Timestamp(t) => Ok(t.into_pyobject(py)?.unbind().into()),
         RowValue::None => {
             let n: Option<i32> = None;
-            Ok(n.into_py(py))
+            Ok(n.into_pyobject(py)?.unbind().into())
         }
         RowValue::List(items) => {
-            let list = PyList::empty_bound(py);
+            let list = PyList::empty(py);
             for item in items {
                 list.append(row_value_to_py(py, item)?)?;
             }
             Ok(list.into_any().unbind())
         }
         RowValue::Object(m) => {
-            let d = PyDict::new_bound(py);
+            let d = PyDict::new(py);
             for (k, rv) in m {
                 d.set_item(k, row_value_to_py(py, rv)?)?;
             }

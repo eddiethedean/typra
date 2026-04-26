@@ -12,7 +12,7 @@ use typra_core::FieldDef;
 use crate::database::{lock_inner, Database};
 use crate::errors::db_error_to_py;
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct IndexSpec {
     #[pyo3(get)]
@@ -31,7 +31,7 @@ pub struct ConstraintSpec {
     pub value: Option<Py<PyAny>>,
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct FieldRef {
     #[pyo3(get)]
@@ -149,11 +149,11 @@ fn primary_key_for(cls: &Bound<'_, PyAny>) -> PyResult<String> {
 }
 
 fn typing_mod(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    PyModule::import_bound(py, "typing")
+    PyModule::import(py, "typing")
 }
 
 fn dataclasses_mod(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
-    PyModule::import_bound(py, "dataclasses")
+    PyModule::import(py, "dataclasses")
 }
 
 fn is_dataclass(py: Python<'_>, cls: &Bound<'_, PyAny>) -> PyResult<bool> {
@@ -163,13 +163,13 @@ fn is_dataclass(py: Python<'_>, cls: &Bound<'_, PyAny>) -> PyResult<bool> {
 }
 
 fn pydantic_is_model(py: Python<'_>, cls: &Bound<'_, PyAny>) -> PyResult<bool> {
-    let Ok(pyd) = PyModule::import_bound(py, "pydantic") else {
+    let Ok(pyd) = PyModule::import(py, "pydantic") else {
         return Ok(false);
     };
     let Ok(base) = pyd.getattr("BaseModel") else {
         return Ok(false);
     };
-    let builtins = PyModule::import_bound(py, "builtins")?;
+    let builtins = PyModule::import(py, "builtins")?;
     builtins
         .getattr("issubclass")?
         .call1((cls, base))?
@@ -180,10 +180,10 @@ fn get_type_hints(py: Python<'_>, cls: &Bound<'_, PyAny>) -> PyResult<Py<PyDict>
     let t = typing_mod(py)?;
     let f = t.getattr("get_type_hints")?;
     // Python 3.11+: include_extras preserves typing.Annotated metadata.
-    let kwargs = PyDict::new_bound(py);
+    let kwargs = PyDict::new(py);
     let _ = kwargs.set_item("include_extras", true);
     let res = f.call((cls,), Some(&kwargs)).or_else(|_| f.call1((cls,)))?;
-    Ok(res.downcast_into::<PyDict>()?.unbind())
+    Ok(res.cast_into::<PyDict>()?.unbind())
 }
 
 #[allow(clippy::type_complexity)]
@@ -197,7 +197,7 @@ fn origin_and_args<'py>(
     let args_any = typing.getattr("get_args")?.call1((t,))?;
     let args = if args_any.is_none() {
         Vec::new()
-    } else if let Ok(tup) = args_any.downcast::<PyTuple>() {
+    } else if let Ok(tup) = args_any.cast::<PyTuple>() {
         tup.iter().map(|a| a.to_owned()).collect()
     } else {
         Vec::new()
@@ -208,7 +208,7 @@ fn origin_and_args<'py>(
 fn is_none_type(py: Python<'_>, t: &Bound<'_, PyAny>) -> PyResult<bool> {
     // `types.NoneType` exists on Python 3.10+, but Typra supports Python 3.9+.
     // Use `type(None)` via the runtime singleton instead.
-    let builtins = PyModule::import_bound(py, "builtins")?;
+    let builtins = PyModule::import(py, "builtins")?;
     let none_obj = py.None();
     let none_type = builtins.getattr("type")?.call1((none_obj,))?;
     Ok(t.is(&none_type))
@@ -219,7 +219,7 @@ fn py_to_typra_type(py: Python<'_>, t: &Bound<'_, PyAny>, depth: usize) -> PyRes
         return Err(PyValueError::new_err("model type nesting too deep"));
     }
 
-    let builtins = PyModule::import_bound(py, "builtins")?;
+    let builtins = PyModule::import(py, "builtins")?;
     let str_t = builtins.getattr("str")?;
     let int_t = builtins.getattr("int")?;
     let float_t = builtins.getattr("float")?;
@@ -243,7 +243,7 @@ fn py_to_typra_type(py: Python<'_>, t: &Bound<'_, PyAny>, depth: usize) -> PyRes
     }
 
     // uuid.UUID
-    if let Ok(uuid_mod) = PyModule::import_bound(py, "uuid") {
+    if let Ok(uuid_mod) = PyModule::import(py, "uuid") {
         if let Ok(uuid_t) = uuid_mod.getattr("UUID") {
             if t.is(&uuid_t) {
                 return Ok(Type::Uuid);
@@ -251,7 +251,7 @@ fn py_to_typra_type(py: Python<'_>, t: &Bound<'_, PyAny>, depth: usize) -> PyRes
         }
     }
     // datetime.datetime
-    if let Ok(dt_mod) = PyModule::import_bound(py, "datetime") {
+    if let Ok(dt_mod) = PyModule::import(py, "datetime") {
         if let Ok(dt_t) = dt_mod.getattr("datetime") {
             if t.is(&dt_t) {
                 return Ok(Type::Timestamp);
@@ -309,9 +309,9 @@ fn py_to_typra_type(py: Python<'_>, t: &Bound<'_, PyAny>, depth: usize) -> PyRes
     }
 
     // enum.Enum -> string-backed enum variants
-    if let Ok(enum_mod) = PyModule::import_bound(py, "enum") {
+    if let Ok(enum_mod) = PyModule::import(py, "enum") {
         if let Ok(enum_base) = enum_mod.getattr("Enum") {
-            let builtins = PyModule::import_bound(py, "builtins")?;
+            let builtins = PyModule::import(py, "builtins")?;
             let is_sub: bool = builtins
                 .getattr("issubclass")?
                 .call1((t, enum_base))?
@@ -319,7 +319,7 @@ fn py_to_typra_type(py: Python<'_>, t: &Bound<'_, PyAny>, depth: usize) -> PyRes
                 .unwrap_or(false);
             if is_sub {
                 let members_any = t.getattr("__members__")?;
-                let members = members_any.downcast::<PyDict>()?;
+                let members = members_any.cast::<PyDict>()?;
                 let mut variants = Vec::with_capacity(members.len());
                 for (k, _) in members.iter() {
                     variants.push(k.extract::<String>()?);
@@ -356,7 +356,7 @@ fn field_constraints_from_annotated(
             out.extend(constraint_spec_to_engine(py, &spec)?);
             continue;
         }
-        if let Ok(list) = meta.downcast::<PyList>() {
+        if let Ok(list) = meta.cast::<PyList>() {
             for item in list.iter() {
                 if let Ok(spec) = item.extract::<PyRef<'_, ConstraintSpec>>() {
                     out.extend(constraint_spec_to_engine(py, &spec)?);
@@ -458,7 +458,7 @@ fn indexes_from_model(
     if v.is_none() {
         return Ok(out);
     }
-    let list = v.downcast::<PyList>().map_err(|_| {
+    let list = v.cast::<PyList>().map_err(|_| {
         PyValueError::new_err("__typra_indexes__ must be a list of typra.models.index/unique specs")
     })?;
     for item in list.iter() {
@@ -486,11 +486,11 @@ fn indexes_from_model(
 
 fn normalize_value(py: Python<'_>, v: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
     // enum.Enum -> use `.value` if it's str/int/float/bool, else `.name`
-    if let Ok(enum_mod) = PyModule::import_bound(py, "enum") {
+    if let Ok(enum_mod) = PyModule::import(py, "enum") {
         if let Ok(enum_base) = enum_mod.getattr("Enum") {
             if v.is_instance(&enum_base)? {
                 let value = v.getattr("value")?;
-                if value.downcast::<PyString>().is_ok()
+                if value.cast::<PyString>().is_ok()
                     || value.extract::<i64>().is_ok()
                     || value.extract::<f64>().is_ok()
                     || value.extract::<bool>().is_ok()
@@ -512,8 +512,8 @@ fn obj_to_row_dict(
 ) -> PyResult<Py<PyDict>> {
     if is_pydantic {
         let d = obj.call_method0("model_dump")?;
-        let d = d.downcast_into::<PyDict>()?;
-        let out = PyDict::new_bound(py);
+        let d = d.cast_into::<PyDict>()?;
+        let out = PyDict::new(py);
         for (k, v) in d.iter() {
             out.set_item(k, normalize_value(py, &v)?)?;
         }
@@ -521,8 +521,8 @@ fn obj_to_row_dict(
     }
     let dc = dataclasses_mod(py)?;
     let asdict = dc.getattr("asdict")?;
-    let d = asdict.call1((obj,))?.downcast_into::<PyDict>()?;
-    let out = PyDict::new_bound(py);
+    let d = asdict.call1((obj,))?.cast_into::<PyDict>()?;
+    let out = PyDict::new(py);
     for (k, v) in d.iter() {
         out.set_item(k, normalize_value(py, &v)?)?;
     }
@@ -609,7 +609,7 @@ pub fn collection(
 
 fn path_any_to_py<'py>(py: Python<'py>, path: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     if let Ok(fr) = path.extract::<PyRef<'_, FieldRef>>() {
-        let tup = PyTuple::new_bound(py, fr.path.iter().map(|s| s.as_str()));
+        let tup = PyTuple::new(py, fr.path.iter().map(|s| s.as_str()))?;
         return Ok(tup.into_any());
     }
     Ok(path.clone())
@@ -635,7 +635,7 @@ impl ModelCollection {
         if row.is_none() {
             return Ok(None);
         }
-        let d = row.downcast::<PyDict>()?;
+        let d = row.cast::<PyDict>()?;
         let cls = self.model_cls.bind(py);
         let obj = dict_to_obj(py, cls, d, self.is_pydantic)?;
         Ok(Some(obj))
@@ -668,16 +668,16 @@ impl ModelCollection {
         let rows_any = match fields {
             None => col.call_method0("all")?,
             Some(f) => {
-                let kwargs = PyDict::new_bound(py);
+                let kwargs = PyDict::new(py);
                 kwargs.set_item("fields", f)?;
                 col.call_method("all", (), Some(&kwargs))?
             }
         };
-        let rows = rows_any.downcast::<PyList>()?;
+        let rows = rows_any.cast::<PyList>()?;
         let cls = self.model_cls.bind(py);
         let mut out = Vec::with_capacity(rows.len());
         for item in rows.iter() {
-            let d = item.downcast::<PyDict>()?;
+            let d = item.cast::<PyDict>()?;
             out.push(dict_to_obj(py, cls, d, self.is_pydantic)?);
         }
         Ok(out)
@@ -694,16 +694,16 @@ impl ModelCollection {
         if current.is_none() {
             return Err(PyValueError::new_err("cannot update missing row"));
         }
-        let current = current.downcast::<PyDict>()?;
+        let current = current.cast::<PyDict>()?;
 
-        let patch_dict = if let Ok(d) = patch.downcast::<PyDict>() {
+        let patch_dict = if let Ok(d) = patch.cast::<PyDict>() {
             d.clone().unbind()
         } else {
             obj_to_row_dict(py, patch, self.is_pydantic)?
         };
         let patch_dict = patch_dict.bind(py);
 
-        let merged = PyDict::new_bound(py);
+        let merged = PyDict::new(py);
         for (k, v) in current.iter() {
             merged.set_item(k, v)?;
         }
@@ -769,16 +769,16 @@ impl ModelQuery {
         let rows_any = match fields.as_ref() {
             None => self.inner.bind(py).call_method0("all")?,
             Some(f) => {
-                let kwargs = PyDict::new_bound(py);
+                let kwargs = PyDict::new(py);
                 kwargs.set_item("fields", f)?;
                 self.inner.bind(py).call_method("all", (), Some(&kwargs))?
             }
         };
-        let rows = rows_any.downcast::<PyList>()?;
+        let rows = rows_any.cast::<PyList>()?;
         let cls = self.model_cls.bind(py);
         let mut out = Vec::with_capacity(rows.len());
         for item in rows.iter() {
-            let d = item.downcast::<PyDict>()?;
+            let d = item.cast::<PyDict>()?;
             out.push(dict_to_obj(py, cls, d, self.is_pydantic)?);
         }
         Ok(out)
@@ -797,8 +797,9 @@ pub fn plan(py: Python<'_>, db: Py<Database>, model_cls: Bound<'_, PyAny>) -> Py
     let fields_json = schema_to_fields_json(py, &fields)?;
     let indexes_json = schema_to_indexes_json(py, &indexes)?;
     let db = db.bind(py);
-    db.call_method1("plan_schema_version", (&name, fields_json, indexes_json))?
-        .extract::<Py<PyAny>>()
+    Ok(db
+        .call_method1("plan_schema_version", (&name, fields_json, indexes_json))?
+        .extract::<Py<PyAny>>()?)
 }
 
 #[pyfunction]
@@ -819,7 +820,7 @@ pub fn apply(
         "register_schema_version",
         (&name, fields_json, indexes_json),
         Some(&{
-            let kwargs = PyDict::new_bound(py);
+            let kwargs = PyDict::new(py);
             kwargs.set_item("force", force)?;
             kwargs
         }),
