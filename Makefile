@@ -17,6 +17,7 @@ MATURIN ?= $(PYTHON) -m maturin
 .PHONY: docs-install docs-check docs
 .PHONY: coverage coverage-rust coverage-python
 .PHONY: coverage-rust-core
+.PHONY: coverage-rust-core-branch
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-doc rust-test
 
@@ -135,6 +136,15 @@ coverage-rust-core:
 		--query-min-lines $(COVERAGE_CORE_QUERY_LINES) \
 		--index-min-lines $(COVERAGE_CORE_INDEX_LINES) \
 		--validation-min-lines $(COVERAGE_CORE_VALIDATION_LINES)
+
+coverage-rust-core-branch:
+	@mkdir -p target/coverage
+	@CI=1 cargo +nightly llvm-cov -p typra-core --all-features --branch \
+		--json --output-path target/coverage/typra-core.branch.json
+	@$(PYTHON) scripts/coverage_branches.py target/coverage/typra-core.branch.json \
+		--repo-root $(CURDIR) \
+		--crate-path crates/typra-core \
+		--min-branch-pct 100
 
 coverage-python: python-develop
 	@mkdir -p target/coverage

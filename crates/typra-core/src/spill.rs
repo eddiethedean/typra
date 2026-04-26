@@ -157,4 +157,15 @@ mod tests {
         // Dropping the guard truncates to the original length.
         assert_eq!(base.len().unwrap(), base_len);
     }
+
+    #[test]
+    #[should_panic(expected = "spill store already taken")]
+    fn temp_spill_file_store_mut_panics_when_taken() {
+        let spill: TempSpillFile<VecStore> = TempSpillFile {
+            store: None,
+            base_len: 0,
+        };
+        let mut spill = spill;
+        let _ = spill.store_mut();
+    }
 }
