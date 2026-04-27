@@ -3726,6 +3726,184 @@ mod tests {
     }
 
     #[test]
+    fn insert_replace_unique_index_changes_key_exercises_delete_entries_without_violation() {
+        // Covers the unique-index check loop for:
+        // - delete entries (e.op != Insert) where lookup returns Some(...)
+        // - insert entries where lookup returns None (new key)
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+
+        let mut db = Database::open_in_memory().unwrap();
+        let indexes = vec![IndexDef {
+            name: "x_uq".to_string(),
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            kind: IndexKind::Unique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![path_field("id"), path_field("x")],
+                indexes,
+                "id",
+            )
+            .unwrap();
+
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            m.insert("x".to_string(), RowValue::String("a".to_string()));
+            m
+        })
+        .unwrap();
+
+        // Replace same PK but change unique index key; should not report UniqueIndexViolation.
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            m.insert("x".to_string(), RowValue::String("b".to_string()));
+            m
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn plan_insert_row_nested_schema_rejects_unknown_leaf_and_traverses_non_object_leaves() {
+        use crate::catalog::CatalogRecordWire;
+        use crate::schema::{FieldDef, FieldPath, Type};
+        use crate::{Catalog, CollectionId};
+        use crate::ScalarValue;
+        use std::borrow::Cow;
+
+        // Build a catalog with a nested optional field a.b and PK id.
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("id")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("b")]),
+                        ty: Type::Optional(Box::new(Type::String)),
+                        constraints: vec![],
+                    },
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        // Unknown leaf path: a.c is not in schema.
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), RowValue::String("pk".to_string()));
+        row.insert(
+            "a".to_string(),
+            RowValue::Object(BTreeMap::from([(
+                "c".to_string(),
+                RowValue::String("oops".to_string()),
+            )])),
+        );
+        let err = super::plan_insert_row(&catalog, CollectionId(1), row).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::RowUnknownField { .. })
+        ));
+
+        // Non-object leaves should be treated as leaves at that path and rejected (a is scalar).
+        let mut row2 = BTreeMap::new();
+        row2.insert("id".to_string(), RowValue::String("pk2".to_string()));
+        row2.insert("a".to_string(), RowValue::String("not_object".to_string()));
+        let err = super::plan_insert_row(&catalog, CollectionId(1), row2).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::RowUnknownField { .. })
+        ));
+
+        // Optional nested field absent: provide empty object for a so b is missing but allowed.
+        let mut row3 = BTreeMap::new();
+        row3.insert("id".to_string(), RowValue::String("pk3".to_string()));
+        row3.insert("a".to_string(), RowValue::Object(BTreeMap::new()));
+        let (_payload, (_pk_key, full), _idx, pk_scalar) =
+            super::plan_insert_row(&catalog, CollectionId(1), row3).unwrap();
+        assert_eq!(pk_scalar, ScalarValue::String("pk3".to_string()));
+        assert!(full.contains_key("id"));
+    }
+
+    #[test]
+    fn plan_insert_row_covers_pk_scan_and_pk_validation_error_branches() {
+        use crate::catalog::CatalogRecordWire;
+        use crate::schema::{FieldDef, FieldPath, Type};
+        use crate::{Catalog, CollectionId};
+        use std::borrow::Cow;
+
+        // 1) Cover pk_def scan branch where we skip a non-PK top-level field first.
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("other")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("id")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        // Row missing PK triggers RowMissingPrimary.
+        let mut row_missing_pk = BTreeMap::new();
+        row_missing_pk.insert("other".to_string(), RowValue::String("x".to_string()));
+        let err = super::plan_insert_row(&catalog, CollectionId(1), row_missing_pk).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::RowMissingPrimary { .. })
+        ));
+
+        // Non-scalar PK value is rejected during type validation.
+        let mut row_bad_pk = BTreeMap::new();
+        row_bad_pk.insert("id".to_string(), RowValue::Object(BTreeMap::new()));
+        row_bad_pk.insert("other".to_string(), RowValue::String("x".to_string()));
+        let err = super::plan_insert_row(&catalog, CollectionId(1), row_bad_pk).unwrap_err();
+        assert!(matches!(err, DbError::Validation(_)));
+
+        // 2) Cover ensure_pk_type_primitive failing.
+        let mut catalog2 = Catalog::default();
+        catalog2
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t2".to_string(),
+                schema_version: 1,
+                fields: vec![FieldDef {
+                    path: FieldPath(vec![Cow::Borrowed("id")]),
+                    ty: Type::Optional(Box::new(Type::String)),
+                    constraints: vec![],
+                }],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), RowValue::String("pk".to_string()));
+        let err = super::plan_insert_row(&catalog2, CollectionId(1), row).unwrap_err();
+        assert!(matches!(err, DbError::Validation(_)));
+    }
+
+    #[test]
     fn query_iter_matches_execute_query_for_indexed_equality() {
         use crate::query::{Predicate, Query};
         use crate::schema::{FieldPath, IndexDef, IndexKind};
