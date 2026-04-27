@@ -41,6 +41,23 @@ type PlannedInsert = (
     ScalarValue,
 );
 
+/// Read a value from a row map following a multi-segment path (used by [`plan_insert_row`]).
+fn row_value_at_path_for_plan(
+    row: &BTreeMap<String, RowValue>,
+    path: &[std::borrow::Cow<'static, str>],
+) -> Option<RowValue> {
+    let first = path.first()?;
+    let mut cur = row.get(first.as_ref())?;
+    for seg in path.iter().skip(1) {
+        cur = match cur {
+            RowValue::Object(m) => m.get(seg.as_ref())?,
+            RowValue::None => return None,
+            _ => return None,
+        };
+    }
+    Some(cur.clone())
+}
+
 fn plan_insert_row(
     catalog: &Catalog,
     collection_id: CollectionId,
@@ -144,27 +161,9 @@ fn plan_insert_row(
         non_pk_defs_in_order(&col.fields, pk_name)
     };
 
-    fn row_value_at_path(
-        row: &BTreeMap<String, RowValue>,
-        path: &[std::borrow::Cow<'static, str>],
-    ) -> Option<RowValue> {
-        if path.is_empty() {
-            return None;
-        }
-        let mut cur = row.get(path[0].as_ref())?;
-        for seg in path.iter().skip(1) {
-            cur = match cur {
-                RowValue::Object(m) => m.get(seg.as_ref())?,
-                RowValue::None => return None,
-                _ => return None,
-            };
-        }
-        Some(cur.clone())
-    }
-
     let mut non_pk: Vec<(FieldDef, RowValue)> = Vec::with_capacity(non_pk_defs.len());
     for def in &non_pk_defs {
-        let v = match row_value_at_path(&row, &def.path.0) {
+        let v = match row_value_at_path_for_plan(&row, &def.path.0) {
             Some(x) => x,
             None if validation::allows_absent_root(&def.ty) => RowValue::None,
             None => {
@@ -205,15 +204,14 @@ fn plan_insert_row(
     full_map.insert(pk_name.to_string(), pk_val);
     for (def, v) in &non_pk {
         let parts: Vec<String> = def.path.0.iter().map(|s| s.as_ref().to_string()).collect();
-        if parts.is_empty() {
-            continue;
-        }
+        debug_assert!(!parts.is_empty(), "catalog field paths are non-empty");
+        let root = &parts[0];
         if parts.len() == 1 {
-            full_map.insert(parts[0].clone(), v.clone());
+            full_map.insert(root.clone(), v.clone());
         } else {
             // Reuse local helper below (same as projection merge semantics).
             let mut cur: &mut RowValue = full_map
-                .entry(parts[0].clone())
+                .entry(root.clone())
                 .or_insert_with(|| RowValue::Object(BTreeMap::new()));
             for seg in parts.iter().skip(1).take(parts.len() - 2) {
                 cur = match cur {
@@ -359,10 +357,9 @@ impl<S: Store> Database<S> {
     }
 
     fn next_txn_id(&mut self) -> u64 {
+        // `saturating_add` never yields 0 from any starting `txn_seq`, so a post-increment
+        // zero-check would be dead code (and shows up as an impossible branch in llvm-cov).
         self.txn_seq = self.txn_seq.saturating_add(1);
-        if self.txn_seq == 0 {
-            self.txn_seq = 1;
-        }
         self.txn_seq
     }
 
@@ -3901,6 +3898,183 @@ mod tests {
         row.insert("id".to_string(), RowValue::String("pk".to_string()));
         let err = super::plan_insert_row(&catalog2, CollectionId(1), row).unwrap_err();
         assert!(matches!(err, DbError::Validation(_)));
+    }
+
+    #[test]
+    fn register_collection_rejects_whitespace_only_primary_field() {
+        let mut db = Database::open_in_memory().unwrap();
+        let err = db
+            .register_collection("t", vec![path_field("id")], "   \t")
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::InvalidCollectionName)
+        ));
+    }
+
+    #[test]
+    fn plan_insert_row_skips_index_when_optional_indexed_scalar_is_absent() {
+        use crate::catalog::CatalogRecordWire;
+        use crate::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
+        use crate::{Catalog, CollectionId};
+        use std::borrow::Cow;
+
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("id")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("email")]),
+                        ty: Type::Optional(Box::new(Type::String)),
+                        constraints: vec![],
+                    },
+                ],
+                indexes: vec![IndexDef {
+                    name: "email_idx".to_string(),
+                    path: FieldPath(vec![Cow::Owned("email".to_string())]),
+                    kind: IndexKind::NonUnique,
+                }],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), RowValue::String("pk".to_string()));
+        let (_payload, _full, index_entries, _pk) =
+            super::plan_insert_row(&catalog, CollectionId(1), row).unwrap();
+        assert!(
+            index_entries.is_empty(),
+            "optional absent scalar should not emit index ops"
+        );
+    }
+
+    #[test]
+    fn row_value_at_path_for_plan_non_object_middle_returns_none() {
+        let mut row = BTreeMap::new();
+        row.insert(
+            "a".to_string(),
+            RowValue::Object(BTreeMap::from([(
+                "b".to_string(),
+                RowValue::String("x".to_string()),
+            )])),
+        );
+        let path = vec![
+            Cow::Borrowed("a"),
+            Cow::Borrowed("b"),
+            Cow::Borrowed("c"),
+        ];
+        assert!(super::row_value_at_path_for_plan(&row, &path).is_none());
+    }
+
+    #[test]
+    fn row_value_at_path_for_plan_none_middle_returns_none() {
+        let mut row = BTreeMap::new();
+        row.insert(
+            "a".to_string(),
+            RowValue::Object(BTreeMap::from([("b".to_string(), RowValue::None)])),
+        );
+        let path = vec![
+            Cow::Borrowed("a"),
+            Cow::Borrowed("b"),
+            Cow::Borrowed("c"),
+        ];
+        assert!(super::row_value_at_path_for_plan(&row, &path).is_none());
+    }
+
+    #[test]
+    fn row_value_at_path_for_plan_empty_path_returns_none() {
+        let row: BTreeMap<String, RowValue> = BTreeMap::new();
+        let path: Vec<Cow<'static, str>> = Vec::new();
+        assert!(super::row_value_at_path_for_plan(&row, &path).is_none());
+    }
+
+    #[test]
+    fn plan_insert_row_three_segment_field_runs_nested_prefix_loop() {
+        use crate::catalog::CatalogRecordWire;
+        use crate::schema::{FieldDef, FieldPath, Type};
+        use crate::{Catalog, CollectionId};
+        use std::borrow::Cow;
+
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("id")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                    FieldDef {
+                        path: FieldPath(vec![
+                            Cow::Borrowed("a"),
+                            Cow::Borrowed("b"),
+                            Cow::Borrowed("c"),
+                        ]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), RowValue::String("p1".to_string()));
+        row.insert(
+            "a".to_string(),
+            RowValue::Object(BTreeMap::from([(
+                "b".to_string(),
+                RowValue::Object(BTreeMap::from([(
+                    "c".to_string(),
+                    RowValue::String("z".to_string()),
+                )])),
+            )])),
+        );
+        super::plan_insert_row(&catalog, CollectionId(1), row).unwrap();
+    }
+
+    #[test]
+    fn delete_skips_index_delete_when_optional_indexed_scalar_is_absent() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind, Type};
+
+        let mut db = Database::open_in_memory().unwrap();
+        let mut email_def = path_field("email");
+        email_def.ty = Type::Optional(Box::new(Type::String));
+        let indexes = vec![IndexDef {
+            name: "email_idx".to_string(),
+            path: FieldPath(vec![Cow::Owned("email".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![path_field("id"), email_def],
+                indexes,
+                "id",
+            )
+            .unwrap();
+        db.insert(
+            cid,
+            {
+                let mut m = BTreeMap::new();
+                m.insert("id".to_string(), RowValue::String("k".to_string()));
+                m
+            },
+        )
+        .unwrap();
+        db.delete(cid, &ScalarValue::String("k".to_string())).unwrap();
     }
 
     #[test]
