@@ -140,13 +140,21 @@ pub fn checkpoint_from_state(
                 .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
                     collection_id: col.id.0,
                 }))?;
-        let pk_def = col
-            .fields
-            .iter()
-            .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-            .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-                name: pk_name.to_string(),
-            }))?;
+        let mut pk_def = None;
+        let mut non_pk_defs: Vec<crate::schema::FieldDef> = Vec::new();
+        for f in &col.fields {
+            if f.path.0.len() != 1 {
+                continue;
+            }
+            if f.path.0[0] == pk_name {
+                pk_def = Some(f.clone());
+            } else {
+                non_pk_defs.push(f.clone());
+            }
+        }
+        let pk_def = pk_def.ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+            name: pk_name.to_string(),
+        }))?;
         let pk_cell = row
             .get(pk_name)
             .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
@@ -154,12 +162,6 @@ pub fn checkpoint_from_state(
             }))?;
         let pk_scalar: ScalarValue = pk_cell.clone().into_scalar()?;
 
-        let non_pk_defs: Vec<_> = col
-            .fields
-            .iter()
-            .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
-            .cloned()
-            .collect();
         let mut ordered: Vec<(crate::schema::FieldDef, RowValue)> = Vec::new();
         for def in non_pk_defs {
             let key = def.path.0[0].as_ref();
@@ -233,8 +235,14 @@ fn apply_checkpoint_record_payload(
     let pk_ty = col
         .fields
         .iter()
-        .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-        .map(|f| &f.ty)
+        .filter(|f| f.path.0.len() == 1)
+        .find_map(|f| {
+            if f.path.0[0] == pk_name {
+                Some(&f.ty)
+            } else {
+                None
+            }
+        })
         .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
             name: pk_name.to_string(),
         }))?;
@@ -311,5 +319,203 @@ impl<'a> Cursor<'a> {
         let slice = &self.bytes[self.pos..self.pos + n];
         self.pos += n;
         Ok(slice.to_vec())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+    use std::collections::BTreeMap;
+
+    use super::{checkpoint_from_state, decode_checkpoint_payload, CheckpointV0};
+    use crate::catalog::{Catalog, CatalogRecordWire};
+    use crate::index::IndexState;
+    use crate::record::{RowValue, ScalarValue};
+    use crate::schema::{FieldDef, FieldPath, Type};
+
+    fn field(name: &str, ty: Type) -> FieldDef {
+        FieldDef {
+            path: FieldPath(vec![Cow::Owned(name.to_string())]),
+            ty,
+            constraints: vec![],
+        }
+    }
+
+    #[test]
+    fn checkpoint_from_state_emits_new_schema_versions_when_current_version_gt_1() {
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "books".to_string(),
+                schema_version: 1,
+                // Put a non-PK first so PK lookup must scan at least one non-match.
+                // Also include a multi-segment field path to exercise the "skip non-top-level" path.
+                fields: vec![
+                    field("title", Type::String),
+                    field("id", Type::Int64),
+                    FieldDef {
+                        path: FieldPath(vec![
+                            Cow::Owned("meta".to_string()),
+                            Cow::Owned("x".to_string()),
+                        ]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+        catalog
+            .apply_record(CatalogRecordWire::NewSchemaVersion {
+                collection_id: 1,
+                schema_version: 2,
+                fields: vec![
+                    field("title", Type::String),
+                    field("id", Type::Int64),
+                    FieldDef {
+                        path: FieldPath(vec![
+                            Cow::Owned("meta".to_string()),
+                            Cow::Owned("x".to_string()),
+                        ]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                ],
+                indexes: vec![],
+            })
+            .unwrap();
+
+        let latest = crate::db::LatestMap::new();
+        let indexes = IndexState::default();
+
+        let cp = checkpoint_from_state(&catalog, &latest, &indexes).unwrap();
+        // CreateCollection + 1x NewSchemaVersion
+        assert_eq!(cp.catalog_records.len(), 2);
+        assert!(matches!(
+            cp.catalog_records[0],
+            CatalogRecordWire::CreateCollection { .. }
+        ));
+        assert!(matches!(
+            cp.catalog_records[1],
+            CatalogRecordWire::NewSchemaVersion { schema_version: 2, .. }
+        ));
+    }
+
+    #[test]
+    fn decode_checkpoint_payload_rejects_truncated_before_replay_offset() {
+        // version only, missing replay_from_offset u64.
+        let bytes = super::CHECKPOINT_VERSION_V0.to_le_bytes().to_vec();
+        assert!(decode_checkpoint_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_checkpoint_payload_rejects_empty_bytes() {
+        assert!(decode_checkpoint_payload(&[]).is_err());
+    }
+
+    #[test]
+    fn decode_checkpoint_payload_rejects_truncated_before_catalog_count_u32() {
+        // version + replay_from_offset, missing n_catalog u32.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&super::CHECKPOINT_VERSION_V0.to_le_bytes());
+        bytes.extend_from_slice(&0u64.to_le_bytes());
+        assert!(decode_checkpoint_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_checkpoint_payload_rejects_truncated_mid_catalog_record_bytes() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&super::CHECKPOINT_VERSION_V0.to_le_bytes());
+        bytes.extend_from_slice(&0u64.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // 1 catalog record
+        bytes.extend_from_slice(&10u32.to_le_bytes()); // claims 10 bytes
+        bytes.extend_from_slice(&[0u8; 3]); // too short
+        assert!(decode_checkpoint_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_checkpoint_payload_rejects_truncated_mid_index_blob_bytes() {
+        // Valid empty catalog/records, but truncated index blob bytes.
+        let cp = CheckpointV0 {
+            replay_from_offset: 0,
+            catalog_records: vec![],
+            record_payloads: vec![],
+            index_entries: vec![],
+        };
+        let mut bytes = super::encode_checkpoint_payload_v0(&cp);
+        // Append an index blob length then truncate so take_bytes fails.
+        bytes.extend_from_slice(&4u32.to_le_bytes());
+        bytes.extend_from_slice(&[1u8, 2u8]); // only 2/4 bytes present
+        assert!(decode_checkpoint_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn state_from_checkpoint_payload_rejects_truncated_record_payload() {
+        let cp = CheckpointV0 {
+            replay_from_offset: 0,
+            catalog_records: vec![],
+            record_payloads: vec![vec![0u8; 5]], // <6 bytes triggers TruncatedRecordPayload
+            index_entries: vec![],
+        };
+        let payload = super::encode_checkpoint_payload_v0(&cp);
+        assert!(super::state_from_checkpoint_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn state_from_checkpoint_payload_rejects_unknown_collection_in_record_payload() {
+        let cp = CheckpointV0 {
+            replay_from_offset: 0,
+            catalog_records: vec![],
+            // 6+ bytes so it passes the length check; bytes[2..6] encode collection_id.
+            record_payloads: vec![vec![0u8, 0u8, 99u8, 0u8, 0u8, 0u8]],
+            index_entries: vec![],
+        };
+        let payload = super::encode_checkpoint_payload_v0(&cp);
+        assert!(super::state_from_checkpoint_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn state_from_checkpoint_payload_roundtrips_one_row_and_exercises_field_scans() {
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "books".to_string(),
+                schema_version: 1,
+                // Non-PK first; includes multi-segment field to exercise skip path.
+                fields: vec![
+                    field("title", Type::String),
+                    field("id", Type::Int64),
+                    FieldDef {
+                        path: FieldPath(vec![
+                            Cow::Owned("meta".to_string()),
+                            Cow::Owned("x".to_string()),
+                        ]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), RowValue::Int64(1));
+        row.insert("title".to_string(), RowValue::String("a".to_string()));
+        // meta.x is omitted; not top-level and should not affect encoding.
+
+        let pk_key = ScalarValue::Int64(1).canonical_key_bytes();
+        let mut latest = crate::db::LatestMap::new();
+        latest.insert((1u32, pk_key.clone()), row);
+
+        let indexes = IndexState::default();
+        let cp = checkpoint_from_state(&catalog, &latest, &indexes).unwrap();
+        let payload = super::encode_checkpoint_payload_v0(&cp);
+
+        let (_off, _cat2, latest2, _idx2) = super::state_from_checkpoint_payload(&payload).unwrap();
+        assert!(latest2.contains_key(&(1u32, pk_key)));
     }
 }

@@ -359,9 +359,6 @@ pub fn parse_select(sql: &str) -> Result<SqlSelect, DbError> {
             p.bump();
             let n = match p.bump() {
                 Some(Tok::Number(n)) => n,
-                Some(Tok::Ident(s)) => s
-                    .parse::<usize>()
-                    .map_err(|_| err("LIMIT must be an integer"))?,
                 _ => return Err(err("expected integer after LIMIT")),
             };
             limit = Some(n);

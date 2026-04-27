@@ -109,12 +109,12 @@ pub enum CatalogRecordWire {
 pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError> {
     let mut cur = Cursor::new(bytes);
     let ver = cur.take_u16()?;
-    if ver != CATALOG_PAYLOAD_VERSION_V1
-        && ver != CATALOG_PAYLOAD_VERSION_V2
-        && ver != CATALOG_PAYLOAD_VERSION_V3
-        && ver != CATALOG_PAYLOAD_VERSION_V4
-    {
-        return Err(CatalogDecodeError::UnknownCatalogPayloadVersion { got: ver }.into());
+    match ver {
+        CATALOG_PAYLOAD_VERSION_V1
+        | CATALOG_PAYLOAD_VERSION_V2
+        | CATALOG_PAYLOAD_VERSION_V3
+        | CATALOG_PAYLOAD_VERSION_V4 => {}
+        _ => return Err(CatalogDecodeError::UnknownCatalogPayloadVersion { got: ver }.into()),
     }
     let kind = cur.take_u16()?;
     match kind {
@@ -123,15 +123,15 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
             let name = decode_name(&mut cur)?;
             let schema_version = cur.take_u32()?;
             let fields = decode_fields(&mut cur, ver)?;
-            let indexes = if ver >= CATALOG_PAYLOAD_VERSION_V4 {
-                decode_indexes(&mut cur)?
-            } else {
-                Vec::new()
+            let indexes = match ver {
+                CATALOG_PAYLOAD_VERSION_V4 => decode_indexes(&mut cur)?,
+                _ => Vec::new(),
             };
-            let primary_field = if ver >= CATALOG_PAYLOAD_VERSION_V2 {
-                decode_optional_primary_name(&mut cur)?
-            } else {
-                None
+            let primary_field = match ver {
+                CATALOG_PAYLOAD_VERSION_V2 | CATALOG_PAYLOAD_VERSION_V3 | CATALOG_PAYLOAD_VERSION_V4 => {
+                    decode_optional_primary_name(&mut cur)?
+                }
+                _ => None,
             };
             if cur.remaining() != 0 {
                 return Err(CatalogDecodeError::TrailingBytes.into());
@@ -149,10 +149,9 @@ pub fn decode_catalog_payload(bytes: &[u8]) -> Result<CatalogRecordWire, DbError
             let collection_id = cur.take_u32()?;
             let schema_version = cur.take_u32()?;
             let fields = decode_fields(&mut cur, ver)?;
-            let indexes = if ver >= CATALOG_PAYLOAD_VERSION_V4 {
-                decode_indexes(&mut cur)?
-            } else {
-                Vec::new()
+            let indexes = match ver {
+                CATALOG_PAYLOAD_VERSION_V4 => decode_indexes(&mut cur)?,
+                _ => Vec::new(),
             };
             if cur.remaining() != 0 {
                 return Err(CatalogDecodeError::TrailingBytes.into());
@@ -189,9 +188,7 @@ fn decode_optional_primary_name(cur: &mut Cursor<'_>) -> Result<Option<String>, 
     }
     let bytes = cur.take_bytes(n)?;
     let s = String::from_utf8(bytes).map_err(|_| CatalogDecodeError::InvalidUtf8)?;
-    if s.is_empty() {
-        return Err(CatalogDecodeError::EmptyCollectionName.into());
-    }
+    debug_assert!(!s.is_empty());
     Ok(Some(s))
 }
 
@@ -247,9 +244,7 @@ fn decode_indexes(cur: &mut Cursor<'_>) -> Result<Vec<IndexDef>, DbError> {
         }
         let bytes = cur.take_bytes(name_len)?;
         let name = String::from_utf8(bytes).map_err(|_| CatalogDecodeError::InvalidUtf8)?;
-        if name.is_empty() {
-            return Err(CatalogDecodeError::EmptyIndexName.into());
-        }
+        debug_assert!(!name.is_empty());
         v.push(IndexDef { name, path, kind });
     }
     Ok(v)
@@ -270,10 +265,9 @@ fn decode_fields(cur: &mut Cursor<'_>, catalog_ver: u16) -> Result<Vec<FieldDef>
     for _ in 0..n {
         let path = decode_field_path(cur)?;
         let ty = decode_type(cur, 0)?;
-        let constraints = if catalog_ver >= CATALOG_PAYLOAD_VERSION_V3 {
-            decode_constraints(cur)?
-        } else {
-            Vec::new()
+        let constraints = match catalog_ver {
+            CATALOG_PAYLOAD_VERSION_V1 | CATALOG_PAYLOAD_VERSION_V2 => Vec::new(),
+            _ => decode_constraints(cur)?,
         };
         v.push(FieldDef {
             path,
@@ -591,6 +585,271 @@ mod tests {
 
     fn path(parts: &[&str]) -> FieldPath {
         FieldPath(parts.iter().map(|s| Cow::Owned(s.to_string())).collect())
+    }
+
+    fn encode_field_path_test(out: &mut Vec<u8>, parts: &[&str]) {
+        out.extend_from_slice(&(parts.len() as u32).to_le_bytes());
+        for p in parts {
+            let b = p.as_bytes();
+            out.extend_from_slice(&(b.len() as u32).to_le_bytes());
+            out.extend_from_slice(b);
+        }
+    }
+
+    fn encode_fields_legacy(out: &mut Vec<u8>, fields: &[(&[&str], Type)]) {
+        out.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+        for (p, ty) in fields {
+            encode_field_path_test(out, p);
+            encode_type(out, ty, 0);
+        }
+    }
+
+    #[test]
+    fn decode_accepts_all_supported_catalog_versions() {
+        // v1: create collection, no indexes, no primary field, no constraints.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V1.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_name(&mut bytes, "t");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_fields_legacy(&mut bytes, &[(&["id"], Type::Int64)]);
+        let got = decode_catalog_payload(&bytes).unwrap();
+        match got {
+            CatalogRecordWire::CreateCollection { name, primary_field, indexes, .. } => {
+                assert_eq!(name, "t");
+                assert_eq!(primary_field, None);
+                assert!(indexes.is_empty());
+            }
+            _ => panic!("expected CreateCollection"),
+        }
+
+        // v2: create collection, includes primary field name, no constraints, no indexes.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V2.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        encode_name(&mut bytes, "t2");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_fields_legacy(&mut bytes, &[(&["id"], Type::Int64)]);
+        encode_optional_primary_name(&mut bytes, Some("id"));
+        let got = decode_catalog_payload(&bytes).unwrap();
+        match got {
+            CatalogRecordWire::CreateCollection { name, primary_field, .. } => {
+                assert_eq!(name, "t2");
+                assert_eq!(primary_field, Some("id".to_string()));
+            }
+            _ => panic!("expected CreateCollection"),
+        }
+
+        // v3: new schema version, includes constraints.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V3.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_NEW_SCHEMA_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&3u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        encode_fields_v3(
+            &mut bytes,
+            &[FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: vec![Constraint::MinI64(1)],
+            }],
+        );
+        let got = decode_catalog_payload(&bytes).unwrap();
+        assert!(matches!(got, CatalogRecordWire::NewSchemaVersion { .. }));
+
+        // v4: create collection, includes indexes and primary.
+        let rec = CatalogRecordWire::CreateCollection {
+            collection_id: 4,
+            name: "t4".to_string(),
+            schema_version: 1,
+            fields: vec![FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: Vec::new(),
+            }],
+            indexes: vec![IndexDef {
+                name: "i".to_string(),
+                path: path(&["id"]),
+                kind: IndexKind::NonUnique,
+            }],
+            primary_field: Some("id".to_string()),
+        };
+        let bytes = encode_catalog_payload(&rec);
+        assert_eq!(decode_catalog_payload(&bytes).unwrap(), rec);
+    }
+
+    #[test]
+    fn decode_v4_new_schema_version_decodes_indexes() {
+        // Hit the v4-only indexes path for ENTRY_KIND_NEW_SCHEMA_VERSION.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V4.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_NEW_SCHEMA_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // collection_id
+        bytes.extend_from_slice(&2u32.to_le_bytes()); // schema_version
+        encode_fields_v3(
+            &mut bytes,
+            &[FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: vec![],
+            }],
+        );
+        encode_indexes(
+            &mut bytes,
+            &[IndexDef {
+                name: "i".to_string(),
+                path: path(&["id"]),
+                kind: IndexKind::Unique,
+            }],
+        );
+        let got = decode_catalog_payload(&bytes).unwrap();
+        match got {
+            CatalogRecordWire::NewSchemaVersion { indexes, .. } => {
+                assert_eq!(indexes.len(), 1);
+                assert_eq!(indexes[0].name, "i");
+            }
+            _ => panic!("expected NewSchemaVersion"),
+        }
+    }
+
+    #[test]
+    fn decode_indexes_errors_on_unexpected_eof_before_kind_tag() {
+        // v4 create collection with indexes count=1 but no kind tag byte.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V4.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_name(&mut bytes, "t");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_fields_v3(
+            &mut bytes,
+            &[FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: Vec::new(),
+            }],
+        );
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // indexes count
+        // truncated here: kind_tag should be next.
+        assert!(decode_catalog_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_constraints_errors_on_unexpected_eof_mid_u64() {
+        // v3 new schema version with constraints count=1 but missing the u64 payload.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V3.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_NEW_SCHEMA_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // collection_id
+        bytes.extend_from_slice(&2u32.to_le_bytes()); // schema_version
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // fields count
+        encode_field_path_test(&mut bytes, &["id"]);
+        encode_type(&mut bytes, &Type::Uint64, 0);
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // constraints count
+        bytes.push(CT_MIN_U64); // tag, but no u64 follows
+        assert!(decode_catalog_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_indexes_rejects_empty_index_name_len() {
+        // v4 create collection with one index whose name_len is 0.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V4.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_name(&mut bytes, "t");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_fields_v3(
+            &mut bytes,
+            &[FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: Vec::new(),
+            }],
+        );
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // indexes count
+        bytes.push(1); // kind_tag = Unique
+        encode_field_path_test(&mut bytes, &["id"]);
+        bytes.extend_from_slice(&0u32.to_le_bytes()); // name_len == 0
+        assert!(decode_catalog_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_indexes_rejects_too_long_index_name_len() {
+        // v4 create collection with one index whose name_len exceeds MAX_COLLECTION_NAME_BYTES.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V4.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_name(&mut bytes, "t");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_fields_v3(
+            &mut bytes,
+            &[FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: Vec::new(),
+            }],
+        );
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // indexes count
+        bytes.push(2); // kind_tag = NonUnique
+        encode_field_path_test(&mut bytes, &["id"]);
+        bytes.extend_from_slice(&((MAX_COLLECTION_NAME_BYTES + 1) as u32).to_le_bytes());
+        assert!(decode_catalog_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_indexes_rejects_unknown_index_kind_tag() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V4.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_name(&mut bytes, "t");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_fields_v3(
+            &mut bytes,
+            &[FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: Vec::new(),
+            }],
+        );
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // indexes count
+        bytes.push(99); // unknown kind_tag
+        assert!(decode_catalog_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_constraints_rejects_unknown_constraint_tag() {
+        // v3 new schema version with one constraint tag that isn't recognized.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V3.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_NEW_SCHEMA_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // collection_id
+        bytes.extend_from_slice(&2u32.to_le_bytes()); // schema_version
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // fields count
+        encode_field_path_test(&mut bytes, &["id"]);
+        encode_type(&mut bytes, &Type::Int64, 0);
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // constraints count
+        bytes.push(255); // unknown constraint tag
+        assert!(decode_catalog_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn decode_type_rejects_unknown_type_tag() {
+        // v1 create collection with one field whose type tag is unknown.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&CATALOG_PAYLOAD_VERSION_V1.to_le_bytes());
+        bytes.extend_from_slice(&ENTRY_KIND_CREATE_COLLECTION.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        encode_name(&mut bytes, "t");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // fields count
+        encode_field_path_test(&mut bytes, &["id"]);
+        bytes.push(250); // unknown type tag
+        assert!(decode_catalog_payload(&bytes).is_err());
     }
 
     #[test]

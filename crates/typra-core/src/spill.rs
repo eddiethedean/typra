@@ -124,7 +124,7 @@ impl<S: Store> Drop for TempSpillGuard<'_, S> {
 mod tests {
     use super::TempSpillFile;
     use super::TempSpillGuard;
-    use crate::storage::{Store, VecStore};
+    use crate::storage::{FileStore, Store, VecStore};
 
     #[test]
     fn temp_spill_file_truncates_on_drop() {
@@ -138,6 +138,68 @@ mod tests {
 
         let base = spill.finish().unwrap();
         assert_eq!(base.len().unwrap(), base_len);
+    }
+
+    #[test]
+    fn temp_spill_file_drop_truncates_owned_file_store() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        let path = f.path().to_path_buf();
+
+        // Keep the underlying file alive independently so we can inspect length after drop.
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(file);
+        store.write_all_at(0, &[9u8; 16]).unwrap();
+        let base_len = store.len().unwrap();
+
+        {
+            let mut spill = TempSpillFile::new(store).unwrap();
+            spill.append_temp_segment(b"spill").unwrap();
+            assert!(spill.store_mut().len().unwrap() > base_len);
+            // Drop without calling finish: Drop impl should truncate back to base_len.
+        }
+
+        let len_after = std::fs::metadata(&path).unwrap().len();
+        assert_eq!(len_after, base_len);
+    }
+
+    #[test]
+    fn temp_spill_file_finish_path_exercises_drop_none_for_file_store() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+        let path = f.path().to_path_buf();
+
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(file);
+        store.write_all_at(0, &[7u8; 12]).unwrap();
+        let base_len = store.len().unwrap();
+
+        let mut spill = TempSpillFile::new(store).unwrap();
+        spill.append_temp_segment(b"x").unwrap();
+        let store = spill.finish().unwrap();
+        // `finish()` should leave the on-disk file truncated back to base_len.
+        assert_eq!(store.len().unwrap(), base_len);
+    }
+
+    #[test]
+    fn temp_spill_file_drop_without_finish_executes_drop_true_branch_for_vecstore() {
+        // This test is coverage-motivated: it forces the Drop impl's `Some(store)` path for the
+        // `TempSpillFile<VecStore>` monomorphization.
+        let mut base = VecStore::new();
+        base.write_all_at(0, &[3u8; 4]).unwrap();
+        let mut spill = TempSpillFile::new(base).unwrap();
+        spill.append_temp_segment(b"drop").unwrap();
+        drop(spill);
     }
 
     #[test]

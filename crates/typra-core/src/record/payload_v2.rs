@@ -72,11 +72,8 @@ pub(crate) fn decode_record_payload_v2_body(
         .iter()
         .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
         .collect();
-    if op == OP_DELETE {
-        if n != 0 {
-            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-        }
-    } else if n != non_pk_defs.len() {
+    let expected_n = if op == OP_DELETE { 0 } else { non_pk_defs.len() };
+    if n != expected_n {
         return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
     }
 
@@ -110,4 +107,109 @@ pub fn decode_record_payload(
 ) -> Result<DecodedRecord, DbError> {
     // Delegate to the central v1/v2/v3 dispatcher.
     decode_record_payload_any(bytes, pk_name, pk_ty, fields)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::{decode_record_payload, decode_record_payload_v2_body, encode_record_payload_v2_op, OP_DELETE};
+    use crate::record::payload_v1::OP_INSERT;
+    use crate::record::row_value::RowValue;
+    use crate::record::scalar::Cursor;
+    use crate::schema::{FieldDef, FieldPath, Type};
+    use crate::record::scalar::ScalarValue;
+
+    fn def(path: &[&'static str], ty: Type) -> FieldDef {
+        FieldDef {
+            path: FieldPath(path.iter().map(|s| Cow::Borrowed(*s)).collect()),
+            ty,
+            constraints: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn v2_delete_rejects_nonzero_count_and_trailing_bytes() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64)];
+
+        let mut bytes = encode_record_payload_v2_op(1, 1, OP_DELETE, &pk, &pk_ty, &[]).unwrap();
+        let len = bytes.len();
+        bytes[len - 4..].copy_from_slice(&1u32.to_le_bytes());
+        assert!(decode_record_payload(&bytes, "id", &pk_ty, &fields).is_err());
+
+        let mut bytes = encode_record_payload_v2_op(1, 1, OP_DELETE, &pk, &pk_ty, &[]).unwrap();
+        bytes.push(0);
+        assert!(decode_record_payload(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v2_body_delete_rejects_nonzero_count() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64)];
+
+        let mut bytes = encode_record_payload_v2_op(1, 1, OP_DELETE, &pk, &pk_ty, &[]).unwrap();
+        let len = bytes.len();
+        bytes[len - 4..].copy_from_slice(&1u32.to_le_bytes());
+
+        // Body expects cursor positioned after version u16.
+        let cur = Cursor::new(&bytes[2..]);
+        assert!(decode_record_payload_v2_body(cur, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v2_delete_with_zero_count_decodes() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64), def(&["x"], Type::Int64)];
+
+        let bytes = encode_record_payload_v2_op(1, 1, OP_DELETE, &pk, &pk_ty, &[]).unwrap();
+        let decoded = decode_record_payload(&bytes, "id", &pk_ty, &fields).unwrap();
+        assert_eq!(decoded.op, OP_DELETE);
+        assert!(decoded.fields.is_empty());
+    }
+
+    #[test]
+    fn v2_decode_ignores_nested_fields_in_schema_filter() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+
+        let fields = vec![
+            def(&["id"], Type::Int64),
+            def(&["x"], Type::Int64),
+            def(&["a", "b"], Type::Int64),
+        ];
+        let non_pk = vec![(
+            def(&["x"], Type::Int64),
+            RowValue::from_scalar(ScalarValue::Int64(2)),
+        )];
+
+        let bytes = encode_record_payload_v2_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        let decoded = decode_record_payload(&bytes, "id", &pk_ty, &fields).unwrap();
+        assert_eq!(decoded.fields.len(), 1);
+        assert!(decoded.fields.contains_key("x"));
+    }
+
+    #[test]
+    fn v2_encode_rejects_pk_type_mismatch() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::String("nope".to_string());
+        let non_pk: Vec<(FieldDef, RowValue)> = Vec::new();
+
+        assert!(encode_record_payload_v2_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).is_err());
+    }
+
+    #[test]
+    fn v2_encode_rejects_non_pk_value_type_mismatch() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let non_pk = vec![(
+            def(&["x"], Type::Int64),
+            RowValue::from_scalar(ScalarValue::String("nope".to_string())),
+        )];
+
+        assert!(encode_record_payload_v2_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).is_err());
+    }
 }

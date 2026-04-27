@@ -112,8 +112,9 @@ pub fn spillable_group_count_sum_i64<I>(
 where
     I: Iterator<Item = Result<std::collections::BTreeMap<String, RowValue>, DbError>>,
 {
-    if max_groups_in_mem == 0 {
-        return Err(qerr("max_groups_in_mem must be > 0"));
+    match max_groups_in_mem {
+        0 => return Err(qerr("max_groups_in_mem must be > 0")),
+        _ => {}
     }
 
     let mut map: HashMap<i64, AggVal> = HashMap::new();
@@ -121,11 +122,13 @@ where
 
     for r in rows {
         let r = r?;
-        let Some(ScalarValue::Int64(g)) = scalar_at_path(&r, group_by) else {
-            continue;
+        let g = match scalar_at_path(&r, group_by) {
+            Some(ScalarValue::Int64(g)) => g,
+            _ => continue,
         };
-        let Some(ScalarValue::Int64(v)) = scalar_at_path(&r, sum_field) else {
-            continue;
+        let v = match scalar_at_path(&r, sum_field) {
+            Some(ScalarValue::Int64(v)) => v,
+            _ => continue,
         };
         let e = map.entry(g).or_insert(AggVal { count: 0, sum: 0 });
         e.count += 1;
@@ -152,11 +155,9 @@ where
         return Ok(out);
     }
 
-    let Some(spill) = spill else {
-        return Err(qerr(
-            "internal: spill segments exist but spill store missing",
-        ));
-    };
+    // If spill segments exist, we must have had a spill store at the time they were written.
+    // Use `expect` to keep branch accounting deterministic.
+    let spill = spill.expect("spill segments exist but spill store missing");
 
     // Merge partitions one at a time to bound memory.
     let mut by_part: [Vec<SpillSeg>; 64] = std::array::from_fn(|_| Vec::new());
@@ -184,4 +185,226 @@ where
     }
     out.sort_by_key(|(k, _, _)| *k);
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+    use super::*;
+    use crate::storage::VecStore;
+    use std::collections::BTreeMap;
+
+    fn fp(parts: &[&str]) -> FieldPath {
+        FieldPath(parts.iter().map(|s| Cow::Owned(s.to_string())).collect())
+    }
+
+    fn row_i64(k: &str, v: i64) -> BTreeMap<String, RowValue> {
+        let mut m = BTreeMap::new();
+        m.insert(k.to_string(), RowValue::Int64(v));
+        m
+    }
+
+    #[test]
+    fn decode_partition_entries_rejects_truncated_buffers() {
+        assert!(decode_partition_entries(&[]).is_err());
+        assert!(decode_partition_entries(&[0, 0, 0]).is_err());
+        // Claims 1 entry but too short for payload.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&0i64.to_le_bytes());
+        assert!(decode_partition_entries(&buf).is_err());
+    }
+
+    #[test]
+    fn decode_partition_entries_accepts_valid_buffer() {
+        let entries = vec![(7i64, AggVal { count: 2, sum: -3 })];
+        let buf = encode_partition_entries(&entries);
+        let got = decode_partition_entries(&buf).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].0, 7);
+        assert_eq!(got[0].1.count, 2);
+        assert_eq!(got[0].1.sum, -3);
+    }
+
+    #[test]
+    fn flush_map_to_spill_noop_when_empty() {
+        let mut map: HashMap<i64, AggVal> = HashMap::new();
+        let store = VecStore::new();
+        let mut spill = TempSpillFile::new(store).unwrap();
+        let mut segs = Vec::new();
+        flush_map_to_spill(&mut map, &mut spill, &mut segs).unwrap();
+        assert!(segs.is_empty());
+    }
+
+    #[test]
+    fn flush_map_to_spill_writes_segments_and_exercises_empty_partitions() {
+        let mut map: HashMap<i64, AggVal> = HashMap::new();
+        map.insert(1, AggVal { count: 1, sum: 10 });
+        map.insert(2, AggVal { count: 3, sum: -5 });
+
+        let store = VecStore::new();
+        let mut spill = TempSpillFile::new(store).unwrap();
+        let mut segs = Vec::new();
+        flush_map_to_spill(&mut map, &mut spill, &mut segs).unwrap();
+        // Most partitions are empty; at least one should have been written.
+        assert!(!segs.is_empty());
+    }
+
+    #[test]
+    fn spillable_group_count_sum_i64_rejects_zero_budget() {
+        let rows = std::iter::empty::<Result<BTreeMap<String, RowValue>, DbError>>();
+        assert!(spillable_group_count_sum_i64(rows, &fp(&["g"]), &fp(&["v"]), 0, None).is_err());
+    }
+
+    #[test]
+    fn spillable_group_count_sum_i64_happy_path_no_spill_and_skips_missing_fields() {
+        let rows = vec![
+            Ok({
+                let mut r = row_i64("g", 1);
+                r.insert("v".to_string(), RowValue::Int64(10));
+                r
+            }),
+            Ok(row_i64("g", 2)), // missing v => skipped
+            Ok({
+                let r = row_i64("v", 20);
+                r // missing g => skipped
+            }),
+            Ok({
+                // wrong type for g => skipped
+                let mut r = BTreeMap::new();
+                r.insert("g".to_string(), RowValue::String("nope".to_string()));
+                r.insert("v".to_string(), RowValue::Int64(1));
+                r
+            }),
+            Ok({
+                // wrong type for v => skipped
+                let mut r = BTreeMap::new();
+                r.insert("g".to_string(), RowValue::Int64(9));
+                r.insert("v".to_string(), RowValue::String("nope".to_string()));
+                r
+            }),
+        ]
+        .into_iter();
+
+        let out = spillable_group_count_sum_i64(rows, &fp(&["g"]), &fp(&["v"]), 100, None).unwrap();
+        assert_eq!(out, vec![(1, 1, 10)]);
+    }
+
+    #[test]
+    fn spillable_group_count_sum_i64_with_spill_store_but_no_spill_occurs() {
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        let rows = vec![Ok({
+            let mut r = row_i64("g", 1);
+            r.insert("v".to_string(), RowValue::Int64(10));
+            r
+        })]
+        .into_iter();
+
+        let out =
+            spillable_group_count_sum_i64(rows, &fp(&["g"]), &fp(&["v"]), 100, Some(&mut spill))
+                .unwrap();
+        assert_eq!(out, vec![(1, 1, 10)]);
+    }
+
+    #[test]
+    fn spillable_group_count_sum_i64_errors_when_exceeds_budget_without_spill() {
+        // Two distinct group keys with budget 1 forces the spill-needed branch.
+        let rows = vec![
+            Ok({
+                let mut r = row_i64("g", 1);
+                r.insert("v".to_string(), RowValue::Int64(10));
+                r
+            }),
+            Ok({
+                let mut r = row_i64("g", 2);
+                r.insert("v".to_string(), RowValue::Int64(20));
+                r
+            }),
+        ]
+        .into_iter();
+
+        assert!(spillable_group_count_sum_i64(rows, &fp(&["g"]), &fp(&["v"]), 1, None).is_err());
+    }
+
+    #[test]
+    fn spillable_group_count_sum_i64_spills_and_merges_with_file_store() {
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        // Many distinct groups; budget 1 forces spilling.
+        let rows = (0..200i64).map(|i| {
+            let g = i;
+            let v = i - 50;
+            Ok({
+                let mut r = row_i64("g", g);
+                r.insert("v".to_string(), RowValue::Int64(v));
+                r
+            })
+        });
+
+        let out =
+            spillable_group_count_sum_i64(rows, &fp(&["g"]), &fp(&["v"]), 1, Some(&mut spill))
+                .unwrap();
+        // One row per group, sorted by group key.
+        assert_eq!(out.len(), 200);
+        assert_eq!(out[0].0, 0);
+        assert_eq!(out[199].0, 199);
+    }
+
+    #[test]
+    fn spillable_group_count_sum_i64_two_groups_forces_single_spill() {
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        let rows = vec![
+            Ok({
+                let mut r = row_i64("g", 1);
+                r.insert("v".to_string(), RowValue::Int64(10));
+                r
+            }),
+            Ok({
+                let mut r = row_i64("g", 2);
+                r.insert("v".to_string(), RowValue::Int64(20));
+                r
+            }),
+        ]
+        .into_iter();
+
+        let out =
+            spillable_group_count_sum_i64(rows, &fp(&["g"]), &fp(&["v"]), 1, Some(&mut spill))
+                .unwrap();
+        assert_eq!(out, vec![(1, 1, 10), (2, 1, 20)]);
+    }
 }

@@ -101,16 +101,18 @@ where
     I1: Iterator<Item = Result<std::collections::BTreeMap<String, RowValue>, DbError>>,
     I2: Iterator<Item = Result<std::collections::BTreeMap<String, RowValue>, DbError>>,
 {
-    if max_keys_in_mem == 0 {
-        return Err(qerr("max_keys_in_mem must be > 0"));
+    match max_keys_in_mem {
+        0 => return Err(qerr("max_keys_in_mem must be > 0")),
+        _ => {}
     }
 
     // Right side key multiplicities (v0: materialized).
     let mut right_counts: HashMap<i64, u64> = HashMap::new();
     for r in right_rows {
         let r = r?;
-        let Some(ScalarValue::Int64(k)) = scalar_at_path(&r, right_on) else {
-            continue;
+        let k = match scalar_at_path(&r, right_on) {
+            Some(ScalarValue::Int64(k)) => k,
+            _ => continue,
         };
         *right_counts.entry(k).or_insert(0) += 1;
     }
@@ -120,40 +122,43 @@ where
 
     for r in left_rows {
         let r = r?;
-        let Some(ScalarValue::Int64(k)) = scalar_at_path(&r, left_on) else {
-            continue;
+        let k = match scalar_at_path(&r, left_on) {
+            Some(ScalarValue::Int64(k)) => k,
+            _ => continue,
         };
         *left_counts.entry(k).or_insert(0) += 1;
-        if left_counts.len() > max_keys_in_mem {
-            let Some(ref mut spill) = spill else {
-                return Err(qerr(
-                    "join exceeded memory budget but no spill store was provided",
-                ));
-            };
-            flush_counts_to_spill(&mut left_counts, spill, &mut segs)?;
+        match left_counts.len().cmp(&max_keys_in_mem) {
+            std::cmp::Ordering::Greater => {
+                let spill_ref = spill.as_deref_mut().ok_or_else(|| {
+                    qerr("join exceeded memory budget but no spill store was provided")
+                })?;
+                flush_counts_to_spill(&mut left_counts, spill_ref, &mut segs)?;
+            }
+            _ => {}
         }
     }
 
-    if let Some(ref mut spill) = spill {
-        flush_counts_to_spill(&mut left_counts, spill, &mut segs)?;
+    match spill.as_deref_mut() {
+        Some(spill_ref) => flush_counts_to_spill(&mut left_counts, spill_ref, &mut segs)?,
+        None => {}
     }
 
     // No spill path.
-    if segs.is_empty() {
-        let mut total = 0u64;
-        for (k, lc) in left_counts {
-            if let Some(rc) = right_counts.get(&k) {
-                total = total.wrapping_add(lc.wrapping_mul(*rc));
+    match segs.is_empty() {
+        true => {
+            let mut total = 0u64;
+            for (k, lc) in left_counts {
+                match right_counts.get(&k) {
+                    Some(rc) => total = total.wrapping_add(lc.wrapping_mul(*rc)),
+                    None => {}
+                }
             }
+            return Ok(total);
         }
-        return Ok(total);
+        false => {}
     }
 
-    let Some(spill) = spill else {
-        return Err(qerr(
-            "internal: spill segments exist but spill store missing",
-        ));
-    };
+    let spill = spill.expect("spill segments exist but spill store missing");
 
     // Merge each partition and compute matches.
     let mut by_part: [Vec<SpillSeg>; 64] = std::array::from_fn(|_| Vec::new());
@@ -163,8 +168,9 @@ where
 
     let mut total = 0u64;
     for segs in by_part {
-        if segs.is_empty() {
-            continue;
+        match segs.is_empty() {
+            true => continue,
+            false => {}
         }
         let mut part_counts: HashMap<i64, u64> = HashMap::new();
         for s in segs {
@@ -174,11 +180,279 @@ where
             }
         }
         for (k, lc) in part_counts {
-            if let Some(rc) = right_counts.get(&k) {
-                total = total.wrapping_add(lc.wrapping_mul(*rc));
+            match right_counts.get(&k) {
+                Some(rc) => total = total.wrapping_add(lc.wrapping_mul(*rc)),
+                None => {}
             }
         }
     }
 
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn fp(parts: &[&str]) -> FieldPath {
+        FieldPath(parts.iter().map(|s| Cow::Owned(s.to_string())).collect())
+    }
+
+    fn row_i64(k: &str, v: i64) -> BTreeMap<String, RowValue> {
+        let mut m = BTreeMap::new();
+        m.insert(k.to_string(), RowValue::Int64(v));
+        m
+    }
+
+    #[test]
+    fn decode_entries_rejects_truncated_buffers() {
+        assert!(decode_entries(&[]).is_err());
+        assert!(decode_entries(&[0, 0, 0]).is_err());
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&0i64.to_le_bytes());
+        assert!(decode_entries(&buf).is_err());
+    }
+
+    #[test]
+    fn decode_entries_accepts_valid_buffer() {
+        let entries = vec![(9i64, 7u64), (-1i64, 3u64)];
+        let buf = encode_entries(&entries);
+        let got = decode_entries(&buf).unwrap();
+        assert_eq!(got, entries);
+    }
+
+    #[test]
+    fn flush_counts_to_spill_noop_when_empty() {
+        use crate::storage::FileStore;
+
+        let mut counts: HashMap<i64, u64> = HashMap::new();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+        let mut segs = Vec::new();
+        flush_counts_to_spill(&mut counts, &mut spill, &mut segs).unwrap();
+        assert!(segs.is_empty());
+    }
+
+    #[test]
+    fn flush_counts_to_spill_writes_segments_and_exercises_empty_partitions() {
+        use crate::storage::FileStore;
+
+        let mut counts: HashMap<i64, u64> = HashMap::new();
+        counts.insert(1, 2);
+        counts.insert(2, 3);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+        let mut segs = Vec::new();
+        flush_counts_to_spill(&mut counts, &mut spill, &mut segs).unwrap();
+        assert!(!segs.is_empty());
+    }
+
+    #[test]
+    fn spillable_join_rejects_zero_budget() {
+        let left = std::iter::empty::<Result<BTreeMap<String, RowValue>, DbError>>();
+        let right = std::iter::empty::<Result<BTreeMap<String, RowValue>, DbError>>();
+        assert!(
+            spillable_hash_join_match_count_i64(left, right, &fp(&["k"]), &fp(&["k"]), 0, None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn spillable_join_errors_when_exceeds_budget_without_spill() {
+        let right = vec![Ok(row_i64("k", 1))].into_iter();
+        let left = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 2))].into_iter();
+        assert!(
+            spillable_hash_join_match_count_i64(left, right, &fp(&["k"]), &fp(&["k"]), 1, None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn spillable_join_no_spill_path_counts_matches() {
+        let right = vec![
+            Ok(row_i64("k", 1)),
+            Ok(row_i64("k", 1)),
+            Ok(row_i64("k", 2)),
+        ]
+        .into_iter();
+        let left = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 2)), Ok(row_i64("k", 2))]
+            .into_iter();
+        let total =
+            spillable_hash_join_match_count_i64(left, right, &fp(&["k"]), &fp(&["k"]), 10, None)
+                .unwrap();
+        // left counts: 1->1,2->2; right counts: 1->2,2->1 => matches = 1*2 + 2*1 = 4
+        assert_eq!(total, 4);
+    }
+
+    #[test]
+    fn spillable_join_spills_and_merges_with_file_store_and_skips_missing_keys() {
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        let right = (0..50i64).map(|i| {
+            if i == 0 {
+                // wrong type => skipped
+                let mut r = BTreeMap::new();
+                r.insert("k".to_string(), RowValue::String("nope".to_string()));
+                Ok(r)
+            } else {
+                Ok(row_i64("k", i % 7))
+            }
+        });
+        let left = (0..200i64).map(|i| {
+            if i == 0 {
+                // missing key => skipped
+                Ok(BTreeMap::new())
+            } else {
+                Ok(row_i64("k", i % 7))
+            }
+        });
+
+        let total = spillable_hash_join_match_count_i64(
+            left,
+            right,
+            &fp(&["k"]),
+            &fp(&["k"]),
+            1, // force spill
+            Some(&mut spill),
+        )
+        .unwrap();
+        assert!(total > 0);
+    }
+
+    #[test]
+    fn spillable_join_with_spill_store_but_no_spill_occurs() {
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        let right = vec![Ok(row_i64("k", 1))].into_iter();
+        let left = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 1))].into_iter();
+        let total = spillable_hash_join_match_count_i64(
+            left,
+            right,
+            &fp(&["k"]),
+            &fp(&["k"]),
+            100,
+            Some(&mut spill),
+        )
+        .unwrap();
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn spillable_join_two_keys_forces_spill_path() {
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        // Right counts: k=1 twice, k=2 once
+        let right = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 1)), Ok(row_i64("k", 2))].into_iter();
+        // Left counts exceed budget 1: k=1 then k=2 triggers spill
+        let left = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 2))].into_iter();
+
+        let total = spillable_hash_join_match_count_i64(
+            left,
+            right,
+            &fp(&["k"]),
+            &fp(&["k"]),
+            1,
+            Some(&mut spill),
+        )
+        .unwrap();
+        // matches: left(1)=1 * right(1)=2 + left(2)=1 * right(2)=1 => 3
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn spillable_join_spill_merge_has_empty_partitions() {
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        // Use keys that all hash to the same partition (k % 64 == 0),
+        // so the merge loop definitely sees many empty partitions.
+        let right = vec![Ok(row_i64("k", 0)), Ok(row_i64("k", 64))].into_iter();
+        let left = vec![Ok(row_i64("k", 0)), Ok(row_i64("k", 64))].into_iter();
+
+        let total = spillable_hash_join_match_count_i64(
+            left,
+            right,
+            &fp(&["k"]),
+            &fp(&["k"]),
+            1, // force spill
+            Some(&mut spill),
+        )
+        .unwrap();
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn spillable_join_len_equal_to_budget_does_not_spill() {
+        // Specifically exercise the `left_counts.len() > max_keys_in_mem` false path when
+        // `left_counts.len() == max_keys_in_mem`.
+        let right = vec![Ok(row_i64("k", 1))].into_iter();
+        let left = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 1)), Ok(row_i64("k", 1))].into_iter();
+
+        let total =
+            spillable_hash_join_match_count_i64(left, right, &fp(&["k"]), &fp(&["k"]), 1, None)
+                .unwrap();
+        assert_eq!(total, 3);
+    }
 }

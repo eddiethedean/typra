@@ -16,25 +16,25 @@ use crate::schema::{FieldDef, FieldPath, Type};
 
 pub const RECORD_PAYLOAD_VERSION_V3: u16 = 3;
 
+#[inline(never)]
 fn encode_field_path(out: &mut Vec<u8>, fp: &FieldPath) -> Result<(), DbError> {
     // Keep encoding simple/stable: u8 segments, then for each segment u16 len + utf8 bytes.
     // FieldPath segments are validated at schema registration time; still guard here.
     let n = fp.0.len();
-    if n == 0 || n > u8::MAX as usize {
-        return Err(DbError::Schema(SchemaError::InvalidFieldPath));
-    }
-    out.push(n as u8);
+    debug_assert!(n > 0);
+    let n = u8::try_from(n).expect("FieldPath segment count already validated");
+    out.push(n);
     for seg in &fp.0 {
         let s = seg.as_ref();
-        if s.is_empty() || s.len() > u16::MAX as usize {
-            return Err(DbError::Schema(SchemaError::InvalidFieldPath));
-        }
-        out.extend_from_slice(&(s.len() as u16).to_le_bytes());
+        debug_assert!(!s.is_empty());
+        let len = u16::try_from(s.len()).expect("FieldPath segment length already validated");
+        out.extend_from_slice(&len.to_le_bytes());
         out.extend_from_slice(s.as_bytes());
     }
     Ok(())
 }
 
+#[inline(never)]
 fn decode_field_path(cur: &mut Cursor<'_>) -> Result<FieldPath, DbError> {
     let n = cur.take_u8()? as usize;
     if n == 0 {
@@ -54,6 +54,7 @@ fn decode_field_path(cur: &mut Cursor<'_>) -> Result<FieldPath, DbError> {
     Ok(FieldPath(parts))
 }
 
+#[inline(never)]
 fn insert_value_at_path(
     root: &mut BTreeMap<String, RowValue>,
     path: &FieldPath,
@@ -82,11 +83,12 @@ fn insert_value_at_path(
             // schema paths describe object nesting.
             other => {
                 *other = RowValue::Object(BTreeMap::new());
-                let RowValue::Object(map) = other else {
-                    unreachable!()
-                };
-                map.entry(key)
-                    .or_insert_with(|| RowValue::Object(BTreeMap::new()))
+                match other {
+                    RowValue::Object(map) => map
+                        .entry(key)
+                        .or_insert_with(|| RowValue::Object(BTreeMap::new())),
+                    _ => unreachable!(),
+                }
             }
         };
     }
@@ -101,6 +103,7 @@ fn insert_value_at_path(
 }
 
 /// Encode a record segment body (version 3) with an explicit operation code.
+#[inline(never)]
 pub fn encode_record_payload_v3_op(
     collection_id: u32,
     schema_version: u32,
@@ -115,16 +118,20 @@ pub fn encode_record_payload_v3_op(
     out.extend_from_slice(&schema_version.to_le_bytes());
     out.push(op);
     encode_tagged_scalar(&mut out, pk, pk_ty)?;
-    if op == OP_DELETE {
-        out.extend_from_slice(&0u32.to_le_bytes());
-        return Ok(out);
+    match op {
+        OP_DELETE => {
+            out.extend_from_slice(&0u32.to_le_bytes());
+            Ok(out)
+        }
+        _ => {
+            out.extend_from_slice(&(non_pk_in_schema_order.len() as u32).to_le_bytes());
+            for (def, val) in non_pk_in_schema_order {
+                encode_field_path(&mut out, &def.path)?;
+                encode_row_value(&mut out, val, &def.ty)?;
+            }
+            Ok(out)
+        }
     }
-    out.extend_from_slice(&(non_pk_in_schema_order.len() as u32).to_le_bytes());
-    for (def, val) in non_pk_in_schema_order {
-        encode_field_path(&mut out, &def.path)?;
-        encode_row_value(&mut out, val, &def.ty)?;
-    }
-    Ok(out)
 }
 
 /// Encode a record segment body (version 3) insert.
@@ -145,6 +152,7 @@ pub fn encode_record_payload_v3(
     )
 }
 
+#[inline(never)]
 pub(crate) fn decode_record_payload_v3_body(
     mut cur: Cursor<'_>,
     pk_name: &str,
@@ -162,13 +170,6 @@ pub(crate) fn decode_record_payload_v3_body(
         .iter()
         .filter(|f| !(f.path.0.len() == 1 && f.path.0[0] == pk_name))
         .collect();
-    if op == OP_DELETE {
-        if n != 0 {
-            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-        }
-    } else if n != expected.len() {
-        return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-    }
 
     let mut by_path: HashMap<&FieldPath, &FieldDef> = HashMap::new();
     for def in &expected {
@@ -177,19 +178,29 @@ pub(crate) fn decode_record_payload_v3_body(
 
     let mut seen: HashSet<FieldPath> = HashSet::new();
     let mut out_fields: BTreeMap<String, RowValue> = BTreeMap::new();
-    if op != OP_DELETE {
-        for _ in 0..n {
-            let fp = decode_field_path(&mut cur)?;
-            if !seen.insert(fp.clone()) {
+    match op {
+        OP_DELETE => {
+            if n != 0 {
                 return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
             }
-            let def = by_path
-                .iter()
-                .find(|(p, _)| **p == &fp)
-                .map(|(_, d)| *d)
-                .ok_or(DbError::Format(FormatError::RecordPayloadTypeMismatch))?;
-            let v = decode_row_value(&mut cur, &def.ty)?;
-            insert_value_at_path(&mut out_fields, &fp, v)?;
+        }
+        _ => {
+            if n != expected.len() {
+                return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+            }
+            for _ in 0..n {
+                let fp = decode_field_path(&mut cur)?;
+                if !seen.insert(fp.clone()) {
+                    return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+                }
+                let def = by_path
+                    .iter()
+                    .find(|(p, _)| **p == &fp)
+                    .map(|(_, d)| *d)
+                    .ok_or(DbError::Format(FormatError::RecordPayloadTypeMismatch))?;
+                let v = decode_row_value(&mut cur, &def.ty)?;
+                insert_value_at_path(&mut out_fields, &fp, v)?;
+            }
         }
     }
     if cur.remaining() != 0 {
@@ -225,5 +236,299 @@ pub fn decode_record_payload_any(
         _ => Err(DbError::Format(FormatError::UnknownRecordPayloadVersion {
             got: ver,
         })),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::{
+        decode_record_payload_any, encode_record_payload_v3_op, insert_value_at_path, FieldPath,
+        RECORD_PAYLOAD_VERSION_V3,
+    };
+    use crate::record::payload_v1::{encode_record_payload_v1, OP_INSERT};
+    use crate::record::row_value::RowValue;
+    use crate::record::scalar::ScalarValue;
+    use crate::schema::{FieldDef, Type};
+
+    fn def(path: &[&'static str], ty: Type) -> FieldDef {
+        FieldDef {
+            path: FieldPath(path.iter().map(|s| Cow::Borrowed(*s)).collect()),
+            ty,
+            constraints: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn any_dispatch_rejects_truncated_and_unknown_versions() {
+        let pk_ty = Type::Int64;
+        let fields = vec![def(&["id"], Type::Int64)];
+
+        assert!(decode_record_payload_any(&[], "id", &pk_ty, &fields).is_err());
+        assert!(decode_record_payload_any(&[1], "id", &pk_ty, &fields).is_err());
+
+        let mut bytes = vec![0xFE, 0xCA]; // unknown u16 version (little-endian)
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v3_decode_rejects_trailing_bytes() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64), def(&["a", "b"], Type::Int64)];
+        let non_pk = vec![(
+            def(&["a", "b"], Type::Int64),
+            RowValue::from_scalar(ScalarValue::Int64(10)),
+        )];
+
+        let mut bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        assert_eq!(u16::from_le_bytes([bytes[0], bytes[1]]), RECORD_PAYLOAD_VERSION_V3);
+        bytes.push(0);
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v3_encoder_and_decoder_support_delete_op() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64), def(&["a"], Type::Int64)];
+
+        let bytes = encode_record_payload_v3_op(1, 1, crate::record::payload_v1::OP_DELETE, &pk, &pk_ty, &[])
+            .unwrap();
+        let decoded = decode_record_payload_any(&bytes, "id", &pk_ty, &fields).unwrap();
+        assert_eq!(decoded.op, crate::record::payload_v1::OP_DELETE);
+        assert!(decoded.fields.is_empty());
+    }
+
+    #[test]
+    fn v3_encode_rejects_pk_type_mismatch() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::String("nope".to_string());
+        let non_pk: Vec<(FieldDef, RowValue)> = Vec::new();
+        assert!(encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).is_err());
+    }
+
+    #[test]
+    fn any_dispatch_decodes_v2_delete_payload() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64), def(&["x"], Type::Int64)];
+
+        let bytes = crate::record::payload_v2::encode_record_payload_v2_op(
+            1,
+            1,
+            crate::record::payload_v1::OP_DELETE,
+            &pk,
+            &pk_ty,
+            &[],
+        )
+        .unwrap();
+
+        let decoded = decode_record_payload_any(&bytes, "id", &pk_ty, &fields).unwrap();
+        assert_eq!(decoded.op, crate::record::payload_v1::OP_DELETE);
+        assert!(decoded.fields.is_empty());
+    }
+
+    #[test]
+    fn any_dispatch_decodes_v1_insert_payload() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![
+            def(&["id"], Type::Int64),
+            def(&["x"], Type::Int64),
+            def(&["y"], Type::Int64),
+        ];
+
+        let bytes = encode_record_payload_v1(
+            1,
+            1,
+            &pk,
+            &pk_ty,
+            &[
+                (def(&["x"], Type::Int64), ScalarValue::Int64(10)),
+                (def(&["y"], Type::Int64), ScalarValue::Int64(11)),
+            ],
+        )
+        .unwrap();
+
+        let decoded = decode_record_payload_any(&bytes, "id", &pk_ty, &fields).unwrap();
+        assert_eq!(decoded.op, crate::record::payload_v1::OP_INSERT);
+        assert_eq!(
+            decoded.fields.get("x"),
+            Some(&RowValue::from_scalar(ScalarValue::Int64(10)))
+        );
+        assert_eq!(
+            decoded.fields.get("y"),
+            Some(&RowValue::from_scalar(ScalarValue::Int64(11)))
+        );
+    }
+
+    #[test]
+    fn any_dispatch_rejects_v2_delete_payload_with_nonzero_count() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64), def(&["x"], Type::Int64)];
+
+        let mut bytes = crate::record::payload_v2::encode_record_payload_v2_op(
+            1,
+            1,
+            crate::record::payload_v1::OP_DELETE,
+            &pk,
+            &pk_ty,
+            &[],
+        )
+        .unwrap();
+        let len = bytes.len();
+        bytes[len - 4..].copy_from_slice(&1u32.to_le_bytes());
+
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v3_decode_rejects_delete_payload_with_nonzero_count() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64), def(&["a"], Type::Int64)];
+
+        let mut bytes = encode_record_payload_v3_op(
+            1,
+            1,
+            crate::record::payload_v1::OP_DELETE,
+            &pk,
+            &pk_ty,
+            &[],
+        )
+        .unwrap();
+        let len = bytes.len();
+        bytes[len - 4..].copy_from_slice(&1u32.to_le_bytes());
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v3_decode_rejects_count_mismatch_vs_expected_schema_fields() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![
+            def(&["id"], Type::Int64),
+            def(&["a"], Type::Int64),
+            def(&["b"], Type::Int64),
+        ];
+        let non_pk = vec![(def(&["a"], Type::Int64), RowValue::from_scalar(ScalarValue::Int64(10)))];
+
+        let bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v3_decode_rejects_duplicate_field_paths_in_payload() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![
+            def(&["id"], Type::Int64),
+            def(&["a"], Type::Int64),
+            def(&["b"], Type::Int64),
+        ];
+
+        // Payload repeats `a` twice; schema expects `a` and `b` so count matches.
+        let non_pk = vec![
+            (def(&["a"], Type::Int64), RowValue::from_scalar(ScalarValue::Int64(10))),
+            (def(&["a"], Type::Int64), RowValue::from_scalar(ScalarValue::Int64(11))),
+        ];
+        let bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v3_decode_rejects_unknown_field_path_in_payload() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![
+            def(&["id"], Type::Int64),
+            def(&["a"], Type::Int64),
+            def(&["b"], Type::Int64),
+        ];
+
+        // Payload uses `c` which is not in schema; keep count==2 to reach lookup.
+        let non_pk = vec![
+            (def(&["a"], Type::Int64), RowValue::from_scalar(ScalarValue::Int64(10))),
+            (def(&["c"], Type::Int64), RowValue::from_scalar(ScalarValue::Int64(11))),
+        ];
+        let bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn v3_decode_rejects_invalid_field_paths_in_payload() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+        let fields = vec![def(&["id"], Type::Int64), def(&["a"], Type::Int64)];
+        let non_pk = vec![(def(&["a"], Type::Int64), RowValue::from_scalar(ScalarValue::Int64(10)))];
+
+        let mut bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        // For pk type Int64, the first field path starts at:
+        // u16 ver (2) + u32 cid (4) + u32 schema (4) + u8 op (1) + tagged pk (1+8) + u32 n (4) = 23
+        // Then the field path begins with u8 segment count at offset 23.
+        let fp_start = 2 + 4 + 4 + 1 + 1 + 8 + 4;
+        assert_eq!(fp_start, 24);
+        // Segment count = 0 is invalid.
+        bytes[fp_start] = 0;
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+
+        let mut bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        // Segment length = 0 is invalid.
+        bytes[fp_start] = 1;
+        bytes[fp_start + 1..fp_start + 3].copy_from_slice(&0u16.to_le_bytes());
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+
+        let mut bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        // Invalid UTF-8 segment bytes.
+        bytes[fp_start] = 1;
+        bytes[fp_start + 1..fp_start + 3].copy_from_slice(&1u16.to_le_bytes());
+        bytes[fp_start + 3] = 0xFF;
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
+    }
+
+    #[test]
+    fn insert_value_at_path_accepts_root_and_nested_and_overwrites_scalar_parent_with_object() {
+        use std::collections::BTreeMap;
+
+        let mut root: BTreeMap<String, RowValue> = BTreeMap::new();
+
+        // Empty path is invalid.
+        let empty = FieldPath(Vec::new());
+        assert!(insert_value_at_path(&mut root, &empty, RowValue::None).is_err());
+
+        // Root path inserts directly.
+        let p1 = FieldPath(vec![Cow::Borrowed("a")]);
+        insert_value_at_path(&mut root, &p1, RowValue::from_scalar(ScalarValue::Int64(1))).unwrap();
+
+        // Now insert a nested path under `a`. This forces the "overwrite non-object parent" branch.
+        let p2 = FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("b"), Cow::Borrowed("c")]);
+        insert_value_at_path(&mut root, &p2, RowValue::from_scalar(ScalarValue::Int64(2))).unwrap();
+    }
+
+    #[test]
+    fn v3_insert_value_at_path_errors_when_parent_is_scalar_and_path_len_is_two() {
+        let pk_ty = Type::Int64;
+        let pk = ScalarValue::Int64(1);
+
+        // Deliberately conflicting schema: `a` and `a.b`.
+        let fields = vec![
+            def(&["id"], Type::Int64),
+            def(&["a"], Type::Int64),
+            def(&["a", "b"], Type::Int64),
+        ];
+        let non_pk = vec![
+            (def(&["a"], Type::Int64), RowValue::from_scalar(ScalarValue::Int64(10))),
+            (
+                def(&["a", "b"], Type::Int64),
+                RowValue::from_scalar(ScalarValue::Int64(11)),
+            ),
+        ];
+
+        let bytes = encode_record_payload_v3_op(1, 1, OP_INSERT, &pk, &pk_ty, &non_pk).unwrap();
+        assert!(decode_record_payload_any(&bytes, "id", &pk_ty, &fields).is_err());
     }
 }

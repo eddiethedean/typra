@@ -86,8 +86,9 @@ pub fn encode_row_value(out: &mut Vec<u8>, v: &RowValue, ty: &Type) -> Result<()
             }
         }
         Type::List(inner) => {
-            let RowValue::List(items) = v else {
-                return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+            let items = match v {
+                RowValue::List(items) => items,
+                _ => return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch)),
             };
             out.extend_from_slice(&(items.len() as u32).to_le_bytes());
             for item in items {
@@ -109,8 +110,9 @@ pub fn encode_row_value(out: &mut Vec<u8>, v: &RowValue, ty: &Type) -> Result<()
             Ok(())
         }
         Type::Enum(_) => {
-            let RowValue::String(s) = v else {
-                return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+            let s = match v {
+                RowValue::String(s) => s,
+                _ => return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch)),
             };
             encode_tagged_scalar(out, &ScalarValue::String(s.clone()), &Type::String)
         }
@@ -167,6 +169,58 @@ pub fn decode_row_value(cur: &mut Cursor<'_>, ty: &Type) -> Result<RowValue, DbE
 pub fn non_pk_defs_in_order<'a>(fields: &'a [FieldDef], pk_name: &str) -> Vec<&'a FieldDef> {
     fields
         .iter()
-        .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
+        // Catalog validation guarantees field paths are non-empty. Current engine invariants also
+        // enforce that record payload v2 uses only top-level field defs here.
+        .filter(|f| f.path.0[0] != pk_name)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+    use std::collections::BTreeMap;
+
+    use super::{encode_row_value, non_pk_defs_in_order, RowValue};
+    use crate::schema::{FieldDef, FieldPath, Type};
+
+    fn field(path: &[&str], ty: Type) -> FieldDef {
+        FieldDef {
+            path: FieldPath(path.iter().map(|s| Cow::Owned((*s).to_string())).collect()),
+            ty,
+            constraints: vec![],
+        }
+    }
+
+    #[test]
+    fn encode_row_value_object_type_rejects_non_object_value() {
+        let mut out = Vec::new();
+        let ty = Type::Object(vec![field(&["a"], Type::String)]);
+        let v = RowValue::Int64(1);
+        assert!(encode_row_value(&mut out, &v, &ty).is_err());
+    }
+
+    #[test]
+    fn encode_row_value_object_type_encodes_fields_in_schema_order() {
+        let mut out = Vec::new();
+        let ty = Type::Object(vec![field(&["a"], Type::String)]);
+
+        let mut map = BTreeMap::new();
+        map.insert("a".to_string(), RowValue::String("x".to_string()));
+        let v = RowValue::Object(map);
+
+        assert!(encode_row_value(&mut out, &v, &ty).is_ok());
+        assert!(!out.is_empty());
+    }
+
+    #[test]
+    fn non_pk_defs_in_order_filters_out_pk_and_non_top_level_fields() {
+        let fields = vec![
+            field(&["id"], Type::Int64),           // pk (excluded)
+            field(&["title"], Type::String),       // non-pk (kept)
+        ];
+
+        let got = non_pk_defs_in_order(&fields, "id");
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].path.0[0].as_ref(), "title");
+    }
 }

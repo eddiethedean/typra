@@ -319,3 +319,227 @@ impl<'a> Cursor<'a> {
         Ok(slice.to_vec())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn index_state_unique_insert_conflict_and_deletes() {
+        let mut st = IndexState::default();
+
+        // Insert new key.
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "u".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Insert,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk1".to_vec(),
+        })
+        .unwrap();
+
+        // Idempotent insert of same mapping.
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "u".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Insert,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk1".to_vec(),
+        })
+        .unwrap();
+
+        // Conflicting insert.
+        assert!(st
+            .apply(IndexEntry {
+                collection_id: 1,
+                index_name: "u".to_string(),
+                kind: IndexKind::Unique,
+                op: IndexOp::Insert,
+                index_key: b"k".to_vec(),
+                pk_key: b"pk2".to_vec(),
+            })
+            .is_err());
+
+        // Delete with mismatched pk does nothing.
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "u".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Delete,
+            index_key: b"k".to_vec(),
+            pk_key: b"nope".to_vec(),
+        })
+        .unwrap();
+        assert_eq!(st.unique_lookup(1, "u", b"k").unwrap(), b"pk1");
+
+        // Delete with matching pk removes entry.
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "u".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Delete,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk1".to_vec(),
+        })
+        .unwrap();
+        assert!(st.unique_lookup(1, "u", b"k").is_none());
+
+        // Delete of missing key is ok.
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "u".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Delete,
+            index_key: b"missing".to_vec(),
+            pk_key: b"pk".to_vec(),
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn index_state_non_unique_insert_and_delete_removes_empty_set() {
+        let mut st = IndexState::default();
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "n".to_string(),
+            kind: IndexKind::NonUnique,
+            op: IndexOp::Insert,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk".to_vec(),
+        })
+        .unwrap();
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "n".to_string(),
+            kind: IndexKind::NonUnique,
+            op: IndexOp::Insert,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk2".to_vec(),
+        })
+        .unwrap();
+        // Order is not guaranteed; just ensure both are present.
+        let mut got = st.non_unique_lookup(1, "n", b"k").unwrap();
+        got.sort();
+        assert_eq!(got, vec![b"pk".to_vec(), b"pk2".to_vec()]);
+
+        // Delete one pk; set remains non-empty.
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "n".to_string(),
+            kind: IndexKind::NonUnique,
+            op: IndexOp::Delete,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk2".to_vec(),
+        })
+        .unwrap();
+        assert_eq!(st.non_unique_lookup(1, "n", b"k").unwrap(), vec![b"pk".to_vec()]);
+
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "n".to_string(),
+            kind: IndexKind::NonUnique,
+            op: IndexOp::Delete,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk".to_vec(),
+        })
+        .unwrap();
+        assert!(st.non_unique_lookup(1, "n", b"k").is_none());
+
+        // Delete when key is absent is ok.
+        st.apply(IndexEntry {
+            collection_id: 1,
+            index_name: "n".to_string(),
+            kind: IndexKind::NonUnique,
+            op: IndexOp::Delete,
+            index_key: b"missing".to_vec(),
+            pk_key: b"pk".to_vec(),
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn index_payload_v1_decodes_without_op_tag() {
+        // Manually craft a v1 payload: version, count, collection_id, kind_tag, then name/key/pk.
+        let mut out = Vec::new();
+        out.extend_from_slice(&INDEX_PAYLOAD_VERSION_V1.to_le_bytes());
+        out.extend_from_slice(&1u32.to_le_bytes());
+        out.extend_from_slice(&1u32.to_le_bytes());
+        out.push(1); // Unique
+
+        // index_name = "idx"
+        out.extend_from_slice(&(3u32.to_le_bytes()));
+        out.extend_from_slice(b"idx");
+
+        // index_key = b"k"
+        out.extend_from_slice(&(1u32.to_le_bytes()));
+        out.extend_from_slice(b"k");
+
+        // pk_key = b"pk"
+        out.extend_from_slice(&(2u32.to_le_bytes()));
+        out.extend_from_slice(b"pk");
+
+        let v = decode_index_payload(&out).unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].op, IndexOp::Insert);
+    }
+
+    #[test]
+    fn index_payload_rejects_unknown_kind_and_op_tags_and_trailing_bytes() {
+        let base = IndexEntry {
+            collection_id: 1,
+            index_name: "idx".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Insert,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk".to_vec(),
+        };
+
+        // Unknown kind tag.
+        let mut bytes = encode_index_payload(&[base.clone()]);
+        // overwrite kind tag at fixed offset: ver(2)+n(4)+cid(4)=10
+        bytes[10] = 9;
+        assert!(decode_index_payload(&bytes).is_err());
+
+        // Unknown op tag (v2 only): ver(2)+n(4)+cid(4)+kind(1)=11
+        let mut bytes = encode_index_payload(&[base.clone()]);
+        bytes[11] = 9;
+        assert!(decode_index_payload(&bytes).is_err());
+
+        // Trailing bytes.
+        let mut bytes = encode_index_payload(&[base]);
+        bytes.extend_from_slice(b"x");
+        assert!(decode_index_payload(&bytes).is_err());
+    }
+
+    #[test]
+    fn index_payload_rejects_unsupported_version_and_truncated_fields() {
+        // Unsupported version (also exercises the second half of the version check).
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&999u16.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        assert!(decode_index_payload(&bytes).is_err());
+
+        // Truncated before u16 version.
+        assert!(decode_index_payload(&[]).is_err());
+
+        // Truncated before kind_tag u8.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&INDEX_PAYLOAD_VERSION_V2.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        assert!(decode_index_payload(&bytes).is_err());
+
+        // Truncated during index_name bytes (exercise take_bytes unexpected eof).
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&INDEX_PAYLOAD_VERSION_V2.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.push(1); // kind unique
+        bytes.push(1); // op insert
+        bytes.extend_from_slice(&5u32.to_le_bytes()); // name len=5
+        bytes.extend_from_slice(b"x"); // only 1 byte provided
+        assert!(decode_index_payload(&bytes).is_err());
+    }
+}

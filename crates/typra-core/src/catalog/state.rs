@@ -457,4 +457,102 @@ mod tests {
             ))
         ));
     }
+
+    #[test]
+    fn apply_new_version_allows_when_primary_is_present() {
+        let mut c = Catalog::default();
+        c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "a".to_string(),
+            schema_version: 1,
+            fields: vec![
+                FieldDef {
+                    path: path(&["id"]),
+                    ty: Type::Int64,
+                    constraints: vec![],
+                },
+                FieldDef {
+                    path: path(&["x"]),
+                    ty: Type::String,
+                    constraints: vec![],
+                },
+            ],
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        })
+        .unwrap();
+
+        c.apply_record(CatalogRecordWire::NewSchemaVersion {
+            collection_id: 1,
+            schema_version: 2,
+            fields: vec![
+                FieldDef {
+                    path: path(&["id"]),
+                    ty: Type::Int64,
+                    constraints: vec![],
+                },
+                FieldDef {
+                    path: path(&["y"]),
+                    ty: Type::String,
+                    constraints: vec![],
+                },
+            ],
+            indexes: vec![],
+        })
+        .unwrap();
+
+        let col = c.get(CollectionId(1)).unwrap();
+        assert_eq!(col.current_version, SchemaVersion(2));
+        assert_eq!(col.primary_field.as_deref(), Some("id"));
+        assert!(Catalog::has_top_level_field(&col.fields, "id"));
+    }
+
+    #[test]
+    fn apply_create_rejects_invalid_field_defs() {
+        let mut c = Catalog::default();
+        let err = c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "a".to_string(),
+            schema_version: 1,
+            fields: vec![FieldDef {
+                // Invalid: empty field path.
+                path: FieldPath(vec![]),
+                ty: Type::Int64,
+                constraints: vec![],
+            }],
+            indexes: vec![],
+            primary_field: None,
+        });
+        assert!(matches!(err, Err(DbError::Schema(SchemaError::InvalidFieldPath))));
+    }
+
+    #[test]
+    fn apply_new_version_rejects_invalid_field_defs() {
+        let mut c = Catalog::default();
+        c.apply_record(CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "a".to_string(),
+            schema_version: 1,
+            fields: vec![FieldDef {
+                path: path(&["id"]),
+                ty: Type::Int64,
+                constraints: vec![],
+            }],
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        })
+        .unwrap();
+
+        let err = c.apply_record(CatalogRecordWire::NewSchemaVersion {
+            collection_id: 1,
+            schema_version: 2,
+            fields: vec![FieldDef {
+                path: FieldPath(vec![]),
+                ty: Type::Int64,
+                constraints: vec![],
+            }],
+            indexes: vec![],
+        });
+        assert!(matches!(err, Err(DbError::Schema(SchemaError::InvalidFieldPath))));
+    }
 }

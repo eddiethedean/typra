@@ -94,8 +94,12 @@ struct WriterLockGuard {
 
 impl Drop for WriterLockGuard {
     fn drop(&mut self) {
-        let Ok(mut g) = writer_locks().lock() else {
-            return;
+        // Best-effort recovery from a poisoned lock: dropping a writer guard should never panic,
+        // and the worst-case outcome is leaking a held writer lock for the remainder of the
+        // process lifetime. Prefer continuing to release the OS-level lock when possible.
+        let mut g = match writer_locks().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
         };
         let Some(st) = g.get_mut(&self.lock_path) else {
             return;
@@ -155,9 +159,11 @@ impl FileStore {
         let writer_lock = match mode {
             OpenMode::ReadOnly => None,
             OpenMode::ReadWrite => {
-                let mut g = writer_locks()
-                    .lock()
-                    .map_err(|_| std::io::Error::other("lock poisoned"))?;
+                // Be resilient to poisoning: treat the inner map as authoritative.
+                let mut g = match writer_locks().lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
                 if let Some(st) = g.get_mut(&lock_path) {
                     st.refs = st.refs.saturating_add(1);
                     Some(WriterLockGuard {
@@ -194,11 +200,13 @@ impl FileStore {
                 // Important: on some platforms, acquiring a second lock in the same process while
                 // an exclusive lock is held may downgrade/replace the existing lock. We avoid that
                 // foot-gun by failing explicitly if this process already holds the writer lock.
-                let already_writer = writer_locks()
-                    .lock()
-                    .ok()
-                    .and_then(|g| g.get(&lock_path).map(|_| ()))
-                    .is_some();
+                let already_writer = {
+                    let g = match writer_locks().lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    g.get(&lock_path).is_some()
+                };
                 if already_writer {
                     return Err(DbError::Io(std::io::Error::other(
                         "cannot open read-only while holding writer lock in the same process",
@@ -324,5 +332,127 @@ impl Store for VecStore {
     fn truncate(&mut self, len: u64) -> Result<(), DbError> {
         self.buf.truncate(len as usize);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{writer_locks, FileStore, WriterLockGuard};
+    use crate::config::OpenMode;
+    use crate::storage::{Store, VecStore};
+    use std::path::PathBuf;
+
+    #[test]
+    fn poisoned_writer_lock_mutex_does_not_break_drop_or_open() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+
+        // Acquire a writer lock.
+        let store = FileStore::open_locked(f.path(), OpenMode::ReadWrite).unwrap();
+
+        // Poison the writer-lock mutex in a controlled way.
+        let _ = std::panic::catch_unwind(|| {
+            let _g = writer_locks().lock().unwrap();
+            panic!("poison for coverage");
+        });
+
+        // Dropping the store must not panic, and should take the poisoned-lock recovery branch in
+        // `WriterLockGuard::drop`.
+        drop(store);
+
+        // Open should also tolerate poisoning (it uses the inner map).
+        let store2 = FileStore::open_locked(f.path(), OpenMode::ReadWrite).unwrap();
+        drop(store2);
+
+        // Read-only open should also tolerate poisoning, including in the "already_writer" check.
+        let _ro = FileStore::open_locked(f.path(), OpenMode::ReadOnly).unwrap();
+    }
+
+    #[test]
+    fn writer_lock_guard_drop_handles_missing_map_entry() {
+        // Coverage-motivated: exercise the `else { return; }` branch in `WriterLockGuard::drop`
+        // when the lock path is absent from the map.
+        let guard = WriterLockGuard {
+            lock_path: PathBuf::from("does-not-exist.writer.lock"),
+        };
+        drop(guard);
+    }
+
+    #[test]
+    fn poisoned_lock_drop_covers_refs_nonzero_branch() {
+        let f = tempfile::NamedTempFile::new().unwrap();
+
+        // Hold two writer locks (refs=2).
+        let s1 = FileStore::open_locked(f.path(), OpenMode::ReadWrite).unwrap();
+        let s2 = FileStore::open_locked(f.path(), OpenMode::ReadWrite).unwrap();
+
+        // Poison the mutex.
+        let _ = std::panic::catch_unwind(|| {
+            let _g = writer_locks().lock().unwrap();
+            panic!("poison");
+        });
+
+        // Drop one: should take the `refs != 0` (false) branch under poisoning.
+        drop(s1);
+        // Drop the second: should take the `refs == 0` (true) branch under poisoning.
+        drop(s2);
+    }
+
+    #[test]
+    fn store_is_empty_true_and_false_branches() {
+        // VecStore: empty then non-empty.
+        let mut vs = VecStore::new();
+        assert_eq!(vs.is_empty().unwrap(), true);
+        vs.write_all_at(0, b"x").unwrap();
+        assert_eq!(vs.is_empty().unwrap(), false);
+
+        // FileStore: empty then non-empty.
+        let f = tempfile::NamedTempFile::new().unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(f.path())
+            .unwrap();
+        let mut fs = FileStore::new(file);
+        assert_eq!(fs.is_empty().unwrap(), true);
+        fs.write_all_at(0, b"y").unwrap();
+        assert_eq!(fs.is_empty().unwrap(), false);
+    }
+
+    #[test]
+    fn store_is_empty_propagates_len_error() {
+        #[derive(Debug)]
+        struct BadLenStore;
+        impl Store for BadLenStore {
+            fn len(&self) -> Result<u64, crate::error::DbError> {
+                Err(crate::error::DbError::Io(std::io::Error::other(
+                    "len failed",
+                )))
+            }
+            fn read_exact_at(
+                &mut self,
+                _offset: u64,
+                _buf: &mut [u8],
+            ) -> Result<(), crate::error::DbError> {
+                Ok(())
+            }
+            fn write_all_at(
+                &mut self,
+                _offset: u64,
+                _buf: &[u8],
+            ) -> Result<(), crate::error::DbError> {
+                Ok(())
+            }
+            fn sync(&mut self) -> Result<(), crate::error::DbError> {
+                Ok(())
+            }
+            fn truncate(&mut self, _len: u64) -> Result<(), crate::error::DbError> {
+                Ok(())
+            }
+        }
+
+        let s = BadLenStore;
+        assert!(s.is_empty().is_err());
     }
 }

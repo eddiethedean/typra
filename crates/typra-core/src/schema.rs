@@ -21,8 +21,18 @@ impl FieldPath {
     /// Build a path from non-empty UTF-8 segments (rejects empty paths or empty segments).
     pub fn new(parts: impl IntoIterator<Item = Cow<'static, str>>) -> Result<Self, DbError> {
         let parts: Vec<Cow<'static, str>> = parts.into_iter().collect();
-        if parts.is_empty() || parts.iter().any(|p| p.is_empty()) {
+        Self::new_from_vec(parts)
+    }
+
+    #[inline(never)]
+    fn new_from_vec(parts: Vec<Cow<'static, str>>) -> Result<Self, DbError> {
+        if parts.is_empty() {
             return Err(DbError::Schema(SchemaError::InvalidFieldPath));
+        }
+        for p in &parts {
+            if p.is_empty() {
+                return Err(DbError::Schema(SchemaError::InvalidFieldPath));
+            }
         }
         Ok(Self(parts))
     }
@@ -31,8 +41,13 @@ impl FieldPath {
 pub(crate) fn validate_field_defs(fields: &[FieldDef]) -> Result<(), DbError> {
     // Basic path validation (in case callers constructed `FieldPath` directly).
     for f in fields {
-        if f.path.0.is_empty() || f.path.0.iter().any(|s| s.is_empty()) {
+        if f.path.0.is_empty() {
             return Err(DbError::Schema(SchemaError::InvalidFieldPath));
+        }
+        for s in &f.path.0 {
+            if s.is_empty() {
+                return Err(DbError::Schema(SchemaError::InvalidFieldPath));
+            }
         }
     }
 
@@ -50,10 +65,10 @@ pub(crate) fn validate_field_defs(fields: &[FieldDef]) -> Result<(), DbError> {
             let pa = &a.path.0;
             let pb = &b.path.0;
             let min = pa.len().min(pb.len());
-            if min == 0 {
+            if pa.len() == pb.len() {
                 continue;
             }
-            if pa.len() != pb.len() && pa[..min] == pb[..min] {
+            if pa[..min] == pb[..min] {
                 return Err(DbError::Schema(SchemaError::InvalidFieldPath));
             }
         }
@@ -265,7 +280,12 @@ pub fn classify_schema_update(
         let Some(new_idx) = new_idx_map.get(name) else {
             continue;
         };
-        if old_idx.kind != new_idx.kind || old_idx.path != new_idx.path {
+        if old_idx.kind != new_idx.kind {
+            return Ok(SchemaChange::Breaking {
+                reason: format!("index changed: {name:?}"),
+            });
+        }
+        if old_idx.path != new_idx.path {
             return Ok(SchemaChange::Breaking {
                 reason: format!("index changed: {name:?}"),
             });
@@ -294,5 +314,199 @@ fn type_is_compatible(old: &Type, new: &Type) -> bool {
             old_vars.iter().all(|v| new_vars.contains(v))
         }
         _ => old == new,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::{
+        classify_schema_update, validate_field_defs, Constraint, FieldDef, FieldPath, IndexDef,
+        IndexKind, SchemaChange, Type,
+    };
+
+    fn field(path: &[&'static str], ty: Type, constraints: Vec<Constraint>) -> FieldDef {
+        FieldDef {
+            path: FieldPath(path.iter().map(|s| Cow::Borrowed(*s)).collect()),
+            ty,
+            constraints,
+        }
+    }
+
+    #[test]
+    fn field_path_new_rejects_empty_and_empty_segment() {
+        assert!(FieldPath::new([]).is_err());
+        assert!(FieldPath::new([Cow::Borrowed("")]).is_err());
+    }
+
+    #[test]
+    fn field_def_new_initializes_empty_constraints() {
+        let fd = FieldDef::new(FieldPath::new([Cow::Borrowed("x")]).unwrap(), Type::String);
+        assert!(fd.constraints.is_empty());
+    }
+
+    #[test]
+    fn validate_field_defs_rejects_duplicate_paths() {
+        let fields = vec![field(&["a"], Type::String, vec![]), field(&["a"], Type::String, vec![])];
+        assert!(validate_field_defs(&fields).is_err());
+    }
+
+    #[test]
+    fn validate_field_defs_rejects_parent_child_conflict() {
+        let fields = vec![
+            field(&["a"], Type::String, vec![]),
+            field(&["a", "b"], Type::String, vec![]),
+        ];
+        assert!(validate_field_defs(&fields).is_err());
+    }
+
+    #[test]
+    fn validate_field_defs_rejects_empty_paths_and_empty_segments() {
+        let empty_path = vec![FieldDef {
+            path: FieldPath(Vec::new()),
+            ty: Type::String,
+            constraints: Vec::new(),
+        }];
+        assert!(validate_field_defs(&empty_path).is_err());
+
+        let empty_segment = vec![FieldDef {
+            path: FieldPath(vec![Cow::Borrowed("")]),
+            ty: Type::String,
+            constraints: Vec::new(),
+        }];
+        assert!(validate_field_defs(&empty_segment).is_err());
+
+        let empty_segment_not_first = vec![FieldDef {
+            path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("")]),
+            ty: Type::String,
+            constraints: Vec::new(),
+        }];
+        assert!(validate_field_defs(&empty_segment_not_first).is_err());
+    }
+
+    #[test]
+    fn validate_field_defs_accepts_distinct_non_conflicting_paths() {
+        let fields = vec![field(&["a"], Type::String, vec![]), field(&["b"], Type::String, vec![])];
+        validate_field_defs(&fields).unwrap();
+    }
+
+    #[test]
+    fn validate_field_defs_accepts_unequal_lengths_when_prefix_differs() {
+        let fields = vec![
+            field(&["a", "x"], Type::String, vec![]),
+            field(&["b"], Type::String, vec![]),
+        ];
+        validate_field_defs(&fields).unwrap();
+    }
+
+    #[test]
+    fn classify_schema_update_breaks_on_constraint_change() {
+        let old_fields = vec![field(&["id"], Type::Int64, vec![Constraint::NonEmpty])];
+        let new_fields = vec![field(&["id"], Type::Int64, vec![])];
+        let out = classify_schema_update(&old_fields, &[], &new_fields, &[]).unwrap();
+        assert!(matches!(out, SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_breaks_on_index_change() {
+        let fields = vec![field(&["id"], Type::Int64, vec![])];
+        let old_indexes = vec![IndexDef {
+            name: "i".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("id")]),
+            kind: IndexKind::NonUnique,
+        }];
+        let new_indexes = vec![IndexDef {
+            name: "i".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("id")]),
+            kind: IndexKind::Unique,
+        }];
+        let out = classify_schema_update(&fields, &old_indexes, &fields, &new_indexes).unwrap();
+        assert!(matches!(out, SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_breaks_on_index_path_change() {
+        let fields = vec![field(&["id"], Type::Int64, vec![])];
+        let old_indexes = vec![IndexDef {
+            name: "i".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("id")]),
+            kind: IndexKind::NonUnique,
+        }];
+        let new_indexes = vec![IndexDef {
+            name: "i".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("other")]),
+            kind: IndexKind::NonUnique,
+        }];
+        let out = classify_schema_update(&fields, &old_indexes, &fields, &new_indexes).unwrap();
+        assert!(matches!(out, SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_breaks_when_field_removed() {
+        let old_fields = vec![field(&["id"], Type::Int64, vec![]), field(&["x"], Type::Int64, vec![])];
+        let new_fields = vec![field(&["id"], Type::Int64, vec![])];
+        let out = classify_schema_update(&old_fields, &[], &new_fields, &[]).unwrap();
+        assert!(matches!(out, SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_breaks_on_type_change() {
+        let old_fields = vec![field(&["id"], Type::Int64, vec![])];
+        let new_fields = vec![field(&["id"], Type::String, vec![])];
+        let out = classify_schema_update(&old_fields, &[], &new_fields, &[]).unwrap();
+        assert!(matches!(out, SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_allows_index_drop() {
+        let fields = vec![field(&["id"], Type::Int64, vec![])];
+        let old_indexes = vec![IndexDef {
+            name: "i".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("id")]),
+            kind: IndexKind::NonUnique,
+        }];
+        let out = classify_schema_update(&fields, &old_indexes, &fields, &[]).unwrap();
+        assert!(matches!(out, SchemaChange::Safe));
+    }
+
+    #[test]
+    fn classify_schema_update_new_optional_field_is_safe_but_new_required_field_needs_migration() {
+        let old_fields = vec![field(&["id"], Type::Int64, vec![])];
+
+        let new_fields_optional = vec![
+            field(&["id"], Type::Int64, vec![]),
+            field(&["x"], Type::Optional(Box::new(Type::Int64)), vec![]),
+        ];
+        let out = classify_schema_update(&old_fields, &[], &new_fields_optional, &[]).unwrap();
+        assert!(matches!(out, SchemaChange::Safe));
+
+        let new_fields_required = vec![field(&["id"], Type::Int64, vec![]), field(&["x"], Type::Int64, vec![])];
+        let out = classify_schema_update(&old_fields, &[], &new_fields_required, &[]).unwrap();
+        assert!(matches!(out, SchemaChange::NeedsMigration { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_added_unique_index_needs_migration_but_added_non_unique_is_safe() {
+        let fields = vec![
+            field(&["id"], Type::Int64, vec![]),
+            field(&["x"], Type::Int64, vec![]),
+        ];
+
+        let added_non_unique = vec![IndexDef {
+            name: "i".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            kind: IndexKind::NonUnique,
+        }];
+        let out = classify_schema_update(&fields, &[], &fields, &added_non_unique).unwrap();
+        assert!(matches!(out, SchemaChange::Safe));
+
+        let added_unique = vec![IndexDef {
+            name: "i".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            kind: IndexKind::Unique,
+        }];
+        let out = classify_schema_update(&fields, &[], &fields, &added_unique).unwrap();
+        assert!(matches!(out, SchemaChange::NeedsMigration { .. }));
     }
 }

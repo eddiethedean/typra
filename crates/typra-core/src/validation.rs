@@ -70,15 +70,15 @@ pub fn validate_value(
             apply_constraints(path, ty, constraints, v)
         }
         Type::Uint64 => {
-            let RowValue::Uint64(_) = v else {
+            if !matches!(v, RowValue::Uint64(_)) {
                 return Err(err(path, "expected uint64"));
-            };
+            }
             apply_constraints(path, ty, constraints, v)
         }
         Type::Float64 => {
-            let RowValue::Float64(_) = v else {
+            if !matches!(v, RowValue::Float64(_)) {
                 return Err(err(path, "expected float64"));
-            };
+            }
             apply_constraints(path, ty, constraints, v)
         }
         Type::String => {
@@ -88,9 +88,9 @@ pub fn validate_value(
             apply_constraints(path, ty, constraints, v)
         }
         Type::Bytes => {
-            let RowValue::Bytes(_) = v else {
+            if !matches!(v, RowValue::Bytes(_)) {
                 return Err(err(path, "expected bytes"));
-            };
+            }
             apply_constraints(path, ty, constraints, v)
         }
         Type::Uuid => {
@@ -148,7 +148,14 @@ pub fn validate_value(
             let RowValue::String(s) = v else {
                 return Err(err(path, "expected string (enum)"));
             };
-            if !variants.iter().any(|x| x == s) {
+            let mut ok = false;
+            for x in variants {
+                if x == s {
+                    ok = true;
+                    break;
+                }
+            }
+            if !ok {
                 return Err(err(
                     path,
                     format!("enum value must be one of {:?}", variants),
@@ -215,60 +222,28 @@ fn apply_constraints(
                     return Err(err(path, format!("value {n} is above maximum {max}")));
                 }
             }
-            Constraint::MinLength(min) => match v {
-                RowValue::String(s) => {
-                    if (s.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("string length {} is below minimum {}", s.len(), min),
-                        ));
-                    }
+            Constraint::MinLength(min) => {
+                let (kind, len) = match v {
+                    RowValue::String(s) => ("string", s.len() as u64),
+                    RowValue::Bytes(b) => ("bytes", b.len() as u64),
+                    RowValue::List(items) => ("list", items.len() as u64),
+                    _ => return Err(err(path, "MinLength applies to string, bytes, or list")),
+                };
+                if len < *min {
+                    return Err(err(path, format!("{kind} length {len} is below minimum {min}")));
                 }
-                RowValue::Bytes(b) => {
-                    if (b.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("bytes length {} is below minimum {}", b.len(), min),
-                        ));
-                    }
+            }
+            Constraint::MaxLength(max) => {
+                let (kind, len) = match v {
+                    RowValue::String(s) => ("string", s.len() as u64),
+                    RowValue::Bytes(b) => ("bytes", b.len() as u64),
+                    RowValue::List(items) => ("list", items.len() as u64),
+                    _ => return Err(err(path, "MaxLength applies to string, bytes, or list")),
+                };
+                if len > *max {
+                    return Err(err(path, format!("{kind} length {len} is above maximum {max}")));
                 }
-                RowValue::List(items) => {
-                    if (items.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("list length {} is below minimum {}", items.len(), min),
-                        ));
-                    }
-                }
-                _ => return Err(err(path, "MinLength applies to string, bytes, or list")),
-            },
-            Constraint::MaxLength(max) => match v {
-                RowValue::String(s) => {
-                    if (s.len() as u64) > *max {
-                        return Err(err(
-                            path,
-                            format!("string length {} is above maximum {}", s.len(), max),
-                        ));
-                    }
-                }
-                RowValue::Bytes(b) => {
-                    if (b.len() as u64) > *max {
-                        return Err(err(
-                            path,
-                            format!("bytes length {} is above maximum {}", b.len(), max),
-                        ));
-                    }
-                }
-                RowValue::List(items) => {
-                    if (items.len() as u64) > *max {
-                        return Err(err(
-                            path,
-                            format!("list length {} is above maximum {}", items.len(), max),
-                        ));
-                    }
-                }
-                _ => return Err(err(path, "MaxLength applies to string, bytes, or list")),
-            },
+            }
             Constraint::Regex(pattern) => {
                 let RowValue::String(s) = v else {
                     return Err(err(path, "Regex constraint requires string"));
@@ -325,11 +300,17 @@ pub fn validate_top_level_row(
     pk_name: &str,
     row: &std::collections::BTreeMap<String, RowValue>,
 ) -> Result<(), DbError> {
+    let top_fields: Vec<&FieldDef> = fields.iter().filter(|f| f.path.0.len() == 1).collect();
+
     for k in row.keys() {
-        if !fields
-            .iter()
-            .any(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == k.as_str())
-        {
+        let mut ok = false;
+        for f in &top_fields {
+            if f.path.0[0].as_ref() == k.as_str() {
+                ok = true;
+                break;
+            }
+        }
+        if !ok {
             return Err(DbError::Validation(ValidationError {
                 path: vec![k.clone()],
                 message: "unknown field".into(),
@@ -337,7 +318,7 @@ pub fn validate_top_level_row(
         }
     }
 
-    for def in fields {
+    for def in top_fields {
         let name = def.path.0[0].to_string();
         if name == pk_name {
             continue;
