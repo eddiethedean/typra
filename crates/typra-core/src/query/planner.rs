@@ -74,14 +74,17 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
             let mut s = String::new();
             s.push_str("Plan:\n");
             s.push_str("  CollectionScan\n");
-            if let Some(p) = predicate {
-                s.push_str(&format!("  Filter {p:?}\n"));
+            match predicate {
+                Some(p) => s.push_str(&format!("  Filter {p:?}\n")),
+                None => {}
             }
-            if let Some(n) = limit {
-                s.push_str(&format!("  Limit {n}\n"));
+            match limit {
+                Some(n) => s.push_str(&format!("  Limit {n}\n")),
+                None => {}
             }
-            if let Some(ob) = order_by {
-                s.push_str(&format!("  OrderBy {:?} {:?}\n", ob.path, ob.direction));
+            match order_by {
+                Some(ob) => s.push_str(&format!("  OrderBy {:?} {:?}\n", ob.path, ob.direction)),
+                None => {}
             }
             s
         }
@@ -121,24 +124,29 @@ pub fn execute_query(
 
             match kind {
                 IndexKind::Unique => {
-                    if let Some(pk) = indexes.unique_lookup(collection_id, &index_name, &key) {
-                        push_row(&mut out, pk.to_vec());
+                    match indexes.unique_lookup(collection_id, &index_name, &key) {
+                        Some(pk) => push_row(&mut out, pk.to_vec()),
+                        None => {}
                     }
                 }
                 IndexKind::NonUnique => {
-                    if let Some(pks) = indexes.non_unique_lookup(collection_id, &index_name, &key) {
-                        for pk in pks {
-                            push_row(&mut out, pk);
-                            if limit.map(|n| out.len() >= n).unwrap_or(false) {
-                                break;
+                    match indexes.non_unique_lookup(collection_id, &index_name, &key) {
+                        Some(pks) => {
+                            for pk in pks {
+                                push_row(&mut out, pk);
+                                if limit.map(|n| out.len() >= n).unwrap_or(false) {
+                                    break;
+                                }
                             }
                         }
+                        None => {}
                     }
                 }
             }
 
-            if let Some(pred) = residual {
-                out.retain(|row| eval_predicate(row, &pred));
+            match residual {
+                Some(pred) => out.retain(|row| eval_predicate(row, &pred)),
+                None => {}
             }
             apply_order_by_and_limit(&mut out, order_by.as_ref(), limit);
             Ok(out)
@@ -154,10 +162,13 @@ pub fn execute_query(
                 if *cid != collection_id {
                     continue;
                 }
-                if let Some(ref p) = predicate {
-                    if !eval_predicate(row, p) {
-                        continue;
+                match predicate.as_ref() {
+                    Some(p) => {
+                        if !eval_predicate(row, p) {
+                            continue;
+                        }
                     }
+                    None => {}
                 }
                 out.push(row.clone());
             }
@@ -226,16 +237,20 @@ struct IndexUniqueSource<'a> {
 
 impl RowSource for IndexUniqueSource<'_> {
     fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
-        if self.done {
-            return None;
+        match self.done {
+            true => return None,
+            false => {}
         }
         self.done = true;
         let pk_key = self.pk.take()?;
         let row = self.latest.get(&(self.collection_id, pk_key.clone()))?;
-        if let Some(pred) = &self.residual {
-            if !eval_predicate(row, pred) {
-                return None;
+        match &self.residual {
+            Some(pred) => {
+                if !eval_predicate(row, pred) {
+                    return None;
+                }
             }
+            None => {}
         }
         Some(Ok((CollectionId(self.collection_id), pk_key)))
     }
@@ -277,10 +292,13 @@ impl RowSource for ScanSource<'_> {
             if cid != self.collection_id {
                 continue;
             }
-            if let Some(p) = &self.predicate {
-                if !eval_predicate(row, p) {
-                    continue;
+            match &self.predicate {
+                Some(p) => {
+                    if !eval_predicate(row, p) {
+                        continue;
+                    }
                 }
+                None => {}
             }
             return Some(Ok((CollectionId(self.collection_id), pk_key.clone())));
         }
@@ -375,21 +393,22 @@ pub fn execute_query_iter_with_spill_path<'a>(
     q: &Query,
     db_path: Option<&std::path::Path>,
 ) -> Result<QueryRowIter<'a>, DbError> {
-    if q.order_by.is_none() {
-        return execute_query_iter(catalog, indexes, latest, q);
-    }
-    let Some(order_by) = q.order_by.clone() else {
-        return execute_query_iter(catalog, indexes, latest, q);
+    let order_by = match q.order_by.clone() {
+        Some(ob) => ob,
+        None => return execute_query_iter(catalog, indexes, latest, q),
     };
 
     // If we don't have a file path to spill into, fall back to the existing in-memory behavior.
-    let Some(path) = db_path else {
-        return Ok(QueryRowIter {
-            state: QueryRowIterState::Vec {
-                rows: execute_query(catalog, indexes, latest, q)?,
-                pos: 0,
-            },
-        });
+    let path = match db_path {
+        Some(p) => p,
+        None => {
+            return Ok(QueryRowIter {
+                state: QueryRowIterState::Vec {
+                    rows: execute_query(catalog, indexes, latest, q)?,
+                    pos: 0,
+                },
+            });
+        }
     };
 
     let col = catalog
@@ -453,8 +472,9 @@ pub fn execute_query_iter_with_spill_path<'a>(
     )?);
 
     let mut source: Box<dyn RowSource + 'a> = sort_source;
-    if let Some(n) = q.limit {
-        source = Box::new(LimitOp::new(source, n));
+    match q.limit {
+        Some(n) => source = Box::new(LimitOp::new(source, n)),
+        None => {}
     }
 
     Ok(QueryRowIter {
@@ -737,13 +757,16 @@ fn plan_query(
     indexes: &[crate::schema::IndexDef],
     query: &Query,
 ) -> Result<Plan, DbError> {
-    let Some(pred) = query.predicate.clone() else {
-        return Ok(Plan::CollectionScan {
-            collection_id: collection.0,
-            predicate: None,
-            limit: query.limit,
-            order_by: query.order_by.clone(),
-        });
+    let pred = match query.predicate.clone() {
+        Some(p) => p,
+        None => {
+            return Ok(Plan::CollectionScan {
+                collection_id: collection.0,
+                predicate: None,
+                limit: query.limit,
+                order_by: query.order_by.clone(),
+            });
+        }
     };
 
     let (best, residual) = match choose_index(indexes, &pred) {
@@ -754,8 +777,8 @@ fn plan_query(
         }
     };
 
-    if let Some((idx, value)) = best {
-        Ok(Plan::IndexLookup {
+    match best {
+        Some((idx, value)) => Ok(Plan::IndexLookup {
             collection_id: collection.0,
             index_name: idx.name.clone(),
             kind: idx.kind,
@@ -763,14 +786,13 @@ fn plan_query(
             residual,
             limit: query.limit,
             order_by: query.order_by.clone(),
-        })
-    } else {
-        Ok(Plan::CollectionScan {
+        }),
+        None => Ok(Plan::CollectionScan {
             collection_id: collection.0,
             predicate: residual,
             limit: query.limit,
             order_by: query.order_by.clone(),
-        })
+        }),
     }
 }
 
@@ -792,15 +814,18 @@ fn choose_index<'a>(
             // Prefer unique index predicates, else first indexed predicate.
             let mut best: Option<(&crate::schema::IndexDef, ScalarValue, Predicate)> = None;
             for p in items {
-                if let Some((idx, v, used)) = choose_index(indexes, p) {
-                    match best {
+                match choose_index(indexes, p) {
+                    None => {}
+                    Some((idx, v, used)) => match best {
                         None => best = Some((idx, v, used)),
                         Some((best_idx, _, _)) => {
-                            if best_idx.kind != IndexKind::Unique && idx.kind == IndexKind::Unique {
+                            let should_upgrade =
+                                best_idx.kind != IndexKind::Unique && idx.kind == IndexKind::Unique;
+                            if should_upgrade {
                                 best = Some((idx, v, used));
                             }
                         }
-                    }
+                    },
                 }
             }
             best
@@ -809,8 +834,9 @@ fn choose_index<'a>(
 }
 
 fn remove_used_predicate(pred: Predicate, used: Predicate) -> Option<Predicate> {
-    if pred == used {
-        return None;
+    match pred == used {
+        true => return None,
+        false => {}
     }
     match pred {
         Predicate::And(items) => {
@@ -827,25 +853,38 @@ fn remove_used_predicate(pred: Predicate, used: Predicate) -> Option<Predicate> 
 
 fn eval_predicate(row: &BTreeMap<String, RowValue>, pred: &Predicate) -> bool {
     match pred {
-        Predicate::Eq { path, value } => scalar_at_path(row, path)
-            .map(|s| &s == value)
-            .unwrap_or(false),
-        Predicate::Lt { path, value } => scalar_at_path(row, path)
-            .and_then(|s| scalar_partial_cmp(&s, value))
-            .map(|o| o.is_lt())
-            .unwrap_or(false),
-        Predicate::Lte { path, value } => scalar_at_path(row, path)
-            .and_then(|s| scalar_partial_cmp(&s, value))
-            .map(|o| o.is_lt() || o.is_eq())
-            .unwrap_or(false),
-        Predicate::Gt { path, value } => scalar_at_path(row, path)
-            .and_then(|s| scalar_partial_cmp(&s, value))
-            .map(|o| o.is_gt())
-            .unwrap_or(false),
-        Predicate::Gte { path, value } => scalar_at_path(row, path)
-            .and_then(|s| scalar_partial_cmp(&s, value))
-            .map(|o| o.is_gt() || o.is_eq())
-            .unwrap_or(false),
+        Predicate::Eq { path, value } => match scalar_at_path(row, path) {
+            Some(s) => &s == value,
+            None => false,
+        },
+        Predicate::Lt { path, value } => match scalar_at_path(row, path) {
+            Some(s) => match scalar_partial_cmp(&s, value) {
+                Some(o) => o.is_lt(),
+                None => false,
+            },
+            None => false,
+        },
+        Predicate::Lte { path, value } => match scalar_at_path(row, path) {
+            Some(s) => match scalar_partial_cmp(&s, value) {
+                Some(o) => o.is_lt() || o.is_eq(),
+                None => false,
+            },
+            None => false,
+        },
+        Predicate::Gt { path, value } => match scalar_at_path(row, path) {
+            Some(s) => match scalar_partial_cmp(&s, value) {
+                Some(o) => o.is_gt(),
+                None => false,
+            },
+            None => false,
+        },
+        Predicate::Gte { path, value } => match scalar_at_path(row, path) {
+            Some(s) => match scalar_partial_cmp(&s, value) {
+                Some(o) => o.is_gt() || o.is_eq(),
+                None => false,
+            },
+            None => false,
+        },
         Predicate::And(items) => items.iter().all(|p| eval_predicate(row, p)),
         Predicate::Or(items) => items.iter().any(|p| eval_predicate(row, p)),
     }
@@ -856,8 +895,8 @@ fn apply_order_by_and_limit(
     order_by: Option<&OrderBy>,
     limit: Option<usize>,
 ) {
-    if let Some(ob) = order_by {
-        rows.sort_by(|a, b| {
+    match order_by {
+        Some(ob) => rows.sort_by(|a, b| {
             let av = scalar_at_path(a, &ob.path);
             let bv = scalar_at_path(b, &ob.path);
             let ord = match (av, bv) {
@@ -872,10 +911,12 @@ fn apply_order_by_and_limit(
                 OrderDirection::Asc => ord,
                 OrderDirection::Desc => ord.reverse(),
             }
-        });
+        }),
+        None => {}
     }
-    if let Some(n) = limit {
-        rows.truncate(n);
+    match limit {
+        Some(n) => rows.truncate(n),
+        None => {}
     }
 }
 
