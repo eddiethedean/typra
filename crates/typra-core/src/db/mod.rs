@@ -60,11 +60,18 @@ fn plan_insert_row(
             }))?;
     // Catalog invariants: if a collection has a primary key, its schema must contain a matching
     // top-level field. Catalog creation/versioning enforces this.
-    let pk_def = col
-        .fields
-        .iter()
-        .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-        .unwrap();
+    let mut pk_def = None;
+    for f in &col.fields {
+        if f.path.0.len() != 1 {
+            continue;
+        }
+        if f.path.0[0] != pk_name {
+            continue;
+        }
+        pk_def = Some(f);
+        break;
+    }
+    let pk_def = pk_def.unwrap();
     let pk_ty = &pk_def.ty;
     validation::ensure_pk_type_primitive(pk_ty)?;
     let mut pk_path = vec![pk_name.to_string()];
@@ -1481,11 +1488,13 @@ pub fn row_subset_by_field_defs(
     let mut out: BTreeMap<String, RowValue> = BTreeMap::new();
     for f in wanted {
         let segs = &f.path.0;
-        if segs.is_empty() {
-            continue;
+        match segs.is_empty() {
+            true => continue,
+            false => {}
         }
-        let Some(leaf) = row_value_at_path_segments(row, segs) else {
-            continue;
+        let leaf = match row_value_at_path_segments(row, segs) {
+            Some(v) => v,
+            None => continue,
         };
         let root = segs[0].to_string();
         if segs.len() == 1 {
@@ -3310,6 +3319,275 @@ mod tests {
             rows[0],
             BTreeMap::from([("title".to_string(), RowValue::String("Hello".to_string()))])
         );
+    }
+
+    #[test]
+    fn subset_model_validation_errors_for_pk_mismatch_unknown_field_and_type_mismatch() {
+        use crate::schema::{DbModel, FieldDef, FieldPath, Type};
+        use std::borrow::Cow;
+
+        #[allow(dead_code)]
+        struct FullOk;
+        #[allow(dead_code)]
+        struct WrongPrimary;
+        #[allow(dead_code)]
+        struct UnknownField;
+        #[allow(dead_code)]
+        struct TypeMismatch;
+
+        impl DbModel for FullOk {
+            fn collection_name() -> &'static str {
+                "t"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("id")]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Borrowed("x")]),
+                        ty: Type::Int64,
+                        constraints: vec![],
+                    },
+                ]
+            }
+            fn primary_field() -> &'static str {
+                "id"
+            }
+        }
+
+        impl DbModel for WrongPrimary {
+            fn collection_name() -> &'static str {
+                "t"
+            }
+            fn fields() -> Vec<FieldDef> {
+                FullOk::fields()
+            }
+            fn primary_field() -> &'static str {
+                "other"
+            }
+        }
+
+        impl DbModel for UnknownField {
+            fn collection_name() -> &'static str {
+                "t"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![FieldDef {
+                    path: FieldPath(vec![Cow::Borrowed("missing")]),
+                    ty: Type::String,
+                    constraints: vec![],
+                }]
+            }
+            fn primary_field() -> &'static str {
+                "id"
+            }
+        }
+
+        impl DbModel for TypeMismatch {
+            fn collection_name() -> &'static str {
+                "t"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![FieldDef {
+                    path: FieldPath(vec![Cow::Borrowed("x")]),
+                    ty: Type::String, // catalog has x:Int64
+                    constraints: vec![],
+                }]
+            }
+            fn primary_field() -> &'static str {
+                "id"
+            }
+        }
+
+        let mut db = Database::open_in_memory().unwrap();
+        let _ = db.register_model::<FullOk>().unwrap();
+
+        let err = match db.collection::<WrongPrimary>() {
+            Ok(_) => panic!("expected error"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::PrimaryFieldNotFound { .. })
+        ));
+
+        let err = match db.collection::<UnknownField>() {
+            Ok(_) => panic!("expected error"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::RowUnknownField { .. })
+        ));
+
+        let err = match db.collection::<TypeMismatch>() {
+            Ok(_) => panic!("expected error"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, DbError::Format(FormatError::RecordPayloadTypeMismatch)));
+    }
+
+    #[test]
+    fn row_subset_by_field_defs_handles_empty_missing_and_nested_merge() {
+        use crate::schema::{FieldDef, FieldPath, Type};
+        use std::borrow::Cow;
+
+        let row = BTreeMap::from([
+            (
+                "a".to_string(),
+                RowValue::Object(BTreeMap::from([
+                    ("b".to_string(), RowValue::Int64(1)),
+                    ("c".to_string(), RowValue::Int64(2)),
+                    (
+                        "d".to_string(),
+                        RowValue::Object(BTreeMap::from([("e".to_string(), RowValue::Int64(3))])),
+                    ),
+                ])),
+            ),
+            ("x".to_string(), RowValue::String("y".to_string())),
+        ]);
+
+        // Empty path => ignored.
+        let empty = FieldDef {
+            path: FieldPath(vec![]),
+            ty: Type::String,
+            constraints: vec![],
+        };
+        // Missing leaf => skipped.
+        let missing = FieldDef {
+            path: FieldPath(vec![Cow::Borrowed("missing")]),
+            ty: Type::String,
+            constraints: vec![],
+        };
+        // Root scalar.
+        let x = FieldDef {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            ty: Type::String,
+            constraints: vec![],
+        };
+        // Two nested leaves under same root => must merge.
+        let ab = FieldDef {
+            path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("b")]),
+            ty: Type::Int64,
+            constraints: vec![],
+        };
+        let ac = FieldDef {
+            path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("c")]),
+            ty: Type::Int64,
+            constraints: vec![],
+        };
+        let ade = FieldDef {
+            path: FieldPath(vec![
+                Cow::Borrowed("a"),
+                Cow::Borrowed("d"),
+                Cow::Borrowed("e"),
+            ]),
+            ty: Type::Int64,
+            constraints: vec![],
+        };
+
+        let out = super::row_subset_by_field_defs(&row, &[empty, missing, x, ab, ac, ade]);
+        assert_eq!(out.get("x"), Some(&RowValue::String("y".to_string())));
+        let a = out.get("a").unwrap();
+        let RowValue::Object(m) = a else {
+            panic!("expected object")
+        };
+        assert!(m.contains_key("b"));
+        assert!(m.contains_key("c"));
+        // nested len>1 recursion path
+        let RowValue::Object(d) = m.get("d").unwrap() else {
+            panic!("expected object")
+        };
+        assert_eq!(d.get("e"), Some(&RowValue::Int64(3)));
+    }
+
+    #[test]
+    fn subset_model_validation_errors_when_catalog_has_no_primary_key() {
+        use crate::catalog::{encode_catalog_payload, CatalogRecordWire};
+        use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
+        use crate::segments::header::SegmentHeader;
+        use crate::segments::writer::SegmentWriter;
+        use crate::storage::VecStore;
+        use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
+        use crate::schema::{DbModel, FieldDef, FieldPath, Type};
+        use std::borrow::Cow;
+        use std::path::PathBuf;
+
+        #[allow(dead_code)]
+        struct T;
+        impl DbModel for T {
+            fn collection_name() -> &'static str {
+                "t"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![FieldDef {
+                    path: FieldPath(vec![Cow::Borrowed("id")]),
+                    ty: Type::String,
+                    constraints: vec![],
+                }]
+            }
+            fn primary_field() -> &'static str {
+                "id"
+            }
+        }
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let mut store = VecStore::new();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &Superblock::empty().encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+
+        let fields = vec![FieldDef {
+            path: FieldPath(vec![Cow::Owned("id".to_string())]),
+            ty: Type::String,
+            constraints: vec![],
+        }];
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields,
+            indexes: vec![],
+            primary_field: None,
+        });
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let db = open::open_with_store(
+            PathBuf::from("x.typra"),
+            store,
+            crate::config::OpenOptions::default(),
+        )
+            .unwrap();
+        let err = match db.collection::<T>() {
+            Ok(_) => panic!("expected error"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::NoPrimaryKey { .. })
+        ));
     }
 
     #[test]
