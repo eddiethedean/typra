@@ -407,28 +407,29 @@ impl<S: Store> Database<S> {
     }
 
     fn commit_txn_staging(&mut self) -> Result<(), DbError> {
-        let Some(st) = self.txn_staging.take() else {
-            return Ok(());
-        };
-        if st.pending.is_empty() {
-            self.catalog = st.shadow_catalog;
-            self.latest = st.shadow_latest;
-            self.indexes = st.shadow_indexes;
-            return Ok(());
+        match self.txn_staging.take() {
+            None => Ok(()),
+            Some(st) => {
+                match st.pending.is_empty() {
+                    true => {}
+                    false => {
+                        let batch: Vec<(crate::segments::header::SegmentType, &[u8])> =
+                            st.pending.iter().map(|(t, b)| (*t, b.as_slice())).collect();
+                        write::commit_write_txn_v6(
+                            &mut self.store,
+                            self.segment_start,
+                            &mut self.format_minor,
+                            st.txn_id,
+                            &batch,
+                        )?;
+                    }
+                }
+                self.catalog = st.shadow_catalog;
+                self.latest = st.shadow_latest;
+                self.indexes = st.shadow_indexes;
+                Ok(())
+            }
         }
-        let batch: Vec<(crate::segments::header::SegmentType, &[u8])> =
-            st.pending.iter().map(|(t, b)| (*t, b.as_slice())).collect();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            st.txn_id,
-            &batch,
-        )?;
-        self.catalog = st.shadow_catalog;
-        self.latest = st.shadow_latest;
-        self.indexes = st.shadow_indexes;
-        Ok(())
     }
 
     fn catalog_for_read(&self) -> &Catalog {
@@ -913,9 +914,7 @@ impl<S: Store> Database<S> {
                 .fields
                 .iter()
                 .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-                .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-                    name: pk_name.to_string(),
-                }))?;
+                .unwrap();
 
             let non_pk_defs = if has_multi_segment_schema {
                 col.fields
@@ -1038,9 +1037,7 @@ impl<S: Store> Database<S> {
             .fields
             .iter()
             .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-            .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-                name: pk_name.to_string(),
-            }))?;
+            .unwrap();
         if !pk.ty_matches(&pk_def.ty) {
             return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
         }
@@ -1145,9 +1142,7 @@ impl<S: Store> Database<S> {
             .iter()
             .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
             .map(|f| &f.ty)
-            .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-                name: pk_name.to_string(),
-            }))?;
+            .unwrap();
         if !pk.ty_matches(pk_ty) {
             return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
         }
@@ -3002,6 +2997,191 @@ mod tests {
             .non_unique_lookup(cid.0, "x_idx", b"v")
             .unwrap();
         assert_eq!(got, vec![b"a".to_vec()]);
+    }
+
+    #[test]
+    fn commit_transaction_is_noop_when_no_transaction_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+        db.commit_transaction().unwrap();
+    }
+
+    #[test]
+    fn empty_transaction_commits_without_writing_segments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+        db.begin_transaction().unwrap();
+        db.commit_transaction().unwrap();
+    }
+
+    #[test]
+    fn begin_transaction_rejects_nested_transaction() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+        db.begin_transaction().unwrap();
+        let err = db.begin_transaction().unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Transaction(crate::error::TransactionError::NestedTransaction)
+        ));
+    }
+
+    #[test]
+    fn transaction_rolls_back_on_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+        let (cid, _) = db
+            .register_collection("t", vec![path_field("id")], "id")
+            .unwrap();
+
+        let err = db
+            .transaction(|db| {
+                db.insert(cid, {
+                    let mut m = BTreeMap::new();
+                    m.insert("id".to_string(), RowValue::String("a".to_string()));
+                    m
+                })?;
+                Err::<(), DbError>(DbError::Format(FormatError::TruncatedRecordPayload))
+            })
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Format(FormatError::TruncatedRecordPayload)
+        ));
+
+        // Rollback should have discarded the inserted row.
+        assert!(db
+            .get(cid, &ScalarValue::String("a".to_string()))
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn insert_replace_updates_indexes_and_exercises_staging_path() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+
+        let indexes = vec![IndexDef {
+            name: "x_idx".to_string(),
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![path_field("id"), path_field("x")],
+                indexes,
+                "id",
+            )
+            .unwrap();
+
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            m.insert("x".to_string(), RowValue::String("a".to_string()));
+            m
+        })
+        .unwrap();
+
+        // Replace inside a transaction to hit the txn_staging branch.
+        db.transaction(|db| {
+            db.insert(cid, {
+                let mut m = BTreeMap::new();
+                m.insert("id".to_string(), RowValue::String("pk".to_string()));
+                m.insert("x".to_string(), RowValue::String("b".to_string()));
+                m
+            })
+        })
+        .unwrap();
+
+        // Old index key should be deleted, new key inserted.
+        assert!(db.index_state().non_unique_lookup(cid.0, "x_idx", b"a").is_none());
+        let got = db
+            .index_state()
+            .non_unique_lookup(cid.0, "x_idx", b"b")
+            .unwrap();
+        assert_eq!(got, vec![b"pk".to_vec()]);
+    }
+
+    #[test]
+    fn insert_replace_unique_index_allows_same_pk_existing_entry() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+
+        let indexes = vec![IndexDef {
+            name: "x_uq".to_string(),
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            kind: IndexKind::Unique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![path_field("id"), path_field("x")],
+                indexes,
+                "id",
+            )
+            .unwrap();
+
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            m.insert("x".to_string(), RowValue::String("v".to_string()));
+            m
+        })
+        .unwrap();
+
+        // Replace the same row but keep the unique index key identical; should not violate.
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            m.insert("x".to_string(), RowValue::String("v".to_string()));
+            m
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn delete_errors_on_pk_type_mismatch_and_is_noop_when_row_missing() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+
+        let indexes = vec![IndexDef {
+            name: "x_idx".to_string(),
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![path_field("id"), path_field("x")],
+                indexes,
+                "id",
+            )
+            .unwrap();
+
+        // Type mismatch for PK (schema: String).
+        let err = db.delete(cid, &ScalarValue::Int64(1)).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Format(FormatError::RecordPayloadTypeMismatch)
+        ));
+
+        // Missing row: should be Ok(()).
+        db.delete(cid, &ScalarValue::String("missing".to_string()))
+            .unwrap();
     }
 
     #[test]

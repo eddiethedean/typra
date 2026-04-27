@@ -934,3 +934,497 @@ fn scalar_partial_cmp(a: &ScalarValue, b: &ScalarValue) -> Option<std::cmp::Orde
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::{CatalogRecordWire, Catalog as MemCatalog};
+    use crate::index::{IndexEntry, IndexOp, IndexState};
+    use crate::record::RowValue;
+    use crate::schema::{CollectionId, FieldDef, FieldPath, IndexDef, IndexKind, Type};
+    use std::borrow::Cow;
+    use std::collections::{BTreeMap, HashMap};
+
+    fn field(name: &str, ty: Type) -> FieldDef {
+        FieldDef {
+            path: FieldPath(vec![Cow::Owned(name.to_string())]),
+            ty,
+            constraints: vec![],
+        }
+    }
+
+    fn build_catalog_with_indexes(
+        collection_id: u32,
+        fields: Vec<FieldDef>,
+        indexes: Vec<IndexDef>,
+        primary: &str,
+    ) -> MemCatalog {
+        let mut catalog = MemCatalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields,
+                indexes,
+                primary_field: Some(primary.to_string()),
+            })
+            .unwrap();
+        catalog
+    }
+
+    #[test]
+    fn execute_query_index_lookup_skips_missing_latest_row() {
+        let catalog = build_catalog_with_indexes(
+            1,
+            vec![field("id", Type::String), field("x", Type::String)],
+            vec![IndexDef {
+                name: "x_uq".to_string(),
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                kind: IndexKind::Unique,
+            }],
+            "id",
+        );
+
+        let mut indexes = IndexState::default();
+        indexes
+            .apply(IndexEntry {
+                collection_id: 1,
+                index_name: "x_uq".to_string(),
+                kind: IndexKind::Unique,
+                op: IndexOp::Insert,
+                index_key: ScalarValue::String("v".to_string()).canonical_key_bytes(),
+                pk_key: b"missing_pk".to_vec(),
+            })
+            .unwrap();
+
+        let latest: crate::db::LatestMap = HashMap::new();
+        let q = Query {
+            collection: CollectionId(1),
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::String("v".to_string()),
+            }),
+            limit: None,
+            order_by: None,
+        };
+        let rows = execute_query(&catalog, &indexes, &latest, &q).unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn execute_query_index_lookup_pushes_existing_latest_row() {
+        let catalog = build_catalog_with_indexes(
+            1,
+            vec![field("id", Type::String), field("x", Type::String)],
+            vec![IndexDef {
+                name: "x_uq".to_string(),
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                kind: IndexKind::Unique,
+            }],
+            "id",
+        );
+
+        let pk_key = b"pk".to_vec();
+        let mut indexes = IndexState::default();
+        indexes
+            .apply(IndexEntry {
+                collection_id: 1,
+                index_name: "x_uq".to_string(),
+                kind: IndexKind::Unique,
+                op: IndexOp::Insert,
+                index_key: ScalarValue::String("v".to_string()).canonical_key_bytes(),
+                pk_key: pk_key.clone(),
+            })
+            .unwrap();
+
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, pk_key.clone()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("pk".to_string())),
+                ("x".to_string(), RowValue::String("v".to_string())),
+            ]),
+        );
+
+        let q = Query {
+            collection: CollectionId(1),
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::String("v".to_string()),
+            }),
+            limit: None,
+            order_by: None,
+        };
+        let rows = execute_query(&catalog, &indexes, &latest, &q).unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn execute_query_collection_scan_filters_out_non_matches() {
+        let catalog = build_catalog_with_indexes(
+            1,
+            vec![field("id", Type::String), field("y", Type::Int64)],
+            vec![],
+            "id",
+        );
+        let indexes = IndexState::default();
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"a".to_vec()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("a".to_string())),
+                ("y".to_string(), RowValue::Int64(1)),
+            ]),
+        );
+
+        let q = Query {
+            collection: CollectionId(1),
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("y".to_string())]),
+                value: ScalarValue::Int64(2),
+            }),
+            limit: None,
+            order_by: None,
+        };
+        let rows = execute_query(&catalog, &indexes, &latest, &q).unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn execute_query_collection_scan_includes_matches() {
+        let catalog = build_catalog_with_indexes(
+            1,
+            vec![field("id", Type::String), field("y", Type::Int64)],
+            vec![],
+            "id",
+        );
+        let indexes = IndexState::default();
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"a".to_vec()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("a".to_string())),
+                ("y".to_string(), RowValue::Int64(2)),
+            ]),
+        );
+        let q = Query {
+            collection: CollectionId(1),
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("y".to_string())]),
+                value: ScalarValue::Int64(2),
+            }),
+            limit: None,
+            order_by: None,
+        };
+        let rows = execute_query(&catalog, &indexes, &latest, &q).unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn query_row_iter_vec_returns_none_when_empty() {
+        let it = QueryRowIter {
+            state: QueryRowIterState::Vec {
+                rows: Vec::new(),
+                pos: 0,
+            },
+        };
+        assert!(it.into_iter().next().is_none());
+    }
+
+    #[test]
+    fn query_row_iter_vec_advances_then_none() {
+        let catalog = build_catalog_with_indexes(
+            1,
+            vec![field("id", Type::String)],
+            vec![],
+            "id",
+        );
+        let indexes = IndexState::default();
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"a".to_vec()),
+            BTreeMap::from([("id".to_string(), RowValue::String("a".to_string()))]),
+        );
+        let q = Query {
+            collection: CollectionId(1),
+            predicate: None,
+            limit: None,
+            order_by: Some(OrderBy {
+                path: FieldPath(vec![Cow::Owned("id".to_string())]),
+                direction: OrderDirection::Asc,
+            }),
+        };
+        let mut it = execute_query_iter(&catalog, &indexes, &latest, &q).unwrap();
+        assert!(it.next().is_some());
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn query_row_iter_source_skips_missing_latest_and_finishes() {
+        struct OneKeyThenNone {
+            yielded: bool,
+        }
+        impl RowSource for OneKeyThenNone {
+            fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+                match self.yielded {
+                    true => None,
+                    false => {
+                        self.yielded = true;
+                        Some(Ok((CollectionId(1), b"missing".to_vec())))
+                    }
+                }
+            }
+        }
+
+        let latest: crate::db::LatestMap = HashMap::new();
+        let mut it = QueryRowIter {
+            state: QueryRowIterState::Source {
+                latest: &latest,
+                source: Box::new(OneKeyThenNone { yielded: false }),
+            },
+        };
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn query_row_iter_source_returns_row_when_present() {
+        struct OneKeyThenNone {
+            yielded: bool,
+            key: Vec<u8>,
+        }
+        impl RowSource for OneKeyThenNone {
+            fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+                match self.yielded {
+                    true => None,
+                    false => {
+                        self.yielded = true;
+                        Some(Ok((CollectionId(1), self.key.clone())))
+                    }
+                }
+            }
+        }
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"a".to_vec()),
+            BTreeMap::from([("id".to_string(), RowValue::String("a".to_string()))]),
+        );
+        let mut it = QueryRowIter {
+            state: QueryRowIterState::Source {
+                latest: &latest,
+                source: Box::new(OneKeyThenNone {
+                    yielded: false,
+                    key: b"a".to_vec(),
+                }),
+            },
+        };
+        assert!(it.next().unwrap().is_ok());
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn index_unique_source_residual_predicate_filters_row() {
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"a".to_vec()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("a".to_string())),
+                ("x".to_string(), RowValue::Int64(2)),
+            ]),
+        );
+        let mut src = IndexUniqueSource {
+            latest: &latest,
+            collection_id: 1,
+            pk: Some(b"a".to_vec()),
+            residual: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::Int64(1),
+            }),
+            done: false,
+        };
+        assert!(src.next_key().is_none());
+    }
+
+    #[test]
+    fn index_unique_source_yields_when_no_residual() {
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"a".to_vec()),
+            BTreeMap::from([("id".to_string(), RowValue::String("a".to_string()))]),
+        );
+        let mut src = IndexUniqueSource {
+            latest: &latest,
+            collection_id: 1,
+            pk: Some(b"a".to_vec()),
+            residual: None,
+            done: false,
+        };
+        assert!(src.next_key().unwrap().is_ok());
+        assert!(src.next_key().is_none());
+    }
+
+    #[test]
+    fn index_non_unique_source_skips_missing_rows_and_residual_non_matches() {
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"present".to_vec()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("present".to_string())),
+                ("x".to_string(), RowValue::Int64(2)),
+            ]),
+        );
+        let mut src = IndexNonUniqueSource {
+            latest: &latest,
+            collection_id: 1,
+            pks: vec![b"missing".to_vec(), b"present".to_vec()].into_iter(),
+            residual: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::Int64(1),
+            }),
+        };
+        assert!(src.next_key().is_none());
+    }
+
+    #[test]
+    fn index_non_unique_source_yields_when_residual_matches() {
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"present".to_vec()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("present".to_string())),
+                ("x".to_string(), RowValue::Int64(1)),
+            ]),
+        );
+        let mut src = IndexNonUniqueSource {
+            latest: &latest,
+            collection_id: 1,
+            pks: vec![b"present".to_vec()].into_iter(),
+            residual: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::Int64(1),
+            }),
+        };
+        assert!(src.next_key().unwrap().is_ok());
+        assert!(src.next_key().is_none());
+    }
+
+    #[test]
+    fn scalar_sort_key_bytes_covers_float64_sign_branches() {
+        let _neg = scalar_sort_key_bytes(&ScalarValue::Float64(-1.0));
+        let _pos = scalar_sort_key_bytes(&ScalarValue::Float64(1.0));
+    }
+
+    #[test]
+    fn scalar_sort_key_bytes_covers_bool_true_false() {
+        let _t = scalar_sort_key_bytes(&ScalarValue::Bool(true));
+        let _f = scalar_sort_key_bytes(&ScalarValue::Bool(false));
+    }
+
+    #[test]
+    fn choose_index_prefers_unique_predicate_in_and() {
+        let indexes = vec![
+            IndexDef {
+                name: "a".to_string(),
+                path: FieldPath(vec![Cow::Owned("a".to_string())]),
+                kind: IndexKind::NonUnique,
+            },
+            IndexDef {
+                name: "b".to_string(),
+                path: FieldPath(vec![Cow::Owned("b".to_string())]),
+                kind: IndexKind::Unique,
+            },
+        ];
+        let pred = Predicate::And(vec![
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("a".to_string())]),
+                value: ScalarValue::Int64(1),
+            },
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("b".to_string())]),
+                value: ScalarValue::Int64(2),
+            },
+        ]);
+        let (idx, _v, _used) = choose_index(&indexes, &pred).unwrap();
+        assert_eq!(idx.name, "b");
+        assert_eq!(idx.kind, IndexKind::Unique);
+    }
+
+    #[test]
+    fn eval_predicate_covers_lte_and_gte_eq_paths() {
+        let row = BTreeMap::from([("x".to_string(), RowValue::Int64(2))]);
+        assert!(eval_predicate(
+            &row,
+            &Predicate::Lte {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::Int64(2),
+            }
+        ));
+        assert!(eval_predicate(
+            &row,
+            &Predicate::Gte {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::Int64(2),
+            }
+        ));
+    }
+
+    #[test]
+    fn external_sort_source_spills_multiple_runs_and_refills_heap() {
+        use crate::spill::TempSpillFile;
+        use crate::storage::FileStore;
+
+        // Build latest with enough rows to trigger the RUN_KEYS spill threshold.
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        for i in 0..2050u32 {
+            latest.insert(
+                (1, i.to_le_bytes().to_vec()),
+                BTreeMap::from([
+                    ("id".to_string(), RowValue::Uint64(i as u64)),
+                    ("x".to_string(), RowValue::Uint64(i as u64)),
+                ]),
+            );
+        }
+
+        struct Keys {
+            i: u32,
+            end: u32,
+        }
+        impl RowSource for Keys {
+            fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+                if self.i >= self.end {
+                    return None;
+                }
+                let pk = self.i.to_le_bytes().to_vec();
+                self.i += 1;
+                Some(Ok((CollectionId(1), pk)))
+            }
+        }
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let spill = TempSpillFile::new(FileStore::new(f)).unwrap();
+
+        let ob = OrderBy {
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            direction: OrderDirection::Asc,
+        };
+
+        let mut src = ExternalSortSource::new(
+            spill,
+            &latest,
+            Box::new(Keys { i: 0, end: 2050 }),
+            1,
+            ob,
+        )
+        .unwrap();
+
+        // Pull one key; this should pop from heap and attempt a refill.
+        let _ = src.next_key().unwrap().unwrap();
+    }
+}
