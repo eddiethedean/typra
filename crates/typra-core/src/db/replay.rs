@@ -63,29 +63,35 @@ fn replay_tail_legacy<S: Store>(
 ) -> Result<(), DbError> {
     let metas = scan_segments(store, start)?;
     for meta in &metas {
-        if meta.header.segment_type != SegmentType::Schema {
-            continue;
-        }
-        let payload = read_segment_payload(store, meta)?;
-        let record = decode_catalog_payload(&payload)?;
-        catalog.apply_record(record)?;
-    }
-    for meta in &metas {
-        if meta.header.segment_type != SegmentType::Index {
-            continue;
-        }
-        let payload = read_segment_payload(store, meta)?;
-        let entries = decode_index_payload(&payload)?;
-        for e in entries {
-            indexes.apply(e)?;
+        match meta.header.segment_type {
+            SegmentType::Schema => {
+                let payload = read_segment_payload(store, meta)?;
+                let record = decode_catalog_payload(&payload)?;
+                catalog.apply_record(record)?;
+            }
+            _ => continue,
         }
     }
     for meta in &metas {
-        if meta.header.segment_type != SegmentType::Record {
-            continue;
+        match meta.header.segment_type {
+            SegmentType::Index => {
+                let payload = read_segment_payload(store, meta)?;
+                let entries = decode_index_payload(&payload)?;
+                for e in entries {
+                    indexes.apply(e)?;
+                }
+            }
+            _ => continue,
         }
-        let payload = read_segment_payload(store, meta)?;
-        apply_record_segment(&payload, catalog, latest)?;
+    }
+    for meta in &metas {
+        match meta.header.segment_type {
+            SegmentType::Record => {
+                let payload = read_segment_payload(store, meta)?;
+                apply_record_segment(&payload, catalog, latest)?;
+            }
+            _ => continue,
+        }
     }
     Ok(())
 }
@@ -108,10 +114,13 @@ fn replay_tail_v6<S: Store>(
         match meta.header.segment_type {
             SegmentType::Manifest | SegmentType::Checkpoint | SegmentType::Temp => {}
             SegmentType::TxnBegin => {
-                if in_txn {
-                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
-                        message: "nested TxnBegin in replay".into(),
-                    }));
+                match in_txn {
+                    true => {
+                        return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                            message: "nested TxnBegin in replay".into(),
+                        }))
+                    }
+                    false => {}
                 }
                 let payload = read_segment_payload(store, meta)?;
                 let id = decode_txn_payload_v0(&payload)?;
@@ -122,15 +131,30 @@ fn replay_tail_v6<S: Store>(
             SegmentType::TxnCommit => {
                 let payload = read_segment_payload(store, meta)?;
                 let id = decode_txn_payload_v0(&payload)?;
-                if !in_txn {
-                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
-                        message: "TxnCommit outside transaction in replay".into(),
-                    }));
+                match in_txn {
+                    true => {}
+                    false => {
+                        return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                            message: "TxnCommit outside transaction in replay".into(),
+                        }))
+                    }
                 }
-                if pending_txn_id != Some(id) {
-                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
-                        message: "TxnCommit txn_id mismatch in replay".into(),
-                    }));
+                match pending_txn_id {
+                    None => {
+                        return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                            message: "TxnCommit txn_id mismatch in replay".into(),
+                        }))
+                    }
+                    Some(pt) => {
+                        match pt == id {
+                            true => {}
+                            false => {
+                                return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                                    message: "TxnCommit txn_id mismatch in replay".into(),
+                                }))
+                            }
+                        }
+                    }
                 }
                 committed.append(&mut staged);
                 in_txn = false;
@@ -143,10 +167,13 @@ fn replay_tail_v6<S: Store>(
                 pending_txn_id = None;
             }
             SegmentType::Schema | SegmentType::Index | SegmentType::Record => {
-                if !in_txn {
-                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
-                        message: "unframed data segment in format minor 6".into(),
-                    }));
+                match in_txn {
+                    true => {}
+                    false => {
+                        return Err(DbError::Format(FormatError::InvalidTxnPayload {
+                            message: "unframed data segment in format minor 6".into(),
+                        }))
+                    }
                 }
                 let payload = read_segment_payload(store, meta)?;
                 match meta.header.segment_type {
@@ -166,22 +193,29 @@ fn replay_tail_v6<S: Store>(
     }
 
     for seg in &committed {
-        if let StagedSegment::Schema(bytes) = seg {
-            let record = decode_catalog_payload(bytes)?;
-            catalog.apply_record(record)?;
-        }
-    }
-    for seg in &committed {
-        if let StagedSegment::Index(bytes) = seg {
-            let entries = decode_index_payload(bytes)?;
-            for e in entries {
-                indexes.apply(e)?;
+        match seg {
+            StagedSegment::Schema(bytes) => {
+                let record = decode_catalog_payload(bytes)?;
+                catalog.apply_record(record)?;
             }
+            _ => {}
         }
     }
     for seg in &committed {
-        if let StagedSegment::Record(bytes) = seg {
-            apply_record_segment(bytes, catalog, latest)?;
+        match seg {
+            StagedSegment::Index(bytes) => {
+                let entries = decode_index_payload(bytes)?;
+                for e in entries {
+                    indexes.apply(e)?;
+                }
+            }
+            _ => {}
+        }
+    }
+    for seg in &committed {
+        match seg {
+            StagedSegment::Record(bytes) => apply_record_segment(bytes, catalog, latest)?,
+            _ => {}
         }
     }
 
@@ -195,32 +229,38 @@ fn load_catalog_latest_and_indexes_legacy<S: Store>(
     let metas = scan_segments(store, segment_start)?;
     let mut catalog = Catalog::default();
     for meta in &metas {
-        if meta.header.segment_type != SegmentType::Schema {
-            continue;
+        match meta.header.segment_type {
+            SegmentType::Schema => {
+                let payload = read_segment_payload(store, meta)?;
+                let record = decode_catalog_payload(&payload)?;
+                catalog.apply_record(record)?;
+            }
+            _ => continue,
         }
-        let payload = read_segment_payload(store, meta)?;
-        let record = decode_catalog_payload(&payload)?;
-        catalog.apply_record(record)?;
     }
 
     let mut latest = HashMap::new();
     let mut indexes = IndexState::default();
     for meta in &metas {
-        if meta.header.segment_type != SegmentType::Index {
-            continue;
-        }
-        let payload = read_segment_payload(store, meta)?;
-        let entries = decode_index_payload(&payload)?;
-        for e in entries {
-            indexes.apply(e)?;
+        match meta.header.segment_type {
+            SegmentType::Index => {
+                let payload = read_segment_payload(store, meta)?;
+                let entries = decode_index_payload(&payload)?;
+                for e in entries {
+                    indexes.apply(e)?;
+                }
+            }
+            _ => continue,
         }
     }
     for meta in &metas {
-        if meta.header.segment_type != SegmentType::Record {
-            continue;
+        match meta.header.segment_type {
+            SegmentType::Record => {
+                let payload = read_segment_payload(store, meta)?;
+                apply_record_segment(&payload, &catalog, &mut latest)?;
+            }
+            _ => continue,
         }
-        let payload = read_segment_payload(store, meta)?;
-        apply_record_segment(&payload, &catalog, &mut latest)?;
     }
     Ok((catalog, latest, indexes))
 }
@@ -350,14 +390,18 @@ fn apply_record_segment(
         Some(s) => s.as_str(),
         None => return Ok(()),
     };
-    let pk_ty = col
-        .fields
-        .iter()
-        .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-        .map(|f| &f.ty)
-        .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-            name: pk_name.to_string(),
-        }))?;
+    let mut pk_ty = None;
+    for f in &col.fields {
+        if f.path.0.len() != 1 {
+            continue;
+        }
+        if f.path.0[0] != pk_name {
+            continue;
+        }
+        pk_ty = Some(&f.ty);
+        break;
+    }
+    let pk_ty = pk_ty.unwrap();
     let decoded = decode_record_payload(payload, pk_name, pk_ty, &col.fields)?;
     if decoded.schema_version != col.current_version.0 {
         return Err(DbError::Schema(SchemaError::InvalidSchemaVersion {
@@ -385,22 +429,23 @@ fn apply_record_segment(
 
 #[cfg(test)]
 mod tests {
-    use super::{replay_tail_into, replay_tail_legacy};
+    use super::{load_catalog_latest_and_indexes, replay_tail_into, replay_tail_legacy};
     use crate::catalog::Catalog;
     use crate::catalog::{encode_catalog_payload, CatalogRecordWire};
     use crate::error::{DbError, FormatError};
     use crate::file_format::FORMAT_MINOR_V6;
     use crate::index::IndexState;
     use crate::index::{encode_index_payload, IndexEntry, IndexOp};
-    use crate::record::encode_record_payload_v3;
+    use crate::record::{encode_record_payload_v3, encode_record_payload_v3_op, OP_DELETE};
     use crate::record::RowValue;
     use crate::schema::{FieldDef, FieldPath, IndexKind, Type};
     use crate::segments::header::{SegmentHeader, SegmentType};
     use crate::segments::writer::SegmentWriter;
-    use crate::storage::VecStore;
+    use crate::storage::{FileStore, VecStore};
     use crate::txn::encode_txn_payload_v0;
     use std::collections::HashMap;
     use std::borrow::Cow;
+    use std::fs::OpenOptions as FsOpenOptions;
 
     #[test]
     fn replay_v6_rejects_unframed_data_segment() {
@@ -626,5 +671,567 @@ mod tests {
         let key = crate::ScalarValue::Int64(7).canonical_key_bytes();
         let got = latest.get(&(1u32, key)).unwrap();
         assert_eq!(got.get("id"), Some(&RowValue::from_scalar(crate::ScalarValue::Int64(7))));
+    }
+
+    #[test]
+    fn load_v6_rejects_unframed_data_segment() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &[],
+        )
+        .unwrap();
+
+        let e = load_catalog_latest_and_indexes(&mut store, 0, FORMAT_MINOR_V6).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn load_v6_rejects_nested_begin() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let begin = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let e = load_catalog_latest_and_indexes(&mut store, 0, FORMAT_MINOR_V6).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn load_v6_rejects_commit_outside_transaction() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let e = load_catalog_latest_and_indexes(&mut store, 0, FORMAT_MINOR_V6).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn load_v6_rejects_commit_id_mismatch() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(2);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let e = load_catalog_latest_and_indexes(&mut store, 0, FORMAT_MINOR_V6).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn load_v6_errors_on_unclosed_txn_at_end() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let begin = encode_txn_payload_v0(7);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let e = load_catalog_latest_and_indexes(&mut store, 0, FORMAT_MINOR_V6).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn load_v6_applies_committed_schema_index_and_record_delete() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let fields = vec![FieldDef {
+            path: FieldPath(vec![Cow::Owned("id".to_string())]),
+            ty: Type::Int64,
+            constraints: vec![],
+        }];
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields: fields.clone(),
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        });
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let idx_bytes = encode_index_payload(&[IndexEntry {
+            collection_id: 1,
+            index_name: "i".to_string(),
+            kind: IndexKind::NonUnique,
+            op: IndexOp::Insert,
+            index_key: b"k".to_vec(),
+            pk_key: b"p".to_vec(),
+        }]);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Index,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &idx_bytes,
+        )
+        .unwrap();
+
+        // Insert then delete the same PK; latest should end empty.
+        let ins = encode_record_payload_v3(1, 1, &crate::ScalarValue::Int64(7), &Type::Int64, &[])
+            .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &ins,
+        )
+        .unwrap();
+        let del = encode_record_payload_v3_op(
+            1,
+            1,
+            OP_DELETE,
+            &crate::ScalarValue::Int64(7),
+            &Type::Int64,
+            &[],
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &del,
+        )
+        .unwrap();
+
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let (catalog, latest, idx) = load_catalog_latest_and_indexes(&mut store, 0, FORMAT_MINOR_V6)
+            .unwrap();
+        assert!(catalog.get(crate::schema::CollectionId(1)).is_some());
+        assert!(latest.is_empty());
+        assert!(idx
+            .non_unique_lookup(1, "i", b"k")
+            .is_some());
+    }
+
+    #[test]
+    fn replay_tail_v6_applies_committed_segments() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let fields = vec![FieldDef {
+            path: FieldPath(vec![Cow::Owned("id".to_string())]),
+            ty: Type::Int64,
+            constraints: vec![],
+        }];
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields: fields.clone(),
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        });
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let idx_bytes = encode_index_payload(&[IndexEntry {
+            collection_id: 1,
+            index_name: "i".to_string(),
+            kind: IndexKind::NonUnique,
+            op: IndexOp::Insert,
+            index_key: b"k".to_vec(),
+            pk_key: b"p".to_vec(),
+        }]);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Index,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &idx_bytes,
+        )
+        .unwrap();
+
+        let rec = encode_record_payload_v3(1, 1, &crate::ScalarValue::Int64(7), &Type::Int64, &[])
+            .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &rec,
+        )
+        .unwrap();
+
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap();
+
+        assert!(catalog.get(crate::schema::CollectionId(1)).is_some());
+        let key = crate::ScalarValue::Int64(7).canonical_key_bytes();
+        assert!(latest.get(&(1u32, key)).is_some());
+        assert!(idx.non_unique_lookup(1, "i", b"k").is_some());
+    }
+
+    #[test]
+    fn replay_tail_v6_skips_records_when_catalog_has_no_primary_key() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let fields = vec![FieldDef {
+            path: FieldPath(vec![Cow::Owned("id".to_string())]),
+            ty: Type::Int64,
+            constraints: vec![],
+        }];
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields,
+            indexes: vec![],
+            primary_field: None,
+        });
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let rec = encode_record_payload_v3(1, 1, &crate::ScalarValue::Int64(7), &Type::Int64, &[])
+            .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &rec,
+        )
+        .unwrap();
+
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap();
+        assert!(latest.is_empty());
+    }
+
+    #[test]
+    fn replay_tail_v6_applies_committed_segments_with_filestore() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("replay_v6.typra");
+        let f = FsOpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(f);
+
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields: vec![FieldDef {
+                path: FieldPath(vec![Cow::Owned("id".to_string())]),
+                ty: Type::Int64,
+                constraints: vec![],
+            }],
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        });
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let rec = encode_record_payload_v3(1, 1, &crate::ScalarValue::Int64(7), &Type::Int64, &[])
+            .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &rec,
+        )
+        .unwrap();
+
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap();
+        let key = crate::ScalarValue::Int64(7).canonical_key_bytes();
+        assert!(latest.get(&(1u32, key)).is_some());
+    }
+
+    #[test]
+    fn apply_record_segment_pk_scan_skips_non_matching_field_first() {
+        // Exercise the `for f in &col.fields { if ... }` loop both false and true branches.
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let x_def = FieldDef {
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            ty: Type::Int64,
+            constraints: vec![],
+        };
+        let id_def = FieldDef {
+            path: FieldPath(vec![Cow::Owned("id".to_string())]),
+            ty: Type::Int64,
+            constraints: vec![],
+        };
+        let fields = vec![x_def.clone(), id_def];
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields,
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        });
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        // Record payload must include all non-PK fields in schema order (here: "x").
+        let rec = encode_record_payload_v3(
+            1,
+            1,
+            &crate::ScalarValue::Int64(7),
+            &Type::Int64,
+            &[(x_def, RowValue::Int64(1))],
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &rec,
+        )
+        .unwrap();
+
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap();
+        let key = crate::ScalarValue::Int64(7).canonical_key_bytes();
+        assert!(latest.get(&(1u32, key)).is_some());
     }
 }

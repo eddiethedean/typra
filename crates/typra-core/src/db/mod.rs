@@ -1675,7 +1675,7 @@ mod tests {
     use crate::segments::writer::SegmentWriter;
     use crate::storage::{FileStore, Store};
     use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
-    use crate::DbError;
+    use crate::{DbError, RowValue, ScalarValue};
     use crate::MigrationStep;
     use std::borrow::Cow;
     use std::collections::BTreeMap;
@@ -2209,7 +2209,6 @@ mod tests {
     fn open_checkpoint_replay_from_before_segment_start_skips_tail_replay() {
         use crate::checkpoint::{checkpoint_from_state, encode_checkpoint_payload_v0, CheckpointV0};
         use crate::segments::header::SEGMENT_HEADER_LEN;
-        use crate::storage::VecStore;
 
         let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
         let checkpoint_off = segment_start;
@@ -2278,7 +2277,6 @@ mod tests {
     #[test]
     fn open_checkpoint_replay_from_beyond_eof_skips_tail_replay() {
         use crate::checkpoint::{checkpoint_from_state, encode_checkpoint_payload_v0, CheckpointV0};
-        use crate::storage::VecStore;
 
         let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
         let checkpoint_off = segment_start;
@@ -2345,7 +2343,6 @@ mod tests {
     #[test]
     fn open_strict_reports_unclean_log_tail_when_recovery_finds_torn_tail() {
         use crate::config::{OpenOptions, RecoveryMode};
-        use crate::storage::VecStore;
 
         let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
         let sb = Superblock {
@@ -2804,6 +2801,32 @@ mod tests {
     }
 
     #[test]
+    fn restore_snapshot_errors_when_dest_has_no_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let snap = dir.path().join("snap.typra");
+        std::fs::write(&snap, b"hello").unwrap();
+
+        // Use filesystem root which has no parent.
+        let err = Database::<FileStore>::restore_snapshot_to_path(&snap, PathBuf::from("/"))
+            .unwrap_err();
+        assert!(matches!(err, DbError::Io(_)));
+    }
+
+    #[test]
+    fn restore_snapshot_replaces_destination_and_cleans_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let snap = dir.path().join("snap.typra");
+        let dest = dir.path().join("dest.typra");
+
+        std::fs::write(&snap, b"new").unwrap();
+        std::fs::write(&dest, b"old").unwrap();
+
+        Database::<FileStore>::restore_snapshot_to_path(&snap, &dest).unwrap();
+        let got = std::fs::read(&dest).unwrap();
+        assert_eq!(got, b"new");
+    }
+
+    #[test]
     fn register_and_reopen_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("t.typra");
@@ -2858,6 +2881,127 @@ mod tests {
             .non_unique_lookup(1, "title_idx", b"Hello")
             .unwrap();
         assert_eq!(got, vec![b"Hello".to_vec()]);
+    }
+
+    #[test]
+    fn insert_errors_on_unique_index_violation() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+        use crate::{RowValue, ScalarValue};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+
+        let indexes = vec![IndexDef {
+            name: "x_uq".to_string(),
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            kind: IndexKind::Unique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![path_field("id"), path_field("x")],
+                indexes,
+                "id",
+            )
+            .unwrap();
+
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("a".to_string()));
+            m.insert("x".to_string(), RowValue::String("v".to_string()));
+            m
+        })
+        .unwrap();
+
+        let err = db
+            .insert(cid, {
+                let mut m = BTreeMap::new();
+                m.insert("id".to_string(), RowValue::String("b".to_string()));
+                m.insert("x".to_string(), RowValue::String("v".to_string()));
+                m
+            })
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::UniqueIndexViolation)
+        ));
+
+        // The original row is still present.
+        assert!(db
+            .get(cid, &ScalarValue::String("a".to_string()))
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn rebuild_indexes_skips_rows_missing_pk_wrong_pk_type_or_missing_index_value() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+
+        let indexes = vec![IndexDef {
+            name: "x_idx".to_string(),
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![path_field("id"), path_field("x")],
+                indexes,
+                "id",
+            )
+            .unwrap();
+
+        // Valid row (should contribute index entry).
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("a".to_string()));
+            m.insert("x".to_string(), RowValue::String("v".to_string()));
+            m
+        })
+        .unwrap();
+
+        // Missing PK: should be skipped.
+        db.latest.insert(
+            (cid.0, b"missing_pk".to_vec()),
+            {
+                let mut m = BTreeMap::new();
+                m.insert("x".to_string(), RowValue::String("v".to_string()));
+                m
+            },
+        );
+
+        // Wrong PK type: schema says PK is String, but row stores Int64.
+        db.latest.insert(
+            (cid.0, b"wrong_pk_ty".to_vec()),
+            {
+                let mut m = BTreeMap::new();
+                m.insert("id".to_string(), RowValue::Int64(1));
+                m.insert("x".to_string(), RowValue::String("v".to_string()));
+                m
+            },
+        );
+
+        // Missing index value: should be skipped.
+        db.latest.insert(
+            (cid.0, b"missing_x".to_vec()),
+            {
+                let mut m = BTreeMap::new();
+                m.insert("id".to_string(), RowValue::String("b".to_string()));
+                m
+            },
+        );
+
+        db.rebuild_indexes_for_collection(cid).unwrap();
+        let got = db
+            .index_state()
+            .non_unique_lookup(cid.0, "x_idx", b"v")
+            .unwrap();
+        assert_eq!(got, vec![b"a".to_vec()]);
     }
 
     #[test]
