@@ -58,6 +58,36 @@ fn row_value_at_path_for_plan(
     Some(cur.clone())
 }
 
+/// Merge `v` at path `...middle` then key `leaf` on an **owned** map (schema-style nesting).
+///
+/// Each segment is normalized to an `Object` map. If a child at a segment is not an `Object`,
+/// it is replaced with an empty `Object` before descending — the same as `insert_value_at_path` in
+/// `record::payload_v3` and the two `mem::replace` match arms are reachable from
+/// `plan_insert_row` and from unit tests (scalar/list blocking a nested field path).
+fn merge_path_leaf_into_map(
+    mut m: BTreeMap<String, RowValue>,
+    middle: &[String],
+    leaf: &str,
+    v: &RowValue,
+) -> BTreeMap<String, RowValue> {
+    if middle.is_empty() {
+        m.insert(leaf.to_string(), v.clone());
+        return m;
+    }
+    let head = middle[0].clone();
+    let rest = &middle[1..];
+    let e = m
+        .entry(head)
+        .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+    let child_map = match std::mem::replace(e, RowValue::Object(BTreeMap::new())) {
+        RowValue::Object(inner) => inner,
+        _ => BTreeMap::new(),
+    };
+    let new_inner = merge_path_leaf_into_map(child_map, rest, leaf, v);
+    *e = RowValue::Object(new_inner);
+    m
+}
+
 fn plan_insert_row(
     catalog: &Catalog,
     collection_id: CollectionId,
@@ -209,29 +239,21 @@ fn plan_insert_row(
         if parts.len() == 1 {
             full_map.insert(root.clone(), v.clone());
         } else {
-            // Reuse local helper below (same as projection merge semantics).
-            let mut cur: &mut RowValue = full_map
+            let leaf = parts.last().expect("len > 1").clone();
+            let middle: &[String] = &parts[1..parts.len() - 1];
+            let root_rv = full_map
                 .entry(root.clone())
                 .or_insert_with(|| RowValue::Object(BTreeMap::new()));
-            for seg in parts.iter().skip(1).take(parts.len() - 2) {
-                cur = match cur {
-                    RowValue::Object(m) => m
-                        .entry(seg.clone())
-                        .or_insert_with(|| RowValue::Object(BTreeMap::new())),
-                    other => {
-                        *other = RowValue::Object(BTreeMap::new());
-                        match other {
-                            RowValue::Object(m) => m
-                                .entry(seg.clone())
-                                .or_insert_with(|| RowValue::Object(BTreeMap::new())),
-                            _ => unreachable!(),
-                        }
-                    }
-                };
-            }
-            if let RowValue::Object(m) = cur {
-                m.insert(parts.last().expect("len > 1").clone(), v.clone());
-            }
+            let root_map = match std::mem::replace(root_rv, RowValue::Object(BTreeMap::new())) {
+                RowValue::Object(m) => m,
+                _ => BTreeMap::new(),
+            };
+            *root_rv = RowValue::Object(merge_path_leaf_into_map(
+                root_map,
+                middle,
+                &leaf,
+                v,
+            ));
         }
     }
     let mut index_entries: Vec<IndexEntry> = Vec::new();
@@ -1701,6 +1723,74 @@ mod tests {
             ty: Type::String,
             constraints: vec![],
         }
+    }
+
+    #[test]
+    fn merge_path_leaf_into_map_inserts_at_leaf_with_no_middle() {
+        let m = BTreeMap::new();
+        let v = RowValue::String("x".to_string());
+        let out = super::merge_path_leaf_into_map(m, &[], "f", &v);
+        assert_eq!(out.get("f"), Some(&v));
+    }
+
+    #[test]
+    fn merge_path_leaf_into_map_nested() {
+        let m = BTreeMap::new();
+        let v = RowValue::String("z".to_string());
+        let middle = vec!["a".to_string(), "b".to_string()];
+        let out = super::merge_path_leaf_into_map(m, &middle, "c", &v);
+        let a = out.get("a").expect("a");
+        let RowValue::Object(oa) = a else {
+            panic!("a");
+        };
+        let b = oa.get("b").expect("b");
+        let RowValue::Object(ob) = b else {
+            panic!("b");
+        };
+        assert_eq!(ob.get("c"), Some(&v));
+    }
+
+    #[test]
+    fn merge_path_leaf_into_map_non_object_segment_uses_mem_replace_defensive_arm() {
+        // The `mem::replace` that pulls out the value at the first path segment: old value is
+        // non-`Object`, so the `_` arm runs and we descend with an empty map, then add `b.c`.
+        let mut m = BTreeMap::new();
+        m.insert("a".to_string(), RowValue::Int64(4));
+        let v = RowValue::String("leaf".to_string());
+        let middle = vec!["a".to_string(), "b".to_string()];
+        let out = super::merge_path_leaf_into_map(m, &middle, "c", &v);
+        let a = out.get("a").expect("a");
+        let RowValue::Object(oa) = a else {
+            panic!("a");
+        };
+        let b = oa.get("b").expect("b");
+        let RowValue::Object(ob) = b else {
+            panic!("b");
+        };
+        assert_eq!(ob.get("c"), Some(&v));
+    }
+
+    #[test]
+    fn merge_path_leaf_into_map_merges_into_existing_object_tree() {
+        let mut inner = BTreeMap::new();
+        inner.insert("b".to_string(), RowValue::Object(BTreeMap::from([(
+            "c".to_string(),
+            RowValue::String("old".to_string()),
+        )])));
+        let mut m = BTreeMap::new();
+        m.insert("a".to_string(), RowValue::Object(inner));
+        let v = RowValue::String("new".to_string());
+        let middle = vec!["a".to_string(), "b".to_string()];
+        let out = super::merge_path_leaf_into_map(m, &middle, "c", &v);
+        let a = out.get("a").expect("a");
+        let RowValue::Object(oa) = a else {
+            panic!("a");
+        };
+        let b = oa.get("b").expect("b");
+        let RowValue::Object(ob) = b else {
+            panic!("b");
+        };
+        assert_eq!(ob.get("c"), Some(&v));
     }
 
     fn nested_field(parts: &[&str], ty: Type) -> FieldDef {
