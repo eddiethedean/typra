@@ -29,17 +29,20 @@ def _as_repo_relative(path: str, repo_root: Path) -> str:
     return path
 
 
-def _extract_branch_totals(file_obj: dict) -> BranchTotals | None:
+def _extract_branch_totals(file_entry: dict) -> BranchTotals | None:
     """
     cargo-llvm-cov uses `llvm-cov export -format=text` for --json. In LLVM's JSON schema,
     branch counts may appear under a "branches" object at the per-file summary level.
     We only need covered/total counts, not per-branch locations.
     """
-    branches = file_obj.get("branches")
-    if not isinstance(branches, dict):
+    summary = file_entry.get("summary")
+    if not isinstance(summary, dict):
         return None
-    covered = branches.get("covered")
-    count = branches.get("count")
+    summary_branches = summary.get("branches")
+    if not isinstance(summary_branches, dict):
+        return None
+    covered = summary_branches.get("covered")
+    count = summary_branches.get("count")
     if isinstance(covered, int) and isinstance(count, int):
         return BranchTotals(covered=covered, count=count)
     return None
@@ -83,7 +86,7 @@ def main() -> int:
         summary = f.get("summary")
         if not isinstance(summary, dict):
             continue
-        bt = _extract_branch_totals(summary)
+        bt = _extract_branch_totals(f)
         if bt is None:
             # If branch coverage isn't present (toolchain mismatch), fail loudly.
             print(

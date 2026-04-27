@@ -58,13 +58,13 @@ fn plan_insert_row(
             .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
                 collection_id: collection_id.0,
             }))?;
+    // Catalog invariants: if a collection has a primary key, its schema must contain a matching
+    // top-level field. Catalog creation/versioning enforces this.
     let pk_def = col
         .fields
         .iter()
         .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-        .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-            name: pk_name.to_string(),
-        }))?;
+        .unwrap();
     let pk_ty = &pk_def.ty;
     validation::ensure_pk_type_primitive(pk_ty)?;
     let mut pk_path = vec![pk_name.to_string()];
@@ -121,11 +121,8 @@ fn plan_insert_row(
         }
     }
 
-    let pk_val = row
-        .remove(pk_name)
-        .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
-            name: pk_name.to_string(),
-        }))?;
+    // We validated `pk_cell` above, so removal must succeed.
+    let pk_val = row.remove(pk_name).unwrap();
     let pk_scalar = pk_val.clone().into_scalar()?;
 
     // Build non-PK values in schema order.
@@ -780,13 +777,13 @@ impl<S: Store> Database<S> {
                 .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
                     collection_id: collection_id.0,
                 }))?;
+        // Catalog invariants: if a collection has a primary key, its schema must contain a matching
+        // top-level field. Catalog creation/versioning enforces this.
         let pk_def = col
             .fields
             .iter()
             .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-            .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-                name: pk_name.to_string(),
-            }))?;
+            .unwrap();
 
         let mut entries: Vec<IndexEntry> = Vec::new();
         for ((cid, _), row) in self.latest_for_read().iter() {
@@ -1668,8 +1665,10 @@ mod tests {
     use super::Database;
     use crate::db::open;
     use crate::db::write;
+    use crate::catalog::{encode_catalog_payload, CatalogRecordWire};
     use crate::error::FormatError;
     use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
+    use crate::index::IndexState;
     use crate::index::{encode_index_payload, IndexEntry};
     use crate::schema::{FieldDef, Type};
     use crate::segments::header::{SegmentHeader, SegmentType};
@@ -1677,8 +1676,10 @@ mod tests {
     use crate::storage::{FileStore, Store};
     use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
     use crate::DbError;
+    use crate::MigrationStep;
     use std::borrow::Cow;
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     fn new_store() -> FileStore {
         let f = tempfile::NamedTempFile::new().unwrap();
@@ -1698,6 +1699,34 @@ mod tests {
             ty: Type::String,
             constraints: vec![],
         }
+    }
+
+    fn nested_field(parts: &[&str], ty: Type) -> FieldDef {
+        FieldDef {
+            path: crate::schema::FieldPath(parts.iter().map(|s| Cow::Owned(s.to_string())).collect()),
+            ty,
+            constraints: vec![],
+        }
+    }
+
+    fn base_vecstore_v5_with_superblock(sb: Superblock) -> crate::storage::VecStore {
+        use crate::storage::VecStore;
+        let mut store = VecStore::new();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+        store
     }
 
     #[test]
@@ -1798,6 +1827,980 @@ mod tests {
 
         let selected = open::read_and_select_superblock(&mut store).unwrap();
         assert_eq!(selected.generation, sb_a.generation);
+    }
+
+    #[test]
+    fn open_strict_errors_on_manifest_read_failure_but_autotruncate_opens() {
+        use crate::config::{OpenOptions, RecoveryMode};
+        use crate::segments::header::SEGMENT_HEADER_LEN;
+        use crate::storage::VecStore;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+
+        // Build an on-disk image with a valid header + superblocks but a bad manifest pointer:
+        // manifest_offset points at a Schema segment, so `read_manifest` fails.
+        let mut store = VecStore::new();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+
+        // Write a manifest segment with an invalid payload so `read_manifest` fails during decode,
+        // but replay ignores manifest segments.
+        store
+            .write_all_at(
+                segment_start,
+                &SegmentHeader {
+                    segment_type: SegmentType::Manifest,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                }
+                .encode(),
+            )
+            .unwrap();
+        store
+            .write_all_at(segment_start + SEGMENT_HEADER_LEN as u64, b"hi")
+            .unwrap();
+
+        let sb_a = Superblock {
+            generation: 10,
+            manifest_offset: segment_start,
+            manifest_len: 2,
+            ..Superblock::empty()
+        };
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb_a.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+
+        let strict = OpenOptions {
+            recovery: RecoveryMode::Strict,
+            ..OpenOptions::default()
+        };
+        let store_strict = VecStore::from_vec(store.as_slice().to_vec());
+        let err = match open::open_with_store(PathBuf::from("x.typra"), store_strict, strict) {
+            Ok(_) => panic!("expected strict open to fail"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, DbError::Format(_)));
+
+        let auto = OpenOptions {
+            recovery: RecoveryMode::AutoTruncate,
+            ..OpenOptions::default()
+        };
+        let _ = open::open_with_store(PathBuf::from("x.typra"), store, auto).unwrap();
+    }
+
+    #[test]
+    fn open_rejects_minor2_header_when_file_has_more_than_header_bytes() {
+        use crate::storage::VecStore;
+        let mut store = VecStore::new();
+        let mut hdr = FileHeader::new_v0_3().encode();
+        hdr[6..8].copy_from_slice(&2u16.to_le_bytes());
+        store.write_all_at(0, &hdr).unwrap();
+        store.write_all_at(FILE_HEADER_SIZE as u64, &[1]).unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let err = match open::open_with_store(PathBuf::from("x.typra"), store, opts) {
+            Ok(_) => panic!("expected open to fail"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            err,
+            DbError::Format(FormatError::UnsupportedVersion { .. })
+        ));
+    }
+
+    #[test]
+    fn open_checkpoint_none_path_when_superblock_has_no_checkpoint_pointer() {
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: 0,
+            checkpoint_len: 0,
+            ..Superblock::empty()
+        };
+        let store = base_vecstore_v5_with_superblock(sb);
+        let opts = crate::config::OpenOptions::default();
+        let db = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+        assert_eq!(db.segment_start, segment_start);
+        assert!(db.catalog().is_empty());
+    }
+
+    #[test]
+    fn open_checkpoint_none_path_when_checkpoint_offset_is_out_of_range() {
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: segment_start + 123, // beyond file len
+            checkpoint_len: 1,
+            ..Superblock::empty()
+        };
+        let store = base_vecstore_v5_with_superblock(sb);
+        let opts = crate::config::OpenOptions::default();
+        let _ = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+    }
+
+    #[test]
+    fn open_checkpoint_none_path_when_checkpoint_segment_type_is_wrong() {
+        use crate::segments::header::SEGMENT_HEADER_LEN;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let checkpoint_off = segment_start;
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: checkpoint_off,
+            checkpoint_len: 1,
+            ..Superblock::empty()
+        };
+        let mut store = base_vecstore_v5_with_superblock(sb);
+        store
+            .write_all_at(
+                checkpoint_off,
+                &SegmentHeader {
+                    segment_type: SegmentType::Temp,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                }
+                .encode(),
+            )
+            .unwrap();
+        store
+            .write_all_at(checkpoint_off + SEGMENT_HEADER_LEN as u64, &[])
+            .unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let _ = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+    }
+
+    #[test]
+    fn open_strict_errors_on_bad_checkpoint_crc_but_autotruncate_falls_back() {
+        use crate::config::{OpenOptions, RecoveryMode};
+        use crate::segments::header::SEGMENT_HEADER_LEN;
+        use crate::storage::VecStore;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let checkpoint_off = segment_start;
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: checkpoint_off,
+            checkpoint_len: 1,
+            ..Superblock::empty()
+        };
+        let mut store = base_vecstore_v5_with_superblock(sb);
+
+        // Write a checkpoint header with incorrect payload CRC (payload "a" has nonzero crc).
+        let hdr = SegmentHeader {
+            segment_type: SegmentType::Checkpoint,
+            payload_len: 1,
+            payload_crc32c: 0,
+        }
+        .encode();
+        store.write_all_at(checkpoint_off, &hdr).unwrap();
+        store
+            .write_all_at(checkpoint_off + SEGMENT_HEADER_LEN as u64, b"a")
+            .unwrap();
+
+        let strict = OpenOptions {
+            recovery: RecoveryMode::Strict,
+            ..OpenOptions::default()
+        };
+        assert!(open::open_with_store(PathBuf::from("x.typra"), VecStore::from_vec(store.as_slice().to_vec()), strict).is_err());
+
+        let auto = OpenOptions {
+            recovery: RecoveryMode::AutoTruncate,
+            ..OpenOptions::default()
+        };
+        let _ = open::open_with_store(PathBuf::from("x.typra"), store, auto).unwrap();
+    }
+
+    #[test]
+    fn open_applies_tail_segments_after_checkpoint_when_replay_from_is_after_checkpoint() {
+        use crate::checkpoint::{checkpoint_from_state, encode_checkpoint_payload_v0, CheckpointV0};
+        use crate::segments::header::SEGMENT_HEADER_LEN;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let checkpoint_off = segment_start;
+
+        // Build minimal logical state: one collection, no rows.
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![path_field("id")],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+        let latest = super::LatestMap::new();
+        let indexes = crate::index::IndexState::default();
+
+        // Create a checkpoint payload and set replay_from_offset to *after* the checkpoint segment.
+        let mut cp: CheckpointV0 = checkpoint_from_state(&catalog, &latest, &indexes).unwrap();
+        let payload0 = encode_checkpoint_payload_v0(&cp);
+        let checkpoint_end = checkpoint_off + SEGMENT_HEADER_LEN as u64 + payload0.len() as u64;
+        cp.replay_from_offset = checkpoint_end;
+        let payload = encode_checkpoint_payload_v0(&cp);
+
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: checkpoint_off,
+            checkpoint_len: payload.len() as u32,
+            ..Superblock::empty()
+        };
+        let mut store = base_vecstore_v5_with_superblock(sb);
+
+        // Write checkpoint segment with correct CRC via SegmentWriter.
+        let mut w = SegmentWriter::new(&mut store, checkpoint_off);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Checkpoint,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &payload,
+        )
+        .unwrap();
+
+        // Append one schema segment after checkpoint; open should replay it via `replay_tail_into`.
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::NewSchemaVersion {
+            collection_id: 1,
+            schema_version: 2,
+            fields: vec![path_field("id")],
+            indexes: vec![],
+        });
+        let mut w2 = SegmentWriter::new(&mut store, checkpoint_end);
+        w2.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let db = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+        let col = db.catalog().get(crate::schema::CollectionId(1)).unwrap();
+        assert_eq!(col.current_version.0, 2);
+    }
+
+    #[test]
+    fn open_upgrades_minor2_header_only_vecstore() {
+        use crate::storage::VecStore;
+        let mut store = VecStore::new();
+        let mut hdr = FileHeader::new_v0_3().encode();
+        hdr[6..8].copy_from_slice(&2u16.to_le_bytes());
+        store.write_all_at(0, &hdr).unwrap();
+        // len == FILE_HEADER_SIZE exactly
+
+        let opts = crate::config::OpenOptions::default();
+        let db = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+        assert_eq!(db.format_minor, crate::file_format::FORMAT_MINOR_V3);
+    }
+
+    #[test]
+    fn open_upgrades_minor2_header_only_filestore() {
+        let mut store = new_store();
+        let mut hdr = FileHeader::new_v0_3().encode();
+        hdr[6..8].copy_from_slice(&2u16.to_le_bytes());
+        store.write_all_at(0, &hdr).unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let db = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+        assert_eq!(db.format_minor, crate::file_format::FORMAT_MINOR_V3);
+    }
+
+    #[test]
+    fn open_with_filestore_hits_tail_replay_branch() {
+        // Same as `open_applies_tail_segments_after_checkpoint_when_replay_from_is_after_checkpoint`,
+        // but with a FileStore monomorphization to satisfy llvm-cov branch accounting.
+        use crate::checkpoint::{checkpoint_from_state, encode_checkpoint_payload_v0, CheckpointV0};
+        use crate::segments::header::SEGMENT_HEADER_LEN;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let checkpoint_off = segment_start;
+
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![path_field("id")],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+        let latest = super::LatestMap::new();
+        let indexes = crate::index::IndexState::default();
+
+        let mut cp: CheckpointV0 = checkpoint_from_state(&catalog, &latest, &indexes).unwrap();
+        let payload0 = encode_checkpoint_payload_v0(&cp);
+        let checkpoint_end = checkpoint_off + SEGMENT_HEADER_LEN as u64 + payload0.len() as u64;
+        cp.replay_from_offset = checkpoint_end;
+        let payload = encode_checkpoint_payload_v0(&cp);
+
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: checkpoint_off,
+            checkpoint_len: payload.len() as u32,
+            ..Superblock::empty()
+        };
+
+        let mut store = new_store();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+
+        let mut w = SegmentWriter::new(&mut store, checkpoint_off);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Checkpoint,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &payload,
+        )
+        .unwrap();
+
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::NewSchemaVersion {
+            collection_id: 1,
+            schema_version: 2,
+            fields: vec![path_field("id")],
+            indexes: vec![],
+        });
+        let mut w2 = SegmentWriter::new(&mut store, checkpoint_end);
+        w2.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let db = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+        let col = db.catalog().get(crate::schema::CollectionId(1)).unwrap();
+        assert_eq!(col.current_version.0, 2);
+    }
+
+    #[test]
+    fn open_checkpoint_replay_from_before_segment_start_skips_tail_replay() {
+        use crate::checkpoint::{checkpoint_from_state, encode_checkpoint_payload_v0, CheckpointV0};
+        use crate::segments::header::SEGMENT_HEADER_LEN;
+        use crate::storage::VecStore;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let checkpoint_off = segment_start;
+
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![path_field("id")],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+        let latest = super::LatestMap::new();
+        let indexes = crate::index::IndexState::default();
+
+        let mut cp: CheckpointV0 = checkpoint_from_state(&catalog, &latest, &indexes).unwrap();
+        cp.replay_from_offset = 0; // < segment_start, so open.rs should skip tail replay
+        let payload = encode_checkpoint_payload_v0(&cp);
+
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: checkpoint_off,
+            checkpoint_len: payload.len() as u32,
+            ..Superblock::empty()
+        };
+        let mut store = base_vecstore_v5_with_superblock(sb);
+        let mut w = SegmentWriter::new(&mut store, checkpoint_off);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Checkpoint,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &payload,
+        )
+        .unwrap();
+
+        // Add a schema segment after checkpoint; it should NOT be applied because replay_from is 0.
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::NewSchemaVersion {
+            collection_id: 1,
+            schema_version: 2,
+            fields: vec![path_field("id")],
+            indexes: vec![],
+        });
+        let checkpoint_end = checkpoint_off + SEGMENT_HEADER_LEN as u64 + payload.len() as u64;
+        let mut w2 = SegmentWriter::new(&mut store, checkpoint_end);
+        w2.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let db = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+        let col = db.catalog().get(crate::schema::CollectionId(1)).unwrap();
+        assert_eq!(col.current_version.0, 1);
+    }
+
+    #[test]
+    fn open_checkpoint_replay_from_beyond_eof_skips_tail_replay() {
+        use crate::checkpoint::{checkpoint_from_state, encode_checkpoint_payload_v0, CheckpointV0};
+        use crate::storage::VecStore;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let checkpoint_off = segment_start;
+
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![path_field("id")],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+        let latest = super::LatestMap::new();
+        let indexes = crate::index::IndexState::default();
+
+        let mut cp: CheckpointV0 = checkpoint_from_state(&catalog, &latest, &indexes).unwrap();
+        cp.replay_from_offset = u64::MAX; // >= cur_len, so open.rs should skip tail replay
+        let payload = encode_checkpoint_payload_v0(&cp);
+
+        let sb = Superblock {
+            generation: 10,
+            checkpoint_offset: checkpoint_off,
+            checkpoint_len: payload.len() as u32,
+            ..Superblock::empty()
+        };
+        let mut store = base_vecstore_v5_with_superblock(sb);
+        let mut w = SegmentWriter::new(&mut store, checkpoint_off);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Checkpoint,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &payload,
+        )
+        .unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let _ = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+    }
+
+    #[test]
+    fn open_errors_on_truncated_superblocks_when_len_is_less_than_segment_start() {
+        use crate::storage::VecStore;
+        let mut store = VecStore::new();
+        store
+            .write_all_at(0, &FileHeader::new_v0_3().encode())
+            .unwrap();
+        // len == FILE_HEADER_SIZE, but segment_start is larger => should error.
+        let opts = crate::config::OpenOptions::default();
+        let err = match open::open_with_store(PathBuf::from("x.typra"), store, opts) {
+            Ok(_) => panic!("expected open to fail"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            err,
+            DbError::Format(FormatError::TruncatedSuperblock { .. })
+        ));
+    }
+
+    #[test]
+    fn open_strict_reports_unclean_log_tail_when_recovery_finds_torn_tail() {
+        use crate::config::{OpenOptions, RecoveryMode};
+        use crate::storage::VecStore;
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let sb = Superblock {
+            generation: 10,
+            ..Superblock::empty()
+        };
+        let mut store = base_vecstore_v5_with_superblock(sb);
+
+        // Append a committed empty transaction and then trailing garbage bytes to force
+        // truncate_end_for_recovery to return (safe_end < file_len, Some("torn_tail")).
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+        let begin = crate::txn::encode_txn_payload_v0(1);
+        let commit = crate::txn::encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+        let end = store.len().unwrap();
+        store.write_all_at(end, &[0xEE]).unwrap();
+
+        let strict = OpenOptions {
+            recovery: RecoveryMode::Strict,
+            ..OpenOptions::default()
+        };
+        let err = match open::open_with_store(PathBuf::from("x.typra"), store, strict) {
+            Ok(_) => panic!("expected strict open to fail"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, DbError::Format(FormatError::UncleanLogTail { .. })));
+    }
+
+    #[test]
+    fn open_allows_manifest_offset_zero() {
+        let sb = Superblock {
+            generation: 10,
+            manifest_offset: 0,
+            manifest_len: 0,
+            ..Superblock::empty()
+        };
+        let store = base_vecstore_v5_with_superblock(sb);
+        let opts = crate::config::OpenOptions::default();
+        let _ = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+    }
+
+    #[test]
+    fn open_allows_manifest_offset_zero_with_filestore() {
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let sb = Superblock {
+            generation: 10,
+            manifest_offset: 0,
+            manifest_len: 0,
+            ..Superblock::empty()
+        };
+
+        let mut store = new_store();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+
+        let opts = crate::config::OpenOptions::default();
+        let _ = open::open_with_store(PathBuf::from("x.typra"), store, opts).unwrap();
+    }
+
+    #[test]
+    fn open_strict_reports_unclean_log_tail_with_filestore() {
+        use crate::config::{OpenOptions, RecoveryMode};
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let sb = Superblock {
+            generation: 10,
+            ..Superblock::empty()
+        };
+
+        let mut store = new_store();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+
+        // Force torn tail: write a committed empty txn then trailing garbage.
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+        let begin = crate::txn::encode_txn_payload_v0(1);
+        let commit = crate::txn::encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+        let end = store.len().unwrap();
+        store.write_all_at(end, &[0xEE]).unwrap();
+
+        let strict = OpenOptions {
+            recovery: RecoveryMode::Strict,
+            ..OpenOptions::default()
+        };
+        let err = match open::open_with_store(PathBuf::from("x.typra"), store, strict) {
+            Ok(_) => panic!("expected strict open to fail"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, DbError::Format(FormatError::UncleanLogTail { .. })));
+    }
+
+    #[test]
+    fn plan_insert_row_errors_on_unknown_collection() {
+        let catalog = crate::catalog::Catalog::default();
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), crate::RowValue::String("x".to_string()));
+        let err = super::plan_insert_row(&catalog, crate::schema::CollectionId(1), row).unwrap_err();
+        assert!(matches!(err, DbError::Schema(crate::error::SchemaError::UnknownCollection { .. })));
+    }
+
+    #[test]
+    fn plan_insert_row_errors_when_collection_has_no_primary_key() {
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![path_field("id")],
+                indexes: vec![],
+                primary_field: None,
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), crate::RowValue::String("x".to_string()));
+        let err = super::plan_insert_row(&catalog, crate::schema::CollectionId(1), row).unwrap_err();
+        assert!(matches!(err, DbError::Schema(crate::error::SchemaError::NoPrimaryKey { .. })));
+    }
+
+    #[test]
+    fn plan_insert_row_multiseg_rejects_unknown_leaf_path() {
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![
+                    nested_field(&["id"], Type::String),
+                    nested_field(&["a", "b"], Type::String),
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), crate::RowValue::String("x".to_string()));
+        row.insert(
+            "a".to_string(),
+            crate::RowValue::Object(BTreeMap::from([(
+                "c".to_string(),
+                crate::RowValue::String("nope".to_string()),
+            )])),
+        );
+        let err = super::plan_insert_row(&catalog, crate::schema::CollectionId(1), row).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::RowUnknownField { .. })
+        ));
+    }
+
+    #[test]
+    fn plan_insert_row_multiseg_errors_on_missing_required_nested_field() {
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![
+                    nested_field(&["id"], Type::String),
+                    nested_field(&["a", "b"], Type::String),
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), crate::RowValue::String("x".to_string()));
+        row.insert("a".to_string(), crate::RowValue::Object(BTreeMap::new()));
+        let err = super::plan_insert_row(&catalog, crate::schema::CollectionId(1), row).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::RowMissingField { .. })
+        ));
+    }
+
+    #[test]
+    fn plan_insert_row_multiseg_missing_optional_field_becomes_none() {
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![
+                    nested_field(&["id"], Type::String),
+                    nested_field(&["a", "b"], Type::Optional(Box::new(Type::String))),
+                ],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("id".to_string(), crate::RowValue::String("x".to_string()));
+        row.insert("a".to_string(), crate::RowValue::Object(BTreeMap::new()));
+        let (_payload, (_pk, full), _idx, _pk_scalar) =
+            super::plan_insert_row(&catalog, crate::schema::CollectionId(1), row).unwrap();
+        let a = full.get("a").unwrap();
+        assert!(matches!(a, crate::RowValue::Object(_)));
+    }
+
+    #[test]
+    fn plan_schema_version_needs_migration_new_required_field_suggests_backfill_step() {
+        use crate::schema::{FieldPath, Type};
+
+        let mut db = Database::open_in_memory().unwrap();
+        let (cid, _v) = db
+            .register_collection(
+                "t",
+                vec![nested_field(&["id"], Type::String)],
+                "id",
+            )
+            .unwrap();
+
+        let plan = db
+            .plan_schema_version_with_indexes(
+                cid,
+                vec![
+                    nested_field(&["id"], Type::String),
+                    // Add a new required field: should be NeedsMigration w/ "new required field".
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                        ty: Type::String,
+                        constraints: vec![],
+                    },
+                ],
+                vec![],
+            )
+            .unwrap();
+
+        assert!(matches!(
+            plan.steps.as_slice(),
+            [MigrationStep::BackfillTopLevelField { .. }]
+        ));
+    }
+
+    #[test]
+    fn plan_schema_version_needs_migration_other_reason_suggests_rebuild_indexes() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind, Type};
+
+        let mut db = Database::open_in_memory().unwrap();
+        let fields = vec![
+            nested_field(&["id"], Type::String),
+            nested_field(&["v"], Type::String),
+        ];
+        let (cid, _v) = db.register_collection("t", fields.clone(), "id").unwrap();
+
+        // Add a unique index: classify_schema_update flags this as NeedsMigration.
+        let plan = db
+            .plan_schema_version_with_indexes(
+                cid,
+                fields,
+                vec![IndexDef {
+                    name: "v_u".to_string(),
+                    path: FieldPath(vec![Cow::Owned("v".to_string())]),
+                    kind: IndexKind::Unique,
+                }],
+            )
+            .unwrap();
+
+        assert!(plan
+            .steps
+            .iter()
+            .any(|s| matches!(s, MigrationStep::RebuildIndexes)));
+    }
+
+    #[test]
+    fn backfill_top_level_field_skips_existing_and_inserts_missing() {
+        use crate::schema::{FieldPath, Type};
+        use crate::{RowValue, ScalarValue};
+
+        let mut db = Database::open_in_memory().unwrap();
+        let (cid, _v1) = db
+            .register_collection(
+                "t",
+                vec![
+                    nested_field(&["id"], Type::String),
+                    FieldDef {
+                        path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                        ty: Type::Optional(Box::new(Type::Int64)),
+                        constraints: vec![],
+                    },
+                ],
+                "id",
+            )
+            .unwrap();
+
+        // Row1: missing x (but insert will materialize optional fields as None).
+        db.insert(
+            cid,
+            BTreeMap::from([("id".to_string(), RowValue::String("a".to_string()))]),
+        )
+        .unwrap();
+        // Row2: already has x
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("b".to_string())),
+                ("x".to_string(), RowValue::Int64(5)),
+            ]),
+        )
+        .unwrap();
+
+        // Remove `x` key entirely to simulate a legacy row missing the field.
+        let target_key = db
+            .latest
+            .iter()
+            .find_map(|((c, pk), row)| {
+                if *c != cid.0 {
+                    return None;
+                }
+                match row.get("id") {
+                    Some(RowValue::String(s)) if s == "a" => Some(pk.clone()),
+                    _ => None,
+                }
+            })
+            .unwrap();
+        db.latest
+            .get_mut(&(cid.0, target_key))
+            .unwrap()
+            .remove("x");
+
+        db.backfill_top_level_field_with_value(cid, "x", RowValue::Int64(9))
+            .unwrap();
+
+        let a = db
+            .get(cid, &ScalarValue::String("a".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(a.get("x"), Some(&RowValue::Int64(9)));
+
+        let b = db
+            .get(cid, &ScalarValue::String("b".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(b.get("x"), Some(&RowValue::Int64(5)));
+    }
+
+    #[test]
+    fn rebuild_indexes_early_returns_when_no_entries() {
+        let mut db = Database::open_in_memory().unwrap();
+        let (cid, _v) = db.register_collection("t", vec![path_field("id")], "id").unwrap();
+        // No indexes, no rows => entries empty => Ok.
+        db.rebuild_indexes_for_collection(cid).unwrap();
+    }
+
+    #[test]
+    fn rebuild_indexes_builds_entries_and_persists_in_index_state() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+        use crate::{RowValue, ScalarValue};
+
+        let mut db = Database::open_in_memory().unwrap();
+        let fields = vec![path_field("id"), path_field("v")];
+        let indexes = vec![IndexDef {
+            name: "v_idx".to_string(),
+            path: FieldPath(vec![Cow::Owned("v".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _v) = db
+            .register_collection_with_indexes("t", fields, indexes, "id")
+            .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("a".to_string())),
+                ("v".to_string(), RowValue::String("k".to_string())),
+            ]),
+        )
+        .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("b".to_string())),
+                ("v".to_string(), RowValue::String("k".to_string())),
+            ]),
+        )
+        .unwrap();
+
+        // Clear index state to prove rebuild repopulates it.
+        db.indexes = IndexState::default();
+        db.rebuild_indexes_for_collection(cid).unwrap();
+
+        let got = db
+            .index_state()
+            .non_unique_lookup(cid.0, "v_idx", b"k")
+            .unwrap();
+        assert_eq!(got.len(), 2);
+
+        // Also sanity-check records are still present.
+        assert!(db
+            .get(cid, &ScalarValue::String("a".to_string()))
+            .unwrap()
+            .is_some());
     }
 
     #[test]

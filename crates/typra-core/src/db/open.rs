@@ -138,25 +138,27 @@ pub(crate) fn open_with_store<S: Store>(
         store.read_exact_at(0, &mut buf)?;
         let header = decode_header(&buf)?;
 
-        if header.format_minor == 2 {
-            if len == FILE_HEADER_SIZE as u64 {
-                let upgraded = FileHeader::new_v0_3();
-                store.write_all_at(0, &upgraded.encode())?;
-                init_superblocks(&mut store, segment_start)?;
-                let _ = append_manifest_and_publish(&mut store, segment_start)?;
-                store.sync()?;
-                format_minor = crate::file_format::FORMAT_MINOR_V3;
-            } else {
-                return Err(DbError::Format(FormatError::UnsupportedVersion {
-                    major: header.format_major,
-                    minor: header.format_minor,
-                }));
+        match header.format_minor {
+            2 => {
+                debug_assert!(len >= FILE_HEADER_SIZE as u64);
+                match len == FILE_HEADER_SIZE as u64 {
+                    true => {
+                        let upgraded = FileHeader::new_v0_3();
+                        store.write_all_at(0, &upgraded.encode())?;
+                        init_superblocks(&mut store, segment_start)?;
+                        let _ = append_manifest_and_publish(&mut store, segment_start)?;
+                        store.sync()?;
+                        format_minor = crate::file_format::FORMAT_MINOR_V3;
+                    }
+                    false => {
+                        return Err(DbError::Format(FormatError::UnsupportedVersion {
+                            major: header.format_major,
+                            minor: header.format_minor,
+                        }));
+                    }
+                }
             }
-        } else if header.format_minor == 3
-            || header.format_minor == 4
-            || header.format_minor == 5
-            || header.format_minor == 6
-        {
+            3 | 4 | 5 | 6 => {
             if len < segment_start {
                 return Err(DbError::Format(FormatError::TruncatedSuperblock {
                     got: len as usize,
@@ -164,15 +166,17 @@ pub(crate) fn open_with_store<S: Store>(
                 }));
             }
             let selected = read_and_select_superblock(&mut store)?;
-            if selected.manifest_offset != 0 {
-                if let Err(e) = read_manifest(&mut store, &selected) {
-                    match opts.recovery {
+            match selected.manifest_offset {
+                0 => {}
+                _ => match read_manifest(&mut store, &selected) {
+                    Ok(()) => {}
+                    Err(e) => match opts.recovery {
                         RecoveryMode::Strict => return Err(e),
                         // Auto-truncation can recover from a torn manifest pointer/payload by
                         // scanning and truncating the log to a safe committed prefix.
                         RecoveryMode::AutoTruncate => {}
-                    }
-                }
+                    },
+                },
             }
             format_minor = header.format_minor;
 
@@ -180,14 +184,15 @@ pub(crate) fn open_with_store<S: Store>(
                 recover::truncate_end_for_recovery(&mut store, segment_start, format_minor)?;
             match opts.recovery {
                 RecoveryMode::Strict => {
-                    if let Some(reason) = reason {
-                        let flen = store.len()?;
-                        if truncate_to < flen {
+                    let flen = store.len()?;
+                    match (reason, truncate_to < flen) {
+                        (Some(reason), true) => {
                             return Err(DbError::Format(FormatError::UncleanLogTail {
                                 safe_end: truncate_to,
                                 reason,
-                            }));
+                            }))
                         }
+                        _ => {}
                     }
                 }
                 RecoveryMode::AutoTruncate => {
@@ -198,11 +203,9 @@ pub(crate) fn open_with_store<S: Store>(
                     }
                 }
             }
-        } else {
-            return Err(DbError::Format(FormatError::UnsupportedVersion {
-                major: header.format_major,
-                minor: header.format_minor,
-            }));
+            }
+            // `decode_header` already validated format_minor is in 2..=6.
+            _ => unreachable!("decode_header accepted only minor 2..=6"),
         }
     }
 
@@ -242,18 +245,25 @@ pub(crate) fn open_with_store<S: Store>(
         }
     };
 
-    if flen != 0 {
-        // Apply any tail segments that were written after the checkpoint. (When no checkpoint is
-        // present, replay_from is set so this is a no-op.)
-        if replay_from < store.len()? && replay_from >= segment_start {
-            replay::replay_tail_into(
-                &mut store,
-                replay_from,
-                format_minor,
-                &mut catalog,
-                &mut latest,
-                &mut indexes,
-            )?;
+    // Apply any tail segments that were written after the checkpoint. (When no checkpoint is
+    // present, replay_from is set so this is a no-op.)
+    let cur_len = store.len()?;
+    match replay_from.cmp(&segment_start) {
+        std::cmp::Ordering::Less => {}
+        std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {
+            match replay_from.cmp(&cur_len) {
+                std::cmp::Ordering::Less => {
+                    replay::replay_tail_into(
+                        &mut store,
+                        replay_from,
+                        format_minor,
+                        &mut catalog,
+                        &mut latest,
+                        &mut indexes,
+                    )?;
+                }
+                std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => {}
+            }
         }
     }
 

@@ -382,3 +382,249 @@ fn apply_record_segment(
     latest.insert((collection_id, pk_key), full);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{replay_tail_into, replay_tail_legacy};
+    use crate::catalog::Catalog;
+    use crate::catalog::{encode_catalog_payload, CatalogRecordWire};
+    use crate::error::{DbError, FormatError};
+    use crate::file_format::FORMAT_MINOR_V6;
+    use crate::index::IndexState;
+    use crate::index::{encode_index_payload, IndexEntry, IndexOp};
+    use crate::record::encode_record_payload_v3;
+    use crate::record::RowValue;
+    use crate::schema::{FieldDef, FieldPath, IndexKind, Type};
+    use crate::segments::header::{SegmentHeader, SegmentType};
+    use crate::segments::writer::SegmentWriter;
+    use crate::storage::VecStore;
+    use crate::txn::encode_txn_payload_v0;
+    use std::collections::HashMap;
+    use std::borrow::Cow;
+
+    #[test]
+    fn replay_v6_rejects_unframed_data_segment() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &[],
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        let e = replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn replay_v6_rejects_nested_begin() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let begin = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        let e = replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn replay_v6_rejects_commit_outside_transaction() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        let e = replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn replay_v6_rejects_commit_id_mismatch() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(2);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        let e = replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn replay_v6_errors_on_unclosed_txn_at_end() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let begin = encode_txn_payload_v0(7);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        let e = replay_tail_into(&mut store, 0, FORMAT_MINOR_V6, &mut catalog, &mut latest, &mut idx)
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn replay_legacy_exercises_schema_index_and_record_loops_with_mixed_segments() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+
+        // Write an Index segment first so the schema pass takes the `continue` branch at least once.
+        let idx_bytes = encode_index_payload(&[IndexEntry {
+            collection_id: 1,
+            index_name: "i".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Insert,
+            index_key: vec![1],
+            pk_key: vec![2],
+        }]);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Index,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &idx_bytes,
+        )
+        .unwrap();
+
+        // Then a Schema segment that creates a collection with primary key `id`.
+        let fields = vec![FieldDef {
+            path: FieldPath(vec![Cow::Owned("id".to_string())]),
+            ty: Type::Int64,
+            constraints: vec![],
+        }];
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields: fields.clone(),
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        });
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        // Finally a Record segment to exercise the record pass.
+        let rec_bytes = encode_record_payload_v3(
+            1,
+            1,
+            &crate::ScalarValue::Int64(7),
+            &Type::Int64,
+            &[],
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &rec_bytes,
+        )
+        .unwrap();
+
+        let mut catalog = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        replay_tail_legacy(&mut store, 0, &mut catalog, &mut latest, &mut idx).unwrap();
+
+        // The record should have been applied to latest.
+        let key = crate::ScalarValue::Int64(7).canonical_key_bytes();
+        let got = latest.get(&(1u32, key)).unwrap();
+        assert_eq!(got.get("id"), Some(&RowValue::from_scalar(crate::ScalarValue::Int64(7))));
+    }
+}
