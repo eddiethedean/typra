@@ -117,8 +117,9 @@ pub fn execute_query(
         } => {
             let mut out = Vec::new();
             let push_row = |out: &mut Vec<BTreeMap<String, RowValue>>, pk_key: Vec<u8>| {
-                if let Some(row) = latest.get(&(collection_id, pk_key)).cloned() {
-                    out.push(row);
+                match latest.get(&(collection_id, pk_key)).cloned() {
+                    Some(row) => out.push(row),
+                    None => {}
                 }
             };
 
@@ -204,12 +205,13 @@ impl<'a> Iterator for QueryRowIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match &mut self.state {
             QueryRowIterState::Vec { rows, pos } => {
-                if *pos >= rows.len() {
-                    None
-                } else {
-                    let out = rows[*pos].clone();
-                    *pos += 1;
-                    Some(Ok(out))
+                match (*pos).cmp(&rows.len()) {
+                    std::cmp::Ordering::Less => {
+                        let out = rows[*pos].clone();
+                        *pos += 1;
+                        Some(Ok(out))
+                    }
+                    std::cmp::Ordering::Equal | std::cmp::Ordering::Greater => None,
                 }
             }
             QueryRowIterState::Source { latest, source } => loop {
@@ -217,8 +219,9 @@ impl<'a> Iterator for QueryRowIter<'a> {
                 match rk {
                     Err(e) => return Some(Err(e)),
                     Ok((cid, pk_key)) => {
-                        if let Some(row) = latest.get(&(cid.0, pk_key)).cloned() {
-                            return Some(Ok(row));
+                        match latest.get(&(cid.0, pk_key)).cloned() {
+                            Some(row) => return Some(Ok(row)),
+                            None => {}
                         }
                     }
                 }
@@ -245,13 +248,12 @@ impl RowSource for IndexUniqueSource<'_> {
         let pk_key = self.pk.take()?;
         let row = self.latest.get(&(self.collection_id, pk_key.clone()))?;
         match &self.residual {
-            Some(pred) => {
-                if !eval_predicate(row, pred) {
-                    return None;
-                }
-            }
             None => {}
-        }
+            Some(pred) => match eval_predicate(row, pred) {
+                true => {}
+                false => return None,
+            },
+        };
         Some(Ok((CollectionId(self.collection_id), pk_key)))
     }
 }
@@ -266,13 +268,16 @@ struct IndexNonUniqueSource<'a> {
 impl RowSource for IndexNonUniqueSource<'_> {
     fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
         for pk_key in self.pks.by_ref() {
-            let Some(row) = self.latest.get(&(self.collection_id, pk_key.clone())) else {
-                continue;
+            let row = match self.latest.get(&(self.collection_id, pk_key.clone())) {
+                Some(r) => r,
+                None => continue,
             };
-            if let Some(pred) = &self.residual {
-                if !eval_predicate(row, pred) {
-                    continue;
-                }
+            match &self.residual {
+                None => {}
+                Some(pred) => match eval_predicate(row, pred) {
+                    true => {}
+                    false => continue,
+                },
             }
             return Some(Ok((CollectionId(self.collection_id), pk_key)));
         }
@@ -293,13 +298,12 @@ impl RowSource for ScanSource<'_> {
                 continue;
             }
             match &self.predicate {
-                Some(p) => {
-                    if !eval_predicate(row, p) {
-                        continue;
-                    }
-                }
                 None => {}
-            }
+                Some(p) => match eval_predicate(row, p) {
+                    true => {}
+                    false => continue,
+                },
+            };
             return Some(Ok((CollectionId(self.collection_id), pk_key.clone())));
         }
         None
@@ -510,7 +514,13 @@ fn sort_item_for(
 
 fn scalar_sort_key_bytes(s: &ScalarValue) -> Vec<u8> {
     match s {
-        ScalarValue::Bool(b) => vec![0, if *b { 1 } else { 0 }],
+        ScalarValue::Bool(b) => {
+            let v = match b {
+                true => 1,
+                false => 0,
+            };
+            vec![0, v]
+        }
         ScalarValue::Int64(v) => {
             let u = (*v as u64) ^ 0x8000_0000_0000_0000u64;
             let mut out = vec![1];
@@ -524,10 +534,9 @@ fn scalar_sort_key_bytes(s: &ScalarValue) -> Vec<u8> {
         }
         ScalarValue::Float64(v) => {
             let mut bits = v.to_bits();
-            if bits & (1u64 << 63) != 0 {
-                bits = !bits;
-            } else {
-                bits ^= 1u64 << 63;
+            match (bits & (1u64 << 63)) != 0 {
+                true => bits = !bits,
+                false => bits ^= 1u64 << 63,
             }
             let mut out = vec![3];
             out.extend_from_slice(&bits.to_be_bytes());
@@ -668,8 +677,9 @@ impl<'a> ExternalSortSource<'a> {
 
         while let Some(rk) = input.next_key() {
             let rk = rk?;
-            if let Some(item) = sort_item_for(latest, &rk, &order_by) {
-                run.push(item);
+            match sort_item_for(latest, &rk, &order_by) {
+                Some(item) => run.push(item),
+                None => {}
             }
             if run.len() >= RUN_KEYS {
                 run.sort_by(|a, b| cmp_sort_item(a, b, dir));
@@ -683,14 +693,17 @@ impl<'a> ExternalSortSource<'a> {
             }
         }
 
-        if !run.is_empty() {
-            run.sort_by(|a, b| cmp_sort_item(a, b, dir));
-            let payload = encode_run(&run, dir);
-            let off = spill.append_temp_segment(&payload)?;
-            runs_meta.push(RunMeta {
-                offset: off,
-                payload_len: payload.len() as u64,
-            });
+        match run.is_empty() {
+            true => {}
+            false => {
+                run.sort_by(|a, b| cmp_sort_item(a, b, dir));
+                let payload = encode_run(&run, dir);
+                let off = spill.append_temp_segment(&payload)?;
+                runs_meta.push(RunMeta {
+                    offset: off,
+                    payload_len: payload.len() as u64,
+                });
+            }
         }
 
         // Load run buffers and seed heap.
@@ -699,14 +712,15 @@ impl<'a> ExternalSortSource<'a> {
         for (i, m) in runs_meta.into_iter().enumerate() {
             let buf = spill.read_temp_payload(m.offset, m.payload_len)?;
             let mut rr = RunReader::new(buf);
-            if let Some((none_flag, sort_key, pk)) = rr.next_item() {
-                heap.push(HeapItem {
+            match rr.next_item() {
+                Some((none_flag, sort_key, pk)) => heap.push(HeapItem {
                     run_idx: i,
                     none_flag,
                     sort_key,
                     pk: pk.clone(),
                     dir,
-                });
+                }),
+                None => {}
             }
             runs.push(rr);
         }
@@ -739,14 +753,17 @@ impl RowSource for ExternalSortSource<'_> {
         let top = self.heap.pop()?;
         let run_idx = top.run_idx;
         // refill from same run
-        if let Some((none_flag, sort_key, pk)) = self.runs[run_idx].next_item() {
-            self.heap.push(HeapItem {
-                run_idx,
-                none_flag,
-                sort_key,
-                pk: pk.clone(),
-                dir: self.dir,
-            });
+        match self.runs[run_idx].next_item() {
+            Some((none_flag, sort_key, pk)) => {
+                self.heap.push(HeapItem {
+                    run_idx,
+                    none_flag,
+                    sort_key,
+                    pk: pk.clone(),
+                    dir: self.dir,
+                });
+            }
+            None => {}
         }
         Some(Ok((CollectionId(self.collection_id), top.pk)))
     }
@@ -819,11 +836,14 @@ fn choose_index<'a>(
                     Some((idx, v, used)) => match best {
                         None => best = Some((idx, v, used)),
                         Some((best_idx, _, _)) => {
-                            let should_upgrade =
-                                best_idx.kind != IndexKind::Unique && idx.kind == IndexKind::Unique;
-                            if should_upgrade {
-                                best = Some((idx, v, used));
-                            }
+                            match (best_idx.kind, idx.kind) {
+                                // Never downgrade away from a unique choice.
+                                (IndexKind::Unique, _) => {}
+                                // Upgrade any non-unique best to a unique candidate.
+                                (_, IndexKind::Unique) => best = Some((idx, v, used)),
+                                // Otherwise keep the first indexed predicate.
+                                _ => {}
+                            };
                         }
                     },
                 }
@@ -1350,6 +1370,64 @@ mod tests {
     }
 
     #[test]
+    fn choose_index_does_not_downgrade_unique_in_and() {
+        let indexes = vec![
+            IndexDef {
+                name: "a".to_string(),
+                path: FieldPath(vec![Cow::Owned("a".to_string())]),
+                kind: IndexKind::Unique,
+            },
+            IndexDef {
+                name: "b".to_string(),
+                path: FieldPath(vec![Cow::Owned("b".to_string())]),
+                kind: IndexKind::NonUnique,
+            },
+        ];
+        let pred = Predicate::And(vec![
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("a".to_string())]),
+                value: ScalarValue::Int64(1),
+            },
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("b".to_string())]),
+                value: ScalarValue::Int64(2),
+            },
+        ]);
+        let (idx, _v, _used) = choose_index(&indexes, &pred).unwrap();
+        assert_eq!(idx.name, "a");
+        assert_eq!(idx.kind, IndexKind::Unique);
+    }
+
+    #[test]
+    fn choose_index_does_not_upgrade_when_both_non_unique() {
+        let indexes = vec![
+            IndexDef {
+                name: "a".to_string(),
+                path: FieldPath(vec![Cow::Owned("a".to_string())]),
+                kind: IndexKind::NonUnique,
+            },
+            IndexDef {
+                name: "b".to_string(),
+                path: FieldPath(vec![Cow::Owned("b".to_string())]),
+                kind: IndexKind::NonUnique,
+            },
+        ];
+        let pred = Predicate::And(vec![
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("a".to_string())]),
+                value: ScalarValue::Int64(1),
+            },
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("b".to_string())]),
+                value: ScalarValue::Int64(2),
+            },
+        ]);
+        let (idx, _v, _used) = choose_index(&indexes, &pred).unwrap();
+        assert_eq!(idx.name, "a");
+        assert_eq!(idx.kind, IndexKind::NonUnique);
+    }
+
+    #[test]
     fn eval_predicate_covers_lte_and_gte_eq_paths() {
         let row = BTreeMap::from([("x".to_string(), RowValue::Int64(2))]);
         assert!(eval_predicate(
@@ -1426,5 +1504,134 @@ mod tests {
 
         // Pull one key; this should pop from heap and attempt a refill.
         let _ = src.next_key().unwrap().unwrap();
+    }
+
+    #[test]
+    fn external_sort_source_new_with_empty_input_yields_none() {
+        use crate::spill::TempSpillFile;
+        use crate::storage::FileStore;
+
+        let latest: crate::db::LatestMap = HashMap::new();
+        struct Empty;
+        impl RowSource for Empty {
+            fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+                None
+            }
+        }
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let spill = TempSpillFile::new(FileStore::new(f)).unwrap();
+
+        let ob = OrderBy {
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            direction: OrderDirection::Asc,
+        };
+
+        let mut src = ExternalSortSource::new(spill, &latest, Box::new(Empty), 1, ob).unwrap();
+        assert!(src.next_key().is_none());
+    }
+
+    #[test]
+    fn external_sort_source_ignores_keys_missing_latest_rows() {
+        use crate::spill::TempSpillFile;
+        use crate::storage::FileStore;
+
+        let latest: crate::db::LatestMap = HashMap::new();
+        struct OneMissing {
+            done: bool,
+        }
+        impl RowSource for OneMissing {
+            fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+                match self.done {
+                    true => None,
+                    false => {
+                        self.done = true;
+                        Some(Ok((CollectionId(1), b"missing".to_vec())))
+                    }
+                }
+            }
+        }
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let spill = TempSpillFile::new(FileStore::new(f)).unwrap();
+        let ob = OrderBy {
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            direction: OrderDirection::Asc,
+        };
+
+        let mut src =
+            ExternalSortSource::new(spill, &latest, Box::new(OneMissing { done: false }), 1, ob)
+                .unwrap();
+        assert!(src.next_key().is_none());
+    }
+
+    #[test]
+    fn external_sort_source_next_key_no_refill_when_run_exhausted() {
+        use crate::spill::TempSpillFile;
+        use crate::storage::FileStore;
+
+        // Single row => single run with a single item; after pop, refill returns None.
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"a".to_vec()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("a".to_string())),
+                ("x".to_string(), RowValue::Uint64(1)),
+            ]),
+        );
+
+        struct One {
+            done: bool,
+        }
+        impl RowSource for One {
+            fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+                match self.done {
+                    true => None,
+                    false => {
+                        self.done = true;
+                        Some(Ok((CollectionId(1), b"a".to_vec())))
+                    }
+                }
+            }
+        }
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let spill = TempSpillFile::new(FileStore::new(f)).unwrap();
+        let ob = OrderBy {
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            direction: OrderDirection::Asc,
+        };
+
+        let mut src = ExternalSortSource::new(
+            spill,
+            &latest,
+            Box::new(One { done: false }),
+            1,
+            ob,
+        )
+        .unwrap();
+        assert!(src.next_key().unwrap().is_ok());
+        assert!(src.next_key().is_none());
     }
 }
