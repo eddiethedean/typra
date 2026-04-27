@@ -3591,6 +3591,141 @@ mod tests {
     }
 
     #[test]
+    fn insert_autocommit_covers_index_batch_some_and_none() {
+        use crate::schema::{FieldPath, IndexDef, IndexKind};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.typra");
+        let mut db = Database::open(&path).unwrap();
+
+        // With a non-unique index => index_entries non-empty => index_bytes Some => batch includes Index.
+        let idx = vec![IndexDef {
+            name: "x_idx".to_string(),
+            path: FieldPath(vec![Cow::Owned("x".to_string())]),
+            kind: IndexKind::NonUnique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes("t", vec![path_field("id"), path_field("x")], idx, "id")
+            .unwrap();
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("a".to_string()));
+            m.insert("x".to_string(), RowValue::String("v".to_string()));
+            m
+        })
+        .unwrap();
+
+        // Without indexes => index_entries empty => index_bytes None => batch includes only Record.
+        let (cid2, _) = db
+            .register_collection("t2", vec![path_field("id")], "id")
+            .unwrap();
+        db.insert(cid2, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("b".to_string()));
+            m
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn insert_replace_multi_segment_schema_uses_v3_replace_encoding() {
+        use crate::schema::{FieldDef, FieldPath, Type};
+        use std::borrow::Cow;
+
+        let mut db = Database::open_in_memory().unwrap();
+        let fields = vec![
+            FieldDef {
+                path: FieldPath(vec![Cow::Borrowed("id")]),
+                ty: Type::String,
+                constraints: vec![],
+            },
+            // multi-segment schema forces v3 encoding paths
+            FieldDef {
+                path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("b")]),
+                ty: Type::Optional(Box::new(Type::String)),
+                constraints: vec![],
+            },
+        ];
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            // a is object, b missing => optional
+            m.insert("a".to_string(), RowValue::Object(BTreeMap::new()));
+            m
+        })
+        .unwrap();
+
+        // Second insert with same pk triggers replace path + v3 replace opcode.
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            m.insert(
+                "a".to_string(),
+                RowValue::Object(BTreeMap::from([(
+                    "b".to_string(),
+                    RowValue::String("x".to_string()),
+                )])),
+            );
+            m
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn delete_multi_segment_schema_uses_v3_delete_encoding_and_autocommit() {
+        use crate::schema::{FieldDef, FieldPath, Type};
+        use std::borrow::Cow;
+
+        let mut db = Database::open_in_memory().unwrap();
+        let fields = vec![
+            FieldDef {
+                path: FieldPath(vec![Cow::Borrowed("id")]),
+                ty: Type::String,
+                constraints: vec![],
+            },
+            FieldDef {
+                path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("b")]),
+                ty: Type::Optional(Box::new(Type::String)),
+                constraints: vec![],
+            },
+        ];
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("pk".to_string()));
+            m.insert("a".to_string(), RowValue::Object(BTreeMap::new()));
+            m
+        })
+        .unwrap();
+
+        db.delete(cid, &ScalarValue::String("pk".to_string()))
+            .unwrap();
+    }
+
+    #[test]
+    fn export_snapshot_to_path_happy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("t.typra");
+        let snap_path = dir.path().join("snap.typra");
+
+        let mut db = Database::open(&db_path).unwrap();
+        let (cid, _) = db
+            .register_collection("t", vec![path_field("id")], "id")
+            .unwrap();
+        db.insert(cid, {
+            let mut m = BTreeMap::new();
+            m.insert("id".to_string(), RowValue::String("a".to_string()));
+            m
+        })
+        .unwrap();
+
+        db.export_snapshot_to_path(&snap_path).unwrap();
+        assert!(snap_path.exists());
+    }
+
+    #[test]
     fn query_iter_matches_execute_query_for_indexed_equality() {
         use crate::query::{Predicate, Query};
         use crate::schema::{FieldPath, IndexDef, IndexKind};
