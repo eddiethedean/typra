@@ -220,16 +220,17 @@ fn plan_insert_row(
                         .or_insert_with(|| RowValue::Object(BTreeMap::new())),
                     other => {
                         *other = RowValue::Object(BTreeMap::new());
-                        let RowValue::Object(m) = other else {
-                            unreachable!()
-                        };
-                        m.entry(seg.clone())
-                            .or_insert_with(|| RowValue::Object(BTreeMap::new()))
+                        match other {
+                            RowValue::Object(m) => m
+                                .entry(seg.clone())
+                                .or_insert_with(|| RowValue::Object(BTreeMap::new())),
+                            _ => unreachable!(),
+                        }
                     }
                 };
             }
             if let RowValue::Object(m) = cur {
-                m.insert(parts.last().unwrap().clone(), v.clone());
+                m.insert(parts.last().expect("len > 1").clone(), v.clone());
             }
         }
     }

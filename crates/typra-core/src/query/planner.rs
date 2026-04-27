@@ -994,6 +994,73 @@ mod tests {
     }
 
     #[test]
+    fn explain_query_index_lookup_includes_order_by_when_present() {
+        let catalog = build_catalog_with_indexes(
+            1,
+            vec![
+                field("id", Type::String),
+                field("title", Type::String),
+                field("year", Type::Int64),
+            ],
+            vec![IndexDef {
+                name: "title_idx".to_string(),
+                path: FieldPath(vec![Cow::Owned("title".to_string())]),
+                kind: IndexKind::NonUnique,
+            }],
+            "id",
+        );
+        let q = Query {
+            collection: CollectionId(1),
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("title".to_string())]),
+                value: ScalarValue::String("Hi".to_string()),
+            }),
+            limit: None,
+            order_by: Some(OrderBy {
+                path: FieldPath(vec![Cow::Owned("year".to_string())]),
+                direction: OrderDirection::Asc,
+            }),
+        };
+        let s = explain_query(&catalog, &q).unwrap();
+        assert!(s.contains("IndexLookup"), "{s}");
+        assert!(s.contains("OrderBy"), "{s}");
+    }
+
+    #[test]
+    fn execute_query_index_non_unique_lookup_miss_returns_empty() {
+        let catalog = build_catalog_with_indexes(
+            1,
+            vec![field("id", Type::String), field("x", Type::String)],
+            vec![IndexDef {
+                name: "x_idx".to_string(),
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                kind: IndexKind::NonUnique,
+            }],
+            "id",
+        );
+        let indexes = IndexState::default();
+        let mut latest: crate::db::LatestMap = HashMap::new();
+        latest.insert(
+            (1, b"k".to_vec()),
+            BTreeMap::from([
+                ("id".to_string(), RowValue::String("k".to_string())),
+                ("x".to_string(), RowValue::String("present".to_string())),
+            ]),
+        );
+        let q = Query {
+            collection: CollectionId(1),
+            predicate: Some(Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("x".to_string())]),
+                value: ScalarValue::String("not-in-index".to_string()),
+            }),
+            limit: None,
+            order_by: None,
+        };
+        let rows = execute_query(&catalog, &indexes, &latest, &q).unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
     fn execute_query_index_lookup_skips_missing_latest_row() {
         let catalog = build_catalog_with_indexes(
             1,
