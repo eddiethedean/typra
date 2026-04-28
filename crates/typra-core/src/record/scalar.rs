@@ -48,9 +48,6 @@ impl ScalarValue {
 
 /// Encode a scalar with a leading type tag (must match `ty`).
 pub fn encode_tagged_scalar(out: &mut Vec<u8>, v: &ScalarValue, ty: &Type) -> Result<(), DbError> {
-    if !v.ty_matches(ty) {
-        return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-    }
     match (v, ty) {
         (ScalarValue::Bool(b), Type::Bool) => {
             out.push(0);
@@ -251,4 +248,29 @@ pub fn decode_tagged_scalar(cur: &mut Cursor<'_>, ty: &Type) -> Result<ScalarVal
         }
         _ => return Err(DbError::Format(FormatError::RecordPayloadUnsupportedType)),
     })
+}
+
+pub fn decode_tagged_string(cur: &mut Cursor<'_>) -> Result<String, DbError> {
+    let tag = cur.take_u8()?;
+    if tag != 4 {
+        return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+    }
+    let n = cur.take_u32()? as usize;
+    let b = cur.take_bytes(n)?;
+    Ok(String::from_utf8(b).map_err(|_| DbError::Format(FormatError::InvalidRecordUtf8))?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_tagged_string_rejects_wrong_tag() {
+        let mut cur = Cursor::new(&[0u8]);
+        let e = decode_tagged_string(&mut cur).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::RecordPayloadTypeMismatch)
+        ));
+    }
 }

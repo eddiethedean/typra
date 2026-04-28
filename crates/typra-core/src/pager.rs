@@ -170,6 +170,34 @@ mod tests {
     use crate::storage::{Store, VecStore};
 
     #[test]
+    fn paged_store_reports_page_size_and_into_inner_roundtrips() {
+        let raw = VecStore::new();
+        let ps = PagedStore::new(raw, 1); // will clamp to 512
+        assert_eq!(ps.page_size(), 512);
+
+        let raw2 = ps.into_inner();
+        assert_eq!(raw2.len().unwrap(), 0);
+    }
+
+    #[test]
+    fn page_range_touched_len_zero_is_sentinel() {
+        let raw = VecStore::new();
+        let ps = PagedStore::new(raw, DEFAULT_PAGE_SIZE);
+        assert_eq!(*ps.page_range_touched(123, 0).start(), 0);
+        assert_eq!(*ps.page_range_touched(123, 0).end(), 0);
+    }
+
+    #[test]
+    fn get_page_rejects_missing_page_beyond_eof() {
+        let mut raw = VecStore::new();
+        raw.write_all_at(0, &[1u8; 8]).unwrap();
+        let mut ps = PagedStore::new(raw, DEFAULT_PAGE_SIZE);
+        // Page index 1 starts at DEFAULT_PAGE_SIZE, which is beyond current len().
+        let err = ps.get_page(1).unwrap_err();
+        assert!(matches!(err, crate::error::DbError::Io(_)));
+    }
+
+    #[test]
     fn paged_store_roundtrips_reads() {
         let mut raw = VecStore::new();
         raw.write_all_at(0, &[1u8; 100]).unwrap();

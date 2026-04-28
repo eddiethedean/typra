@@ -94,3 +94,43 @@ fn decode_record_payload_v2_rejects_optional_presence_not_0_or_1() {
         DbError::Format(FormatError::RecordPayloadTypeMismatch)
     ));
 }
+
+#[test]
+fn row_value_scalar_roundtrips_all_variants_and_into_scalar_errors_for_non_scalars() {
+    let vals = vec![
+        ScalarValue::Bool(true),
+        ScalarValue::Int64(-1),
+        ScalarValue::Uint64(2),
+        ScalarValue::Float64(1.5),
+        ScalarValue::String("x".into()),
+        ScalarValue::Bytes(vec![1, 2]),
+        ScalarValue::Uuid([9u8; 16]),
+        ScalarValue::Timestamp(7),
+    ];
+    for s in vals {
+        let rv = RowValue::from_scalar(s.clone());
+        assert_eq!(rv.as_scalar(), Some(s.clone()));
+        assert_eq!(rv.clone().into_scalar().unwrap(), s);
+    }
+
+    let e = RowValue::List(vec![]).into_scalar().unwrap_err();
+    assert!(matches!(
+        e,
+        DbError::Format(FormatError::RecordPayloadTypeMismatch)
+    ));
+}
+
+#[test]
+fn encode_row_value_object_requires_object() {
+    let mut out = Vec::new();
+    let ty = Type::Object(vec![FieldDef {
+        path: seg("x"),
+        ty: Type::String,
+        constraints: vec![],
+    }]);
+    let e = encode_row_value(&mut out, &RowValue::Int64(1), &ty).unwrap_err();
+    assert!(matches!(
+        e,
+        DbError::Format(FormatError::RecordPayloadTypeMismatch)
+    ));
+}

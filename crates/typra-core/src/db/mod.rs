@@ -149,11 +149,10 @@ fn plan_insert_row(
         }
         let mut cur = row.get(path[0].as_ref())?;
         for seg in path.iter().skip(1) {
-            cur = match cur {
-                RowValue::Object(m) => m.get(seg.as_ref())?,
-                RowValue::None => return None,
-                _ => return None,
+            let RowValue::Object(m) = cur else {
+                return None;
             };
+            cur = m.get(seg.as_ref())?;
         }
         Some(cur.clone())
     }
@@ -212,19 +211,13 @@ fn plan_insert_row(
                 .entry(parts[0].clone())
                 .or_insert_with(|| RowValue::Object(BTreeMap::new()));
             for seg in parts.iter().skip(1).take(parts.len() - 2) {
-                cur = match cur {
-                    RowValue::Object(m) => m
-                        .entry(seg.clone())
-                        .or_insert_with(|| RowValue::Object(BTreeMap::new())),
-                    other => {
-                        *other = RowValue::Object(BTreeMap::new());
-                        let RowValue::Object(m) = other else {
-                            unreachable!()
-                        };
-                        m.entry(seg.clone())
-                            .or_insert_with(|| RowValue::Object(BTreeMap::new()))
-                    }
-                };
+                if !matches!(cur, RowValue::Object(_)) {
+                    *cur = RowValue::Object(BTreeMap::new());
+                }
+                if let RowValue::Object(m) = cur {
+                    cur = m.entry(seg.clone())
+                        .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+                }
             }
             if let RowValue::Object(m) = cur {
                 m.insert(parts.last().unwrap().clone(), v.clone());
@@ -1664,6 +1657,51 @@ impl Database<VecStore> {
 }
 
 #[cfg(test)]
+mod scalar_at_path_tests {
+    use std::borrow::Cow;
+    use std::collections::BTreeMap;
+
+    use crate::db::scalar_at_path;
+    use crate::record::RowValue;
+    use crate::schema::FieldPath;
+    use crate::ScalarValue;
+
+    fn fp(parts: &[&'static str]) -> FieldPath {
+        FieldPath(parts.iter().copied().map(Cow::Borrowed).collect())
+    }
+
+    #[test]
+    fn scalar_at_path_empty_path_is_none() {
+        let row: BTreeMap<String, RowValue> = BTreeMap::new();
+        assert!(scalar_at_path(&row, &FieldPath(vec![])).is_none());
+    }
+
+    #[test]
+    fn scalar_at_path_none_parent_is_none() {
+        let row = BTreeMap::from([("a".into(), RowValue::None)]);
+        assert!(scalar_at_path(&row, &fp(&["a", "b"])).is_none());
+    }
+
+    #[test]
+    fn scalar_at_path_non_object_parent_is_none() {
+        let row = BTreeMap::from([("a".into(), RowValue::Int64(1))]);
+        assert!(scalar_at_path(&row, &fp(&["a", "b"])).is_none());
+    }
+
+    #[test]
+    fn scalar_at_path_finds_nested_scalar() {
+        let row = BTreeMap::from([(
+            "a".into(),
+            RowValue::Object(BTreeMap::from([("b".into(), RowValue::Int64(7))])),
+        )]);
+        assert_eq!(
+            scalar_at_path(&row, &fp(&["a", "b"])),
+            Some(ScalarValue::Int64(7))
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::Database;
     use crate::db::open;
@@ -1699,6 +1737,62 @@ mod tests {
             constraints: vec![],
         }
     }
+
+    #[test]
+    fn transaction_api_nested_begin_and_commit_without_begin_are_ok() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+
+        // Committing without a transaction is a no-op.
+        db.commit_transaction().unwrap();
+
+        db.begin_transaction().unwrap();
+        let e = db.begin_transaction().unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Transaction(crate::error::TransactionError::NestedTransaction)
+        ));
+        db.rollback_transaction();
+        // rollback without begin is fine
+        db.rollback_transaction();
+    }
+
+    #[test]
+    fn transaction_closure_rolls_back_on_error_and_commits_on_success() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+
+        // Error path rolls back.
+        let err = db
+            .transaction(|_| {
+                Err::<(), DbError>(DbError::Format(FormatError::InvalidCatalogPayload {
+                message: "boom".into(),
+            }))
+            })
+            .unwrap_err();
+        assert!(matches!(err, DbError::Format(_)));
+        assert!(db.txn_staging.is_none());
+
+        // Success path commits.
+        db.transaction(|_| Ok::<_, DbError>(())).unwrap();
+        assert!(db.txn_staging.is_none());
+    }
+
+    #[test]
+    fn commit_txn_staging_writes_pending_segments_and_updates_shadow_state() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        db.begin_transaction().unwrap();
+
+        // This should stage a schema segment (pending non-empty).
+        let fields = vec![FieldDef::new(
+            crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+            Type::String,
+        )];
+        let (cid, _v1) = db.register_collection("t", fields, "id").unwrap();
+
+        db.commit_transaction().unwrap();
+        assert!(db.catalog().get(cid).is_some());
+        assert!(db.txn_staging.is_none());
+    }
+
 
     #[test]
     fn read_and_select_superblock_errors_when_both_invalid() {

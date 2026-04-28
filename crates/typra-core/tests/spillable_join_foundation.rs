@@ -91,7 +91,11 @@ fn spillable_hash_join_match_count_i64_forced_spill_matches_baseline() {
     // Baseline (no spill): same function with huge budget, but must re-run iterators.
     let left2 = db.query_iter(&ql).unwrap();
     let right2 = db.query_iter(&qr).unwrap();
-    let baseline = typra_core::query::spillable_hash_join_match_count_i64(
+    let baseline = typra_core::query::spillable_hash_join_match_count_i64::<
+        _,
+        _,
+        typra_core::storage::FileStore,
+    >(
         left2,
         right2,
         &fp("k"),

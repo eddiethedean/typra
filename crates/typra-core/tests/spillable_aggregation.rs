@@ -79,8 +79,14 @@ fn spillable_group_count_sum_i64_forced_spill_matches_in_memory() {
     // In-memory baseline.
     let rows2 = db.query_iter(&q).unwrap();
     let baseline =
-        typra_core::query::spillable_group_count_sum_i64(rows2, &fp("g"), &fp("v"), 10_000, None)
-            .unwrap();
+        typra_core::query::spillable_group_count_sum_i64::<_, typra_core::storage::FileStore>(
+            rows2,
+            &fp("g"),
+            &fp("v"),
+            10_000,
+            None,
+        )
+        .unwrap();
 
     assert_eq!(got, baseline);
 

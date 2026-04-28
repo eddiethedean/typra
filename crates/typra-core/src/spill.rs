@@ -33,14 +33,7 @@ impl<S: Store> TempSpillFile<S> {
         let file_len = store.len()?;
         let mut writer = SegmentWriter::new(store, file_len);
         let off = writer.offset();
-        writer.append(
-            SegmentHeader {
-                segment_type: SegmentType::Temp,
-                payload_len: 0,
-                payload_crc32c: 0,
-            },
-            payload,
-        )?;
+        writer.append(SegmentHeader { segment_type: SegmentType::Temp, payload_len: 0, payload_crc32c: 0 }, payload)?;
         Ok(off)
     }
 
@@ -90,14 +83,7 @@ impl<'a, S: Store> TempSpillGuard<'a, S> {
         let file_len = self.store.len()?;
         let mut writer = SegmentWriter::new(self.store, file_len);
         let off = writer.offset();
-        writer.append(
-            SegmentHeader {
-                segment_type: SegmentType::Temp,
-                payload_len: 0,
-                payload_crc32c: 0,
-            },
-            payload,
-        )?;
+        writer.append(SegmentHeader { segment_type: SegmentType::Temp, payload_len: 0, payload_crc32c: 0 }, payload)?;
         Ok(off)
     }
 
@@ -148,6 +134,7 @@ mod tests {
 
         {
             let mut guard = TempSpillGuard::new(&mut base).unwrap();
+            assert_eq!(guard.base_len(), base_len);
             let off = guard.append_temp_segment(b"abc").unwrap();
             let got = guard.read_temp_payload(off, 3).unwrap();
             assert_eq!(got, b"abc");
