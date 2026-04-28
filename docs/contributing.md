@@ -61,6 +61,7 @@ We aim for **practical 100%** test coverage over first-party code, with an expli
 - **Rust**: coverage is computed via `cargo llvm-cov`.
   - Exclusions are explicit and justified. For example, the PyO3 module entrypoint under `python/typra/src/lib.rs` is executed by Python import, not by `cargo test`, so Rust-only coverage runs may exclude it.
   - We primarily track **line coverage** for “practical 100%”; region/branch coverage may remain <100% in cases where the only missed regions are OS-level IO failure paths that are not deterministic to test.
+  - The `make coverage-rust-core-branch` target enforces **100% branch coverage** over `crates/typra-core` sources, with an explicit per-file allowlist in the `Makefile` (`COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_1` … `_4`, default: `db/mod.rs`, `db/recover.rs`, `db/replay.rs`, and `query/planner.rs`—orchestration or generic-heavy code where per-file branch totals are noisy). Tighten or remove that allowlist as tests catch up; line coverage is still reported separately.
 - **Python**: coverage is computed via `pytest-cov` (coverage.py).
   - Virtual environments, `site-packages`, and vendored dependencies are omitted via `.coveragerc`.
 

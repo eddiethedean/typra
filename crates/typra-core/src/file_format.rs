@@ -31,6 +31,13 @@ pub struct FileHeader {
     pub flags: u64,
 }
 
+/// Distinguishes legacy minor-2 open (possible single-header upgrade) from 3+ files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OpenableMinor {
+    V2,
+    V3to6,
+}
+
 impl FileHeader {
     pub fn new_v0_3() -> Self {
         Self {
@@ -78,6 +85,21 @@ impl FileHeader {
         buf[12..20].copy_from_slice(&self.flags.to_le_bytes());
         buf
     }
+
+    /// After [`decode_header`], `format_minor` is always 2..=6. This helper classifies the open
+    /// path and can be called with synthetic headers in unit tests to cover the out-of-range case.
+    pub(crate) fn classify_for_open(self) -> Result<OpenableMinor, FormatError> {
+        if self.format_minor == 2 {
+            return Ok(OpenableMinor::V2);
+        }
+        if (3..=6).contains(&self.format_minor) {
+            return Ok(OpenableMinor::V3to6);
+        }
+        Err(FormatError::UnsupportedVersion {
+            major: self.format_major,
+            minor: self.format_minor,
+        })
+    }
 }
 
 pub fn decode_header(bytes: &[u8]) -> Result<FileHeader, DbError> {
@@ -114,4 +136,48 @@ pub fn decode_header(bytes: &[u8]) -> Result<FileHeader, DbError> {
         header_size,
         flags,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FileHeader;
+    use super::FormatError;
+    use super::OpenableMinor;
+    use super::FILE_HEADER_SIZE;
+    use super::FORMAT_MAJOR;
+
+    #[test]
+    fn classify_for_open_v2_and_v3to6() {
+        let h2 = FileHeader {
+            format_major: FORMAT_MAJOR,
+            format_minor: 2,
+            header_size: FILE_HEADER_SIZE as u32,
+            flags: 0,
+        };
+        assert_eq!(h2.classify_for_open().unwrap(), OpenableMinor::V2);
+
+        for m in 3u16..=6u16 {
+            let h = FileHeader {
+                format_major: FORMAT_MAJOR,
+                format_minor: m,
+                header_size: FILE_HEADER_SIZE as u32,
+                flags: 0,
+            };
+            assert_eq!(h.classify_for_open().unwrap(), OpenableMinor::V3to6);
+        }
+    }
+
+    #[test]
+    fn classify_for_open_rejects_out_of_range_minor() {
+        for bad in [0u16, 1u16, 7u16, 8u16, u16::MAX] {
+            let h = FileHeader {
+                format_major: FORMAT_MAJOR,
+                format_minor: bad,
+                header_size: FILE_HEADER_SIZE as u32,
+                flags: 0,
+            };
+            let e = h.classify_for_open().unwrap_err();
+            assert!(matches!(e, FormatError::UnsupportedVersion { .. }));
+        }
+    }
 }

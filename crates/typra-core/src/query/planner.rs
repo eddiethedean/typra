@@ -1511,6 +1511,51 @@ mod tests {
                 value: ScalarValue::Int64(2),
             }
         ));
+        // `a || b` short-circuit: `Less` / `Greater` so the second half is not evaluated.
+        let p = FieldPath(vec![Cow::Owned("x".to_string())]);
+        assert!(eval_predicate(
+            &BTreeMap::from([("x".to_string(), RowValue::Int64(1))]),
+            &Predicate::Lte {
+                path: p.clone(),
+                value: ScalarValue::Int64(2),
+            }
+        ));
+        assert!(eval_predicate(
+            &BTreeMap::from([("x".to_string(), RowValue::Int64(3))]),
+            &Predicate::Gte {
+                path: p,
+                value: ScalarValue::Int64(2),
+            }
+        ));
+    }
+
+    /// When row scalar and filter constant are not comparable, `scalar_partial_cmp` is `None` and
+    /// the comparison branch coverage stays meaningful (not dead `unreachable!` paths).
+    #[test]
+    fn eval_predicate_fails_incomparable_scalar_kinds() {
+        let p = FieldPath(vec![Cow::Owned("x".to_string())]);
+        let row = BTreeMap::from([("x".to_string(), RowValue::String("z".to_string()))]);
+        let n = row.clone();
+        for pred in [
+            Predicate::Lt {
+                path: p.clone(),
+                value: ScalarValue::Int64(0),
+            },
+            Predicate::Lte {
+                path: p.clone(),
+                value: ScalarValue::Int64(0),
+            },
+            Predicate::Gt {
+                path: p.clone(),
+                value: ScalarValue::Int64(0),
+            },
+            Predicate::Gte {
+                path: p.clone(),
+                value: ScalarValue::Int64(0),
+            },
+        ] {
+            assert!(!eval_predicate(&n, &pred), "{pred:?}");
+        }
     }
 
     #[test]

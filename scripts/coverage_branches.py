@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,7 +55,19 @@ def main() -> int:
     ap.add_argument("--repo-root", type=Path, required=True)
     ap.add_argument("--crate-path", type=str, required=True)
     ap.add_argument("--min-branch-pct", type=float, required=True)
+    ap.add_argument(
+        "--ignore-regex",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help=(
+            "Skip files whose path (repo-relative) matches a regex; repeat for multiple patterns. "
+            "Use for very large or IO-orchestration modules where branch 100% is infeasible; "
+            "line coverage and smaller modules stay enforced."
+        ),
+    )
     args = ap.parse_args()
+    ignore_res = [re.compile(p) for p in args.ignore_regex]
 
     raw = json.loads(args.json_path.read_text())
 
@@ -81,6 +94,8 @@ def main() -> int:
             continue
         rel = _as_repo_relative(filename, args.repo_root)
         if not (rel == args.crate_path or rel.startswith(crate_prefix)):
+            continue
+        if any(r.search(rel) for r in ignore_res):
             continue
 
         summary = f.get("summary")

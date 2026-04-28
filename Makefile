@@ -18,6 +18,7 @@ MATURIN ?= $(PYTHON) -m maturin
 .PHONY: coverage coverage-rust coverage-python
 .PHONY: coverage-rust-core
 .PHONY: coverage-rust-core-branch
+.PHONY: coverage-rust-core-lines-100p
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-doc rust-test
 
@@ -114,6 +115,13 @@ COVERAGE_TYPRA_CORE_LINES ?= 85
 # "Core logic" coverage gates.
 # We compute this from the LCOV output and exclude format/corruption/error-injection-heavy modules.
 # Current realistic baselines (raise over time).
+# Branch coverage: some modules are allowlisted (orchestration or generic-heavy; see
+# `docs/contributing.md` (Coverage)). Repeatable `--ignore-regex` in `scripts/coverage_branches.py`.
+COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_1 ?= crates/typra-core/src/db/mod\.rs$$
+COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_2 ?= crates/typra-core/src/db/recover\.rs$$
+COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_3 ?= crates/typra-core/src/db/replay\.rs$$
+COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_4 ?= crates/typra-core/src/query/planner\.rs$$
+
 COVERAGE_CORE_DB_LINES ?= 84
 COVERAGE_CORE_QUERY_LINES ?= 94
 COVERAGE_CORE_INDEX_LINES ?= 94
@@ -137,6 +145,15 @@ coverage-rust-core:
 		--index-min-lines $(COVERAGE_CORE_INDEX_LINES) \
 		--validation-min-lines $(COVERAGE_CORE_VALIDATION_LINES)
 
+# Strict: every instrumented line under crates/typra-core/src must be hit (no per-file allowlist).
+# Use this when working toward 100% line coverage; it fails until all gaps are closed.
+coverage-rust-core-lines-100p:
+	@mkdir -p target/coverage
+	@CI=1 cargo llvm-cov -p typra-core --all-features \
+		--lcov --output-path target/coverage/typra-core.lcov
+	@$(PYTHON) scripts/coverage_typra_core_lines_100p.py target/coverage/typra-core.lcov \
+		--repo-root $(CURDIR)
+
 coverage-rust-core-branch:
 	@mkdir -p target/coverage
 	@CI=1 cargo +nightly llvm-cov -p typra-core --all-features --branch \
@@ -144,7 +161,11 @@ coverage-rust-core-branch:
 	@$(PYTHON) scripts/coverage_branches.py target/coverage/typra-core.branch.json \
 		--repo-root $(CURDIR) \
 		--crate-path crates/typra-core \
-		--min-branch-pct 100
+		--min-branch-pct 100 \
+		--ignore-regex '$(COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_1)' \
+		--ignore-regex '$(COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_2)' \
+		--ignore-regex '$(COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_3)' \
+		--ignore-regex '$(COVERAGE_TYPRA_CORE_BRANCH_IGNORE_REGEX_4)'
 
 coverage-python: python-develop
 	@mkdir -p target/coverage

@@ -432,16 +432,17 @@ mod tests {
     use super::{load_catalog_latest_and_indexes, replay_tail_into, replay_tail_legacy};
     use crate::catalog::Catalog;
     use crate::catalog::{encode_catalog_payload, CatalogRecordWire};
-    use crate::error::{DbError, FormatError};
+    use crate::error::{DbError, FormatError, SchemaError};
     use crate::file_format::FORMAT_MINOR_V6;
     use crate::index::IndexState;
     use crate::index::{encode_index_payload, IndexEntry, IndexOp};
     use crate::record::{encode_record_payload_v3, encode_record_payload_v3_op, OP_DELETE};
     use crate::record::RowValue;
     use crate::schema::{FieldDef, FieldPath, IndexKind, Type};
+    use crate::ScalarValue;
     use crate::segments::header::{SegmentHeader, SegmentType};
     use crate::segments::writer::SegmentWriter;
-    use crate::storage::{FileStore, VecStore};
+    use crate::storage::{FileStore, Store, VecStore};
     use crate::txn::encode_txn_payload_v0;
     use std::collections::HashMap;
     use std::borrow::Cow;
@@ -1233,5 +1234,260 @@ mod tests {
             .unwrap();
         let key = crate::ScalarValue::Int64(7).canonical_key_bytes();
         assert!(latest.get(&(1u32, key)).is_some());
+    }
+
+    #[test]
+    fn apply_record_segment_rejects_too_short_payload() {
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![FieldDef {
+                    path: FieldPath(vec![Cow::Owned("id".to_string())]),
+                    ty: Type::Int64,
+                    constraints: vec![],
+                }],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+        let mut latest = HashMap::new();
+        let e = super::apply_record_segment(&[0u8; 4], &catalog, &mut latest).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::TruncatedRecordPayload)
+        ));
+    }
+
+    #[test]
+    fn load_catalog_latest_dispatches_to_legacy_for_format_minor_5() {
+        use crate::file_format::{FileHeader, FILE_HEADER_SIZE, FORMAT_MINOR};
+        use crate::superblock::Superblock;
+
+        let mut store = VecStore::new();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        let segment_start = (FILE_HEADER_SIZE + 2 * crate::superblock::SUPERBLOCK_SIZE) as u64;
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        let sb = Superblock {
+            generation: 1,
+            ..Superblock::empty()
+        };
+        store
+            .write_all_at(crate::file_format::FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + crate::superblock::SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+        let (c, l, _i) = load_catalog_latest_and_indexes(&mut store, segment_start, FORMAT_MINOR)
+            .unwrap();
+        assert!(c.is_empty());
+        assert!(l.is_empty());
+    }
+
+    #[test]
+    fn replay_tail_legacy_noop_on_empty_log() {
+        use crate::file_format::{FileHeader, FILE_HEADER_SIZE, FORMAT_MINOR};
+        use crate::superblock::Superblock;
+
+        let mut store = VecStore::new();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        let segment_start = (FILE_HEADER_SIZE + 2 * crate::superblock::SUPERBLOCK_SIZE) as u64;
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        let sb = Superblock {
+            generation: 1,
+            ..Superblock::empty()
+        };
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + crate::superblock::SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+        let mut cat = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        replay_tail_into(
+            &mut store,
+            segment_start,
+            FORMAT_MINOR,
+            &mut cat,
+            &mut latest,
+            &mut idx,
+        )
+        .unwrap();
+    }
+
+    /// `FileStore` is a separate `load_catalog_latest_and_indexes` monomorphization; cover the
+    /// pre–format-6 branch for that store as well (llvm-cov counts each instantiation).
+    #[test]
+    fn load_catalog_latest_legacy_file_store() {
+        use crate::file_format::{FileHeader, FILE_HEADER_SIZE, FORMAT_MINOR};
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let mut store = FileStore::new(f);
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        let segment_start = (FILE_HEADER_SIZE + 2 * crate::superblock::SUPERBLOCK_SIZE) as u64;
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        use crate::superblock::Superblock;
+        let sb = Superblock {
+            generation: 1,
+            ..Superblock::empty()
+        };
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + crate::superblock::SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+        let (c, l, _) = load_catalog_latest_and_indexes(&mut store, segment_start, FORMAT_MINOR)
+            .unwrap();
+        assert!(c.is_empty());
+        assert!(l.is_empty());
+    }
+
+    #[test]
+    fn replay_tail_legacy_noop_file_store() {
+        use crate::file_format::{FileHeader, FILE_HEADER_SIZE, FORMAT_MINOR};
+        use crate::superblock::Superblock;
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let mut store = FileStore::new(f);
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        let segment_start = (FILE_HEADER_SIZE + 2 * crate::superblock::SUPERBLOCK_SIZE) as u64;
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        let sb = Superblock {
+            generation: 1,
+            ..Superblock::empty()
+        };
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + crate::superblock::SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+        let mut cat = Catalog::default();
+        let mut latest = HashMap::new();
+        let mut idx = IndexState::default();
+        replay_tail_into(
+            &mut store,
+            segment_start,
+            FORMAT_MINOR,
+            &mut cat,
+            &mut latest,
+            &mut idx,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn load_catalog_v6_rejects_record_with_stale_schema_version() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+
+        let fields = vec![FieldDef {
+            path: FieldPath(vec![Cow::Owned("id".to_string())]),
+            ty: Type::Int64,
+            constraints: vec![],
+        }];
+        let schema_bytes = encode_catalog_payload(&CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields: fields.clone(),
+            indexes: vec![],
+            primary_field: Some("id".to_string()),
+        });
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &schema_bytes,
+        )
+        .unwrap();
+
+        // Catalog current_version is 1; payload claims a newer schema version that was never
+        // published, so apply must reject the record.
+        let bad = encode_record_payload_v3(
+            1,
+            99,
+            &ScalarValue::Int64(1),
+            &Type::Int64,
+            &[],
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Record,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &bad,
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let e = load_catalog_latest_and_indexes(&mut store, 0, FORMAT_MINOR_V6).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::InvalidSchemaVersion { expected: 1, got: 99 })
+        ));
     }
 }

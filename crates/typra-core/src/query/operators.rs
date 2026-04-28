@@ -42,3 +42,25 @@ impl<S: RowSource> RowSource for LimitOp<S> {
         }
     }
 }
+
+#[cfg(test)]
+mod limit_op_propagation_tests {
+    use super::{LimitOp, RowSource, RowKey};
+    use crate::error::{DbError, FormatError};
+
+    struct ThenErr;
+    impl RowSource for ThenErr {
+        fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+            Some(Err(DbError::Format(FormatError::UnsupportedVersion {
+                major: 0,
+                minor: 0,
+            })))
+        }
+    }
+
+    #[test]
+    fn limit_op_propagates_source_error() {
+        let mut lim = LimitOp::new(ThenErr, 1);
+        assert!(lim.next_key().unwrap().is_err());
+    }
+}

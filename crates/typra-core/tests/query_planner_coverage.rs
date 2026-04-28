@@ -857,3 +857,62 @@ fn decode_index_payload_rejects_empty_name() {
     buf.extend_from_slice(&0u32.to_le_bytes());
     assert!(decode_index_payload(&buf).is_err());
 }
+
+#[test]
+fn query_iter_stops_at_limit_on_collection_scan_without_order_by() {
+    let mut db = Database::open_in_memory().unwrap();
+    let (cid, _) = db
+        .register_collection(
+            "t",
+            vec![path_field("id", Type::String), path_field("y", Type::Int64)],
+            "id",
+        )
+        .unwrap();
+    for i in 0i64..5i64 {
+        let mut m = BTreeMap::new();
+        m.insert("id".into(), RowValue::String(format!("k{i}")));
+        m.insert("y".into(), RowValue::Int64(i));
+        db.insert(cid, m).unwrap();
+    }
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: Some(2),
+        order_by: None,
+    };
+    let n = db.query_iter(&q).unwrap().map(|r| r.unwrap()).count();
+    assert_eq!(n, 2);
+    let rows = db.query(&q).unwrap();
+    assert_eq!(rows.len(), 2);
+}
+
+#[test]
+fn query_non_unique_index_respects_limit_with_shared_key() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![path_field("id", Type::String), path_field("t", Type::String)];
+    let indexes = vec![IndexDef {
+        name: "t_idx".into(),
+        path: FieldPath(vec![Cow::Owned("t".into())]),
+        kind: IndexKind::NonUnique,
+    }];
+    let (cid, _) = db
+        .register_collection_with_indexes("t", fields, indexes, "id")
+        .unwrap();
+    for id in ["a", "b", "c"] {
+        let mut m = BTreeMap::new();
+        m.insert("id".into(), RowValue::String(id.into()));
+        m.insert("t".into(), RowValue::String("shared".into()));
+        db.insert(cid, m).unwrap();
+    }
+    let q = Query {
+        collection: cid,
+        predicate: Some(Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("t".into())]),
+            value: ScalarValue::String("shared".into()),
+        }),
+        limit: Some(2),
+        order_by: None,
+    };
+    let rows = db.query(&q).unwrap();
+    assert_eq!(rows.len(), 2);
+}

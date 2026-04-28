@@ -486,6 +486,22 @@ mod tests {
     }
 
     #[test]
+    fn index_payload_v2_decodes_delete_op_tag() {
+        let ent = IndexEntry {
+            collection_id: 1,
+            index_name: "i".to_string(),
+            kind: IndexKind::Unique,
+            op: IndexOp::Delete,
+            index_key: b"k".to_vec(),
+            pk_key: b"pk".to_vec(),
+        };
+        let bytes = encode_index_payload(&[ent]);
+        let v = decode_index_payload(&bytes).unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].op, IndexOp::Delete);
+    }
+
+    #[test]
     fn index_payload_rejects_unknown_kind_and_op_tags_and_trailing_bytes() {
         let base = IndexEntry {
             collection_id: 1,

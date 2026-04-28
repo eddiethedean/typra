@@ -153,8 +153,9 @@ mod tests {
     use crate::file_format::FORMAT_MINOR_V6;
     use crate::segments::header::{SegmentHeader, SegmentType};
     use crate::segments::writer::SegmentWriter;
-    use crate::storage::{Store, VecStore};
+    use crate::storage::{FileStore, Store, VecStore};
     use crate::txn::encode_txn_payload_v0;
+    use std::fs::OpenOptions;
 
     #[test]
     fn scan_errors_on_bad_crc_for_non_checkpoint_non_temp() {
@@ -541,5 +542,140 @@ mod tests {
             e,
             DbError::Format(FormatError::InvalidTxnPayload { .. })
         ));
+    }
+
+    #[test]
+    fn recovery_v6_valid_commit_file_store() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let mut store = FileStore::new(f);
+        let segment_start = 0u64;
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let (safe, reason) = truncate_end_for_recovery(&mut store, segment_start, FORMAT_MINOR_V6)
+            .unwrap();
+        assert_eq!(reason, None);
+        assert_eq!(safe, store.len().unwrap());
+    }
+
+    #[test]
+    fn recovery_v6_rejects_commit_id_mismatch_file_store() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let f = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(tmp.path())
+            .unwrap();
+        let mut store = FileStore::new(f);
+        let segment_start = 0u64;
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+        let begin = encode_txn_payload_v0(1);
+        let commit = encode_txn_payload_v0(2);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+
+        let e = truncate_end_for_recovery(&mut store, segment_start, FORMAT_MINOR_V6).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Format(FormatError::InvalidTxnPayload { .. })
+        ));
+    }
+
+    #[test]
+    fn recovery_v6_reports_uncommitted_txn_at_eof() {
+        let mut store = VecStore::new();
+        let segment_start = 0u64;
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+        let begin = encode_txn_payload_v0(7);
+        let begin_off = w
+            .append(
+                SegmentHeader {
+                    segment_type: SegmentType::TxnBegin,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                begin.as_slice(),
+            )
+            .unwrap();
+        let (safe, reason) = truncate_end_for_recovery(&mut store, segment_start, FORMAT_MINOR_V6).unwrap();
+        assert_eq!(reason, Some("uncommitted_transaction"));
+        assert_eq!(safe, begin_off);
+    }
+
+    /// A manifest segment that appears under an uncommitted `TxnBegin` should not move the safe
+    /// prefix to the manifest's end.
+    #[test]
+    fn recovery_v6_does_not_advance_safe_prefix_past_txn_for_manifest() {
+        let mut store = VecStore::new();
+        let segment_start = 0u64;
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+
+        let begin = encode_txn_payload_v0(1);
+        let begin_off = w
+            .append(
+                SegmentHeader {
+                    segment_type: SegmentType::TxnBegin,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                begin.as_slice(),
+            )
+            .unwrap();
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Manifest,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &[0xA1, 0xA2, 0xA3],
+        )
+        .unwrap();
+        let (safe, reason) = truncate_end_for_recovery(&mut store, segment_start, FORMAT_MINOR_V6).unwrap();
+        assert_eq!(reason, Some("uncommitted_transaction"));
+        assert_eq!(safe, begin_off);
     }
 }

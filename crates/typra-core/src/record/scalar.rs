@@ -48,9 +48,6 @@ impl ScalarValue {
 
 /// Encode a scalar with a leading type tag (must match `ty`).
 pub fn encode_tagged_scalar(out: &mut Vec<u8>, v: &ScalarValue, ty: &Type) -> Result<(), DbError> {
-    if !v.ty_matches(ty) {
-        return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-    }
     match (v, ty) {
         (ScalarValue::Bool(b), Type::Bool) => {
             out.push(0);
@@ -251,4 +248,19 @@ pub fn decode_tagged_scalar(cur: &mut Cursor<'_>, ty: &Type) -> Result<ScalarVal
         }
         _ => return Err(DbError::Format(FormatError::RecordPayloadUnsupportedType)),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_tagged_scalar;
+    use crate::error::DbError;
+    use crate::record::ScalarValue;
+    use crate::schema::Type;
+
+    #[test]
+    fn encode_tagged_scalar_rejects_value_type_mismatch() {
+        let mut out = Vec::new();
+        let e = encode_tagged_scalar(&mut out, &ScalarValue::Int64(1), &Type::String).unwrap_err();
+        assert!(matches!(e, DbError::Format(_)));
+    }
 }

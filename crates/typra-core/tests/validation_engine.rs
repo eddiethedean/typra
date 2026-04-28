@@ -120,6 +120,35 @@ fn validate_int64_min_constraint() {
 }
 
 #[test]
+fn validate_max_length_rejects_list_longer_than_max() {
+    let mut p = vec!["items".into()];
+    let e = validate_value(
+        &mut p,
+        &Type::List(Box::new(Type::Int64)),
+        &[Constraint::MaxLength(1)],
+        &RowValue::List(vec![RowValue::Int64(1), RowValue::Int64(2)]),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(v) if v.message.contains("above maximum")));
+}
+
+#[test]
+fn validate_max_length_rejects_non_string_bytes_list_value() {
+    let mut p = vec!["n".into()];
+    let e = validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MaxLength(1)],
+        &RowValue::Int64(0),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        e,
+        DbError::Validation(v) if v.message == "MaxLength applies to string, bytes, or list"
+    ));
+}
+
+#[test]
 fn validate_string_regex_constraint_ok_and_fail() {
     let mut p = vec!["s".into()];
     validate_value(

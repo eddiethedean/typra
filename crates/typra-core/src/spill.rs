@@ -124,7 +124,36 @@ impl<S: Store> Drop for TempSpillGuard<'_, S> {
 mod tests {
     use super::TempSpillFile;
     use super::TempSpillGuard;
+    use crate::error::DbError;
     use crate::storage::{FileStore, Store, VecStore};
+
+    /// Store that reports a non-zero length but fails writes, so `SegmentWriter::append` returns an error.
+    struct FailOnWriteStore {
+        len: u64,
+    }
+
+    impl Store for FailOnWriteStore {
+        fn len(&self) -> Result<u64, DbError> {
+            Ok(self.len)
+        }
+
+        fn read_exact_at(&mut self, _offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+            buf.fill(0);
+            Ok(())
+        }
+
+        fn write_all_at(&mut self, _offset: u64, _buf: &[u8]) -> Result<(), DbError> {
+            Err(DbError::NotImplemented)
+        }
+
+        fn sync(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        fn truncate(&mut self, _len: u64) -> Result<(), DbError> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn temp_spill_file_truncates_on_drop() {
@@ -210,6 +239,7 @@ mod tests {
 
         {
             let mut guard = TempSpillGuard::new(&mut base).unwrap();
+            assert_eq!(guard.base_len(), base_len);
             let off = guard.append_temp_segment(b"abc").unwrap();
             let got = guard.read_temp_payload(off, 3).unwrap();
             assert_eq!(got, b"abc");
@@ -218,6 +248,25 @@ mod tests {
 
         // Dropping the guard truncates to the original length.
         assert_eq!(base.len().unwrap(), base_len);
+    }
+
+    #[test]
+    fn temp_spill_append_propagates_write_error() {
+        let mut owned = TempSpillFile::new(FailOnWriteStore { len: 64 }).unwrap();
+        let r = owned.append_temp_segment(b"x");
+        assert!(matches!(r, Err(DbError::NotImplemented)));
+
+        let mut st = FailOnWriteStore { len: 32 };
+        let mut guard = TempSpillGuard::new(&mut st).unwrap();
+        let r = guard.append_temp_segment(b"y");
+        assert!(matches!(r, Err(DbError::NotImplemented)));
+
+        // `SegmentWriter` does not read for a pure append-failure; exercise `read_exact_at` and the
+        // other `Store` hooks so this test helper stays fully covered.
+        let mut scratch = [0u8; 1];
+        st.read_exact_at(0, &mut scratch).unwrap();
+        st.truncate(0).unwrap();
+        st.sync().unwrap();
     }
 
     #[test]

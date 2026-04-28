@@ -1,11 +1,10 @@
 //! Open and bootstrap: decode header, superblocks, manifest, and initial segment scan.
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::config::{OpenOptions, RecoveryMode};
 use crate::error::{DbError, FormatError};
-use crate::file_format::{decode_header, FileHeader, FILE_HEADER_SIZE};
+use crate::file_format::{decode_header, FileHeader, OpenableMinor, FILE_HEADER_SIZE};
 use crate::manifest::decode_manifest_v0;
 use crate::publish::append_manifest_and_publish;
 use crate::segments::header::SegmentType;
@@ -138,8 +137,9 @@ pub(crate) fn open_with_store<S: Store>(
         store.read_exact_at(0, &mut buf)?;
         let header = decode_header(&buf)?;
 
-        match header.format_minor {
-            2 => {
+        let openable = header.classify_for_open().map_err(DbError::Format)?;
+        match openable {
+            OpenableMinor::V2 => {
                 debug_assert!(len >= FILE_HEADER_SIZE as u64);
                 match len == FILE_HEADER_SIZE as u64 {
                     true => {
@@ -158,66 +158,59 @@ pub(crate) fn open_with_store<S: Store>(
                     }
                 }
             }
-            3 | 4 | 5 | 6 => {
-            if len < segment_start {
-                return Err(DbError::Format(FormatError::TruncatedSuperblock {
-                    got: len as usize,
-                    expected: segment_start as usize,
-                }));
-            }
-            let selected = read_and_select_superblock(&mut store)?;
-            match selected.manifest_offset {
-                0 => {}
-                _ => match read_manifest(&mut store, &selected) {
-                    Ok(()) => {}
-                    Err(e) => match opts.recovery {
-                        RecoveryMode::Strict => return Err(e),
-                        // Auto-truncation can recover from a torn manifest pointer/payload by
-                        // scanning and truncating the log to a safe committed prefix.
-                        RecoveryMode::AutoTruncate => {}
+            OpenableMinor::V3to6 => {
+                if len < segment_start {
+                    return Err(DbError::Format(FormatError::TruncatedSuperblock {
+                        got: len as usize,
+                        expected: segment_start as usize,
+                    }));
+                }
+                let selected = read_and_select_superblock(&mut store)?;
+                match selected.manifest_offset {
+                    0 => {}
+                    _ => match read_manifest(&mut store, &selected) {
+                        Ok(()) => {}
+                        Err(e) => match opts.recovery {
+                            RecoveryMode::Strict => return Err(e),
+                            // Auto-truncation can recover from a torn manifest pointer/payload by
+                            // scanning and truncating the log to a safe committed prefix.
+                            RecoveryMode::AutoTruncate => {}
+                        },
                     },
-                },
-            }
-            format_minor = header.format_minor;
+                }
+                format_minor = header.format_minor;
 
-            let (truncate_to, reason) =
-                recover::truncate_end_for_recovery(&mut store, segment_start, format_minor)?;
-            match opts.recovery {
-                RecoveryMode::Strict => {
-                    let flen = store.len()?;
-                    match (reason, truncate_to < flen) {
-                        (Some(reason), true) => {
-                            return Err(DbError::Format(FormatError::UncleanLogTail {
-                                safe_end: truncate_to,
-                                reason,
-                            }))
+                let (truncate_to, reason) =
+                    recover::truncate_end_for_recovery(&mut store, segment_start, format_minor)?;
+                match opts.recovery {
+                    RecoveryMode::Strict => {
+                        let flen = store.len()?;
+                        match (reason, truncate_to < flen) {
+                            (Some(reason), true) => {
+                                return Err(DbError::Format(FormatError::UncleanLogTail {
+                                    safe_end: truncate_to,
+                                    reason,
+                                }));
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
-                }
-                RecoveryMode::AutoTruncate => {
-                    let flen = store.len()?;
-                    if truncate_to < flen {
-                        store.truncate(truncate_to)?;
-                        store.sync()?;
+                    RecoveryMode::AutoTruncate => {
+                        let flen = store.len()?;
+                        if truncate_to < flen {
+                            store.truncate(truncate_to)?;
+                            store.sync()?;
+                        }
                     }
                 }
             }
-            }
-            // `decode_header` already validated format_minor is in 2..=6.
-            _ => unreachable!("decode_header accepted only minor 2..=6"),
         }
     }
 
-    let flen = store.len()?;
-    let (mut catalog, mut latest, mut indexes, replay_from) = if flen == 0 {
-        (
-            crate::catalog::Catalog::default(),
-            HashMap::new(),
-            crate::index::IndexState::default(),
-            segment_start,
-        )
-    } else {
+    // `store` is always non-empty here: a brand-new file was just initialized, or an existing
+    // image was decoded (including upgrade paths). A dead `if store.len() == 0` branch used to
+    // live here but was unreachable and confused branch-coverage tools.
+    let (mut catalog, mut latest, mut indexes, replay_from) = {
         let selected = read_and_select_superblock(&mut store)?;
         match try_load_checkpoint_state(&mut store, &selected, segment_start) {
             Ok(Some((from, cat, lat, idx))) => (cat, lat, idx, from),
@@ -281,4 +274,65 @@ pub(crate) fn open_with_store<S: Store>(
     #[cfg(feature = "tracing")]
     tracing::info!(path = %db.path.display(), format_minor = db.format_minor, "open_with_store_ok");
     Ok(db)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::open_with_store;
+    use crate::config::OpenOptions;
+    use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
+    use crate::storage::{Store, VecStore};
+    use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
+    use std::path::PathBuf;
+
+    fn vecstore_v5_with_superblock(sb: Superblock) -> VecStore {
+        let mut store = VecStore::new();
+        store
+            .write_all_at(0, &FileHeader::new_v0_5().encode())
+            .unwrap();
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb.encode())
+            .unwrap();
+        store
+            .write_all_at(
+                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
+                &Superblock::empty().encode(),
+            )
+            .unwrap();
+        store
+    }
+
+    /// Covers the right-hand side of `checkpoint_offset == 0 || checkpoint_len == 0` in
+    /// `try_load_checkpoint_state` (offset non-zero, len zero).
+    #[test]
+    fn try_load_skips_checkpoint_when_len_zero_with_nonzero_offset() {
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let sb = Superblock {
+            generation: 3,
+            checkpoint_offset: segment_start,
+            checkpoint_len: 0,
+            ..Superblock::empty()
+        };
+        let store = vecstore_v5_with_superblock(sb);
+        let db = open_with_store(PathBuf::from("t1.typra"), store, OpenOptions::default()).unwrap();
+        assert_eq!(db.format_minor, 5);
+    }
+
+    /// Covers `checkpoint_offset < segment_start` in `try_load_checkpoint_state` before reading a
+    /// header at an implausible file offset.
+    #[test]
+    fn try_load_skips_checkpoint_when_offset_before_log_start() {
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let sb = Superblock {
+            generation: 3,
+            checkpoint_offset: 100,
+            checkpoint_len: 1,
+            ..Superblock::empty()
+        };
+        let store = vecstore_v5_with_superblock(sb);
+        let db = open_with_store(PathBuf::from("t2.typra"), store, OpenOptions::default()).unwrap();
+        assert_eq!(db.segment_start, segment_start);
+    }
 }
