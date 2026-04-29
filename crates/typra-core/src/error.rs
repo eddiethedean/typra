@@ -372,3 +372,118 @@ impl From<std::io::Error> for DbError {
         DbError::Io(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+    use std::io;
+
+    #[test]
+    fn db_error_kind_display_and_source_smoke() {
+        let io_err = io::Error::new(io::ErrorKind::Other, "nope");
+        let e: DbError = io_err.into();
+        assert_eq!(e.kind(), DbErrorKind::Io);
+        assert!(e.source().is_some());
+        assert!(format!("{e}").contains("i/o error"));
+
+        let fmt = DbError::Format(FormatError::BadMagic { got: *b"NOPE" });
+        assert_eq!(fmt.kind(), DbErrorKind::Format);
+        assert!(fmt.source().is_none());
+        assert!(format!("{fmt}").contains("format error"));
+
+        let schema = DbError::Schema(SchemaError::UniqueIndexViolation);
+        assert_eq!(schema.kind(), DbErrorKind::Schema);
+        assert!(schema.source().is_none());
+        assert!(format!("{schema}").contains("unique index violation"));
+
+        let val = DbError::Validation(ValidationError {
+            path: vec!["a".to_string(), "b".to_string()],
+            message: "bad".to_string(),
+        });
+        assert_eq!(val.kind(), DbErrorKind::Validation);
+        assert!(format!("{val}").contains("validation error at a.b"));
+
+        let val2 = DbError::Validation(ValidationError {
+            path: vec![],
+            message: "bad".to_string(),
+        });
+        assert!(format!("{val2}").contains("validation error: bad"));
+
+        let txn = DbError::Transaction(TransactionError::NestedTransaction);
+        assert_eq!(txn.kind(), DbErrorKind::Transaction);
+        assert!(txn.source().is_none());
+        assert!(format!("{txn}").contains("nested transactions"));
+
+        let q = DbError::Query(QueryError {
+            message: "q".to_string(),
+        });
+        assert_eq!(q.kind(), DbErrorKind::Query);
+        assert!(q.source().is_none());
+        assert!(format!("{q}").contains("query error"));
+
+        let ni = DbError::NotImplemented;
+        assert_eq!(ni.kind(), DbErrorKind::NotImplemented);
+        assert!(format!("{ni}").contains("not implemented"));
+
+        // Exercise some FormatError display arms that are otherwise hard to hit.
+        let s = format!(
+            "{}",
+            FormatError::UncleanLogTail {
+                safe_end: 7,
+                reason: "torn"
+            }
+        );
+        assert!(s.contains("unclean log tail"));
+        assert!(s.contains("7"));
+
+        // Exercise remaining SchemaError display arms.
+        let msgs = [
+            format!("{}", SchemaError::DuplicateCollectionName { name: "x".to_string() }),
+            format!("{}", SchemaError::UnknownCollection { id: 7 }),
+            format!(
+                "{}",
+                SchemaError::InvalidSchemaVersion {
+                    expected: 1,
+                    got: 2
+                }
+            ),
+            format!("{}", SchemaError::SchemaVersionExhausted),
+            format!(
+                "{}",
+                SchemaError::UnexpectedCollectionId {
+                    expected: 1,
+                    got: 2
+                }
+            ),
+            format!("{}", SchemaError::NoPrimaryKey { collection_id: 1 }),
+            format!(
+                "{}",
+                SchemaError::PrimaryFieldNotFound {
+                    name: "id".to_string()
+                }
+            ),
+            format!(
+                "{}",
+                SchemaError::PrimaryFieldMissingInSchema {
+                    name: "id".to_string()
+                }
+            ),
+            format!(
+                "{}",
+                SchemaError::IncompatibleSchemaChange {
+                    message: "no".to_string()
+                }
+            ),
+            format!(
+                "{}",
+                SchemaError::MigrationRequired {
+                    message: "yes".to_string()
+                }
+            ),
+        ];
+        for m in msgs {
+            assert!(!m.is_empty());
+        }
+    }
+}

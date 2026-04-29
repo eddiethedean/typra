@@ -304,6 +304,53 @@ mod tests {
     }
 
     #[test]
+    fn spillable_join_no_spill_path_skips_missing_right_key_arm() {
+        // Coverage-motivated: ensure `right_counts.get(&k) == None` is exercised in the no-spill
+        // merge loop.
+        let right = vec![Ok(row_i64("k", 1))].into_iter();
+        let left = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 999))].into_iter();
+        let total =
+            spillable_hash_join_match_count_i64(left, right, &fp(&["k"]), &fp(&["k"]), 10, None)
+                .unwrap();
+        // Only the shared key contributes.
+        assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn spillable_join_spill_merge_skips_missing_right_key_arm() {
+        // Coverage-motivated: ensure `right_counts.get(&k) == None` is exercised in the spill
+        // merge loop (per-partition reduce).
+        use crate::storage::FileStore;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spill.typra");
+        std::fs::write(&path, []).unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(&path)
+            .unwrap();
+        let mut spill = TempSpillFile::new(FileStore::new(file)).unwrap();
+
+        // Right side has no usable join keys => empty right_counts.
+        let right = std::iter::empty::<Result<BTreeMap<String, RowValue>, DbError>>();
+        // Left side has >budget unique keys => forces spill segments.
+        let left = vec![Ok(row_i64("k", 1)), Ok(row_i64("k", 2))].into_iter();
+
+        let total = spillable_hash_join_match_count_i64(
+            left,
+            right,
+            &fp(&["k"]),
+            &fp(&["k"]),
+            1, // force spill
+            Some(&mut spill),
+        )
+        .unwrap();
+        assert_eq!(total, 0);
+    }
+
+    #[test]
     fn spillable_join_spills_and_merges_with_file_store_and_skips_missing_keys() {
         use crate::storage::FileStore;
 

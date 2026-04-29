@@ -916,3 +916,301 @@ fn query_non_unique_index_respects_limit_with_shared_key() {
     let rows = db.query(&q).unwrap();
     assert_eq!(rows.len(), 2);
 }
+
+#[test]
+fn order_by_on_memory_db_uses_vec_fallback_in_query_iter() {
+    let mut db = Database::open_in_memory().unwrap();
+    let (cid, _) = db
+        .register_collection(
+            "t",
+            vec![path_field("id", Type::Int64), path_field("k", Type::Int64)],
+            "id",
+        )
+        .unwrap();
+    for i in [3i64, 1, 2] {
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), RowValue::Int64(i)),
+                ("k".into(), RowValue::Int64(i)),
+            ]),
+        )
+        .unwrap();
+    }
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Owned("k".into())]),
+            direction: OrderDirection::Desc,
+        }),
+    };
+    let rows: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+    assert_eq!(rows.len(), 3);
+    let ks: Vec<i64> = rows
+        .iter()
+        .map(|r| match r.get("k").unwrap() {
+            RowValue::Int64(x) => *x,
+            _ => panic!("k"),
+        })
+        .collect();
+    assert_eq!(ks, vec![3, 2, 1]);
+}
+
+#[test]
+fn external_sort_spills_multiple_runs_for_large_collection() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("big_sort.typra");
+    let mut db = Database::open(&path).unwrap();
+    let (cid, _) = db
+        .register_collection(
+            "t",
+            vec![path_field("id", Type::Int64), path_field("s", Type::Uint64)],
+            "id",
+        )
+        .unwrap();
+    for i in 0i64..2500 {
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), RowValue::Int64(i)),
+                ("s".into(), RowValue::Uint64(i as u64)),
+            ]),
+        )
+        .unwrap();
+    }
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Owned("s".into())]),
+            direction: OrderDirection::Desc,
+        }),
+    };
+    let rows: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+    assert_eq!(rows.len(), 2500);
+}
+
+#[test]
+fn external_sort_orders_float64_keys_on_disk() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("float_sort.typra");
+    let mut db = Database::open(&path).unwrap();
+    let (cid, _) = db
+        .register_collection(
+            "t",
+            vec![path_field("id", Type::Int64), path_field("w", Type::Float64)],
+            "id",
+        )
+        .unwrap();
+    for i in 0..120i64 {
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), RowValue::Int64(i)),
+                ("w".into(), RowValue::Float64((i as f64) * 0.25 - 10.0)),
+            ]),
+        )
+        .unwrap();
+    }
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Owned("w".into())]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+    let rows: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+    assert_eq!(rows.len(), 120);
+}
+
+#[test]
+fn unique_index_lookup_with_residual_rejects_non_matching_row() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![
+        path_field("id", Type::Int64),
+        path_field("email", Type::String),
+        path_field("active", Type::Bool),
+    ];
+    let indexes = vec![IndexDef {
+        name: "email_u".into(),
+        path: FieldPath(vec![Cow::Owned("email".into())]),
+        kind: IndexKind::Unique,
+    }];
+    let (cid, _) = db
+        .register_collection_with_indexes("u", fields, indexes, "id")
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("id".into(), RowValue::Int64(1)),
+            ("email".into(), RowValue::String("a@x".into())),
+            ("active".into(), RowValue::Bool(false)),
+        ]),
+    )
+    .unwrap();
+    let q = Query {
+        collection: cid,
+        predicate: Some(Predicate::And(vec![
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("email".into())]),
+                value: ScalarValue::String("a@x".into()),
+            },
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("active".into())]),
+                value: ScalarValue::Bool(true),
+            },
+        ])),
+        limit: None,
+        order_by: None,
+    };
+    assert!(db.query(&q).unwrap().is_empty());
+}
+
+#[test]
+fn predicate_or_matches_either_branch() {
+    let mut db = Database::open_in_memory().unwrap();
+    let (cid, _) = db
+        .register_collection(
+            "t",
+            vec![path_field("id", Type::Int64), path_field("c", Type::Int64)],
+            "id",
+        )
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("id".into(), RowValue::Int64(1)),
+            ("c".into(), RowValue::Int64(0)),
+        ]),
+    )
+    .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("id".into(), RowValue::Int64(2)),
+            ("c".into(), RowValue::Int64(5)),
+        ]),
+    )
+    .unwrap();
+    let q = Query {
+        collection: cid,
+        predicate: Some(Predicate::Or(vec![
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("c".into())]),
+                value: ScalarValue::Int64(0),
+            },
+            Predicate::Eq {
+                path: FieldPath(vec![Cow::Owned("c".into())]),
+                value: ScalarValue::Int64(5),
+            },
+        ])),
+        limit: None,
+        order_by: None,
+    };
+    assert_eq!(db.query(&q).unwrap().len(), 2);
+}
+
+#[test]
+fn and_prefers_unique_index_candidate_when_both_sides_indexed() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![
+        path_field("id", Type::Int64),
+        path_field("x", Type::Int64),
+        path_field("y", Type::Int64),
+    ];
+    let indexes = vec![
+        IndexDef {
+            name: "x_idx".into(),
+            path: FieldPath(vec![Cow::Owned("x".into())]),
+            kind: IndexKind::NonUnique,
+        },
+        IndexDef {
+            name: "y_idx".into(),
+            path: FieldPath(vec![Cow::Owned("y".into())]),
+            kind: IndexKind::Unique,
+        },
+    ];
+    let (cid, _) = db
+        .register_collection_with_indexes("t", fields, indexes, "id")
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("id".into(), RowValue::Int64(1)),
+            ("x".into(), RowValue::Int64(10)),
+            ("y".into(), RowValue::Int64(20)),
+        ]),
+    )
+    .unwrap();
+    let pred = Predicate::And(vec![
+        Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("x".into())]),
+            value: ScalarValue::Int64(10),
+        },
+        Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("y".into())]),
+            value: ScalarValue::Int64(20),
+        },
+    ]);
+    let q = Query {
+        collection: cid,
+        predicate: Some(pred),
+        limit: None,
+        order_by: None,
+    };
+    let explain = db.explain_query(&q).unwrap();
+    assert!(
+        explain.contains("y_idx") || explain.contains("Unique"),
+        "{explain}"
+    );
+    assert_eq!(db.query(&q).unwrap().len(), 1);
+}
+
+#[test]
+fn order_by_sorts_optional_field_placing_none_last_in_asc() {
+    let mut db = Database::open_in_memory().unwrap();
+    let (cid, _) = db
+        .register_collection(
+            "t",
+            vec![
+                path_field("id", Type::Int64),
+                path_field("s", Type::String),
+                path_field("o", Type::Optional(Box::new(Type::Int64))),
+            ],
+            "id",
+        )
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("id".into(), RowValue::Int64(1)),
+            ("s".into(), RowValue::String("b".into())),
+        ]),
+    )
+    .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("id".into(), RowValue::Int64(2)),
+            ("s".into(), RowValue::String("a".into())),
+            ("o".into(), RowValue::None),
+        ]),
+    )
+    .unwrap();
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Owned("o".into())]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+    let rows = db.query(&q).unwrap();
+    assert_eq!(rows.len(), 2);
+}

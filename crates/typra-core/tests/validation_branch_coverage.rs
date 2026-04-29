@@ -210,6 +210,27 @@ fn validate_top_level_row_accepts_known_fields_and_rejects_unknown() {
 }
 
 #[test]
+fn regex_constraint_rejects_invalid_schema_regex() {
+    let mut path = vec!["x".to_string()];
+    let e = validate_value(
+        &mut path,
+        &Type::String,
+        &[Constraint::Regex("[".to_string())],
+        &RowValue::String("ok".to_string()),
+    )
+    .unwrap_err();
+    assert!(matches!(e, DbError::Validation(_)));
+}
+
+#[test]
+fn validate_top_level_row_errors_on_missing_required_field() {
+    let fields = vec![def("id", Type::Int64, vec![]), def("x", Type::Int64, vec![])];
+    let mut row = BTreeMap::new();
+    row.insert("id".to_string(), RowValue::Int64(1));
+    assert!(validate_top_level_row(&fields, "id", &row).is_err());
+}
+
+#[test]
 fn min_length_constraint_can_fail() {
     let mut path = vec!["x".to_string()];
     assert!(validate_value(

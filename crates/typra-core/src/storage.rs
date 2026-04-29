@@ -219,16 +219,16 @@ impl FileStore {
                     .create(true)
                     .truncate(false)
                     .open(&lock_path)?;
-                match lock_file.try_lock_shared() {
-                    Ok(()) => Some(lock_file),
-                    Err(std::fs::TryLockError::WouldBlock) => {
-                        return Err(DbError::Io(std::io::Error::new(
+                lock_file.try_lock_shared().map_err(|e| {
+                    DbError::Io(match e {
+                        std::fs::TryLockError::WouldBlock => std::io::Error::new(
                             std::io::ErrorKind::WouldBlock,
                             "database is locked by another process",
-                        )));
-                    }
-                    Err(std::fs::TryLockError::Error(e)) => return Err(DbError::Io(e)),
-                }
+                        ),
+                        std::fs::TryLockError::Error(ioe) => ioe,
+                    })
+                })?;
+                Some(lock_file)
             }
         };
 

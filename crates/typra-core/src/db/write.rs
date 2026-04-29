@@ -102,3 +102,53 @@ pub(crate) fn commit_write_txn_v6<S: Store>(
     batch.push((SegmentType::TxnCommit, commit.as_slice()));
     commit_segment_batch(store, segment_start, format_minor, &batch)
 }
+
+#[cfg(test)]
+mod commit_batch_tests {
+    use super::*;
+    use crate::error::DbError;
+    use crate::segments::header::SegmentType;
+    use crate::storage::Store;
+
+    /// Store with a synthetic length; all writes fail so [`SegmentWriter::append`] errors.
+    struct FailOnWriteStore {
+        len: u64,
+    }
+
+    impl Store for FailOnWriteStore {
+        fn len(&self) -> Result<u64, DbError> {
+            Ok(self.len)
+        }
+
+        fn read_exact_at(&mut self, _offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+            buf.fill(0);
+            Ok(())
+        }
+
+        fn write_all_at(&mut self, _offset: u64, _buf: &[u8]) -> Result<(), DbError> {
+            Err(DbError::NotImplemented)
+        }
+
+        fn sync(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        fn truncate(&mut self, _len: u64) -> Result<(), DbError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn commit_segment_batch_propagates_append_error() {
+        let mut store = FailOnWriteStore { len: 64 };
+        let mut minor = crate::file_format::FORMAT_MINOR_V6;
+        let err = commit_segment_batch(
+            &mut store,
+            64,
+            &mut minor,
+            &[(SegmentType::Schema, b"x")],
+        )
+        .unwrap_err();
+        assert!(matches!(err, DbError::NotImplemented));
+    }
+}

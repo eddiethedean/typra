@@ -328,3 +328,187 @@ fn realistic_disk_workflow_transaction_indexed_query_reopen() {
         "reopened row has expected qty"
     );
 }
+
+#[test]
+fn replay_rejects_txn_commit_without_begin() {
+    use std::fs::OpenOptions as FsOpenOptions;
+    use typra_core::segments::header::{SegmentHeader, SegmentType};
+    use typra_core::segments::writer::SegmentWriter;
+    use typra_core::storage::FileStore;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("orphan_commit.typra");
+    {
+        let mut db = Database::open(&path).unwrap();
+        db.register_collection("books", vec![title_field()], "title")
+            .unwrap();
+        drop(db);
+
+        let file = FsOpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(file);
+        let len = store.len().unwrap();
+        let mut w = SegmentWriter::new(&mut store, len);
+        let commit = typra_core::txn::encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            commit.as_slice(),
+        )
+        .unwrap();
+        store.sync().unwrap();
+    }
+
+    assert!(Database::open(&path).is_err());
+}
+
+#[test]
+fn replay_rejects_txn_commit_id_mismatch() {
+    use std::fs::OpenOptions as FsOpenOptions;
+    use typra_core::segments::header::{SegmentHeader, SegmentType};
+    use typra_core::segments::writer::SegmentWriter;
+    use typra_core::storage::FileStore;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("txn_mismatch.typra");
+    {
+        let mut db = Database::open(&path).unwrap();
+        db.register_collection("books", vec![title_field()], "title")
+            .unwrap();
+        drop(db);
+
+        let file = FsOpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(file);
+        let len = store.len().unwrap();
+        let mut w = SegmentWriter::new(&mut store, len);
+        let begin = typra_core::txn::encode_txn_payload_v0(1);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        let bad_commit = typra_core::txn::encode_txn_payload_v0(2);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            bad_commit.as_slice(),
+        )
+        .unwrap();
+        store.sync().unwrap();
+    }
+
+    assert!(Database::open(&path).is_err());
+}
+
+#[test]
+fn replay_accepts_txn_abort_after_begin() {
+    use std::fs::OpenOptions as FsOpenOptions;
+    use typra_core::segments::header::{SegmentHeader, SegmentType};
+    use typra_core::segments::writer::SegmentWriter;
+    use typra_core::storage::FileStore;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("txn_abort.typra");
+    {
+        let mut db = Database::open(&path).unwrap();
+        db.register_collection("books", vec![title_field()], "title")
+            .unwrap();
+        drop(db);
+
+        let file = FsOpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(file);
+        let len = store.len().unwrap();
+        let mut w = SegmentWriter::new(&mut store, len);
+        let begin = typra_core::txn::encode_txn_payload_v0(7);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnBegin,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            begin.as_slice(),
+        )
+        .unwrap();
+        let abort = typra_core::txn::encode_txn_payload_v0(7);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnAbort,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            abort.as_slice(),
+        )
+        .unwrap();
+        store.sync().unwrap();
+    }
+
+    let _ = Database::open(&path).unwrap();
+}
+
+#[test]
+fn replay_rejects_unframed_schema_segment_in_v6() {
+    use std::fs::OpenOptions as FsOpenOptions;
+    use typra_core::catalog::{encode_catalog_payload, CatalogRecordWire};
+    use typra_core::segments::header::{SegmentHeader, SegmentType};
+    use typra_core::segments::writer::SegmentWriter;
+    use typra_core::storage::FileStore;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("unframed_schema.typra");
+    {
+        let mut db = Database::open(&path).unwrap();
+        db.register_collection("books", vec![title_field()], "title")
+            .unwrap();
+        drop(db);
+
+        let wire = CatalogRecordWire::NewSchemaVersion {
+            collection_id: 1,
+            schema_version: 2,
+            fields: vec![title_field(), id_field()],
+            indexes: vec![],
+        };
+        let payload = encode_catalog_payload(&wire);
+
+        let file = FsOpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(file);
+        let len = store.len().unwrap();
+        let mut w = SegmentWriter::new(&mut store, len);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::Schema,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            payload.as_slice(),
+        )
+        .unwrap();
+        store.sync().unwrap();
+    }
+
+    assert!(Database::open(&path).is_err());
+}

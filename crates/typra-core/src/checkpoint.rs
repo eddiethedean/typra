@@ -329,6 +329,7 @@ mod tests {
 
     use super::{checkpoint_from_state, decode_checkpoint_payload, CheckpointV0};
     use crate::catalog::{Catalog, CatalogRecordWire};
+    use crate::error::{DbError, FormatError, SchemaError};
     use crate::index::IndexState;
     use crate::record::{RowValue, ScalarValue};
     use crate::schema::{FieldDef, FieldPath, Type};
@@ -517,5 +518,64 @@ mod tests {
 
         let (_off, _cat2, latest2, _idx2) = super::state_from_checkpoint_payload(&payload).unwrap();
         assert!(latest2.contains_key(&(1u32, pk_key)));
+    }
+
+    #[test]
+    fn checkpoint_from_state_errors_when_latest_row_missing_primary() {
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![field("id", Type::Int64)],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert("note".to_string(), RowValue::String("x".to_string()));
+        let pk_key = ScalarValue::Int64(1).canonical_key_bytes();
+        let mut latest = crate::db::LatestMap::new();
+        latest.insert((1u32, pk_key), row);
+
+        let indexes = IndexState::default();
+        let r = checkpoint_from_state(&catalog, &latest, &indexes);
+        assert!(matches!(
+            r,
+            Err(DbError::Schema(SchemaError::RowMissingPrimary { .. }))
+        ));
+    }
+
+    #[test]
+    fn checkpoint_from_state_errors_when_primary_cell_is_not_scalar() {
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".to_string(),
+                schema_version: 1,
+                fields: vec![field("id", Type::Int64)],
+                indexes: vec![],
+                primary_field: Some("id".to_string()),
+            })
+            .unwrap();
+
+        let mut row = BTreeMap::new();
+        row.insert(
+            "id".to_string(),
+            RowValue::Object(BTreeMap::from([(
+                "n".to_string(),
+                RowValue::Int64(1),
+            )])),
+        );
+        let pk_key = vec![0u8; 8];
+        let mut latest = crate::db::LatestMap::new();
+        latest.insert((1u32, pk_key), row);
+
+        let indexes = IndexState::default();
+        let r = checkpoint_from_state(&catalog, &latest, &indexes);
+        assert!(matches!(r, Err(DbError::Format(FormatError::RecordPayloadTypeMismatch))));
     }
 }

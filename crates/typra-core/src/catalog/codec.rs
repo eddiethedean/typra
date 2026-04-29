@@ -715,6 +715,66 @@ mod tests {
     }
 
     #[test]
+    fn v4_roundtrip_exercises_all_constraint_encodings_and_primary_none() {
+        let fields = vec![FieldDef {
+            path: path(&["id"]),
+            ty: Type::String,
+            constraints: vec![
+                Constraint::MinI64(-7),
+                Constraint::MaxI64(9),
+                Constraint::MinU64(1),
+                Constraint::MaxU64(10),
+                Constraint::MinF64(-1.25),
+                Constraint::MaxF64(3.5),
+                Constraint::MinLength(1),
+                Constraint::MaxLength(10),
+                Constraint::Regex("^[a-z]+$".to_string()),
+                Constraint::Email,
+                Constraint::Url,
+                Constraint::NonEmpty,
+            ],
+        }];
+
+        let indexes = vec![
+            IndexDef {
+                name: "u".to_string(),
+                path: path(&["id"]),
+                kind: IndexKind::Unique,
+            },
+            IndexDef {
+                name: "n".to_string(),
+                path: path(&["id"]),
+                kind: IndexKind::NonUnique,
+            },
+        ];
+
+        // primary_field=None hits the `encode_optional_primary_name(None)` and
+        // `decode_optional_primary_name` n==0 paths for v4.
+        let rec_none = CatalogRecordWire::CreateCollection {
+            collection_id: 10,
+            name: "t".to_string(),
+            schema_version: 1,
+            fields: fields.clone(),
+            indexes: indexes.clone(),
+            primary_field: None,
+        };
+        let bytes = encode_catalog_payload(&rec_none);
+        assert_eq!(decode_catalog_payload(&bytes).unwrap(), rec_none);
+
+        // Also exercise primary_field=Some for v4.
+        let rec_some = CatalogRecordWire::CreateCollection {
+            collection_id: 11,
+            name: "t2".to_string(),
+            schema_version: 1,
+            fields,
+            indexes,
+            primary_field: Some("id".to_string()),
+        };
+        let bytes = encode_catalog_payload(&rec_some);
+        assert_eq!(decode_catalog_payload(&bytes).unwrap(), rec_some);
+    }
+
+    #[test]
     fn decode_indexes_errors_on_unexpected_eof_before_kind_tag() {
         // v4 create collection with indexes count=1 but no kind tag byte.
         let mut bytes = Vec::new();

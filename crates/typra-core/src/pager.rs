@@ -252,4 +252,32 @@ mod tests {
 
         assert!(ps.read_exact_at(DEFAULT_PAGE_SIZE + 1, &mut buf).is_err());
     }
+
+    #[test]
+    fn pager_cache_hit_invalidate_len_zero_and_truncate_retains_only_full_pages() {
+        let mut raw = VecStore::new();
+        raw.write_all_at(0, &[9u8; 32]).unwrap();
+        raw.write_all_at(DEFAULT_PAGE_SIZE, &[8u8; 32]).unwrap();
+
+        let mut ps = PagedStore::new(raw, DEFAULT_PAGE_SIZE);
+
+        // Prime page 0 in cache, then re-read to hit the cache-hit early return.
+        let mut buf = [0u8; 4];
+        ps.read_exact_at(0, &mut buf).unwrap();
+        assert_eq!(buf, [9u8; 4]);
+        ps.read_exact_at(1, &mut buf).unwrap();
+        assert_eq!(buf, [9u8; 4]);
+
+        // Exercise `invalidate_range` len==0 early return (no-op write).
+        ps.write_all_at(0, &[]).unwrap();
+
+        // Cache page 1, then truncate to exactly one full page so page 1 is dropped.
+        ps.read_exact_at(DEFAULT_PAGE_SIZE, &mut buf).unwrap();
+        assert_eq!(buf, [8u8; 4]);
+        ps.truncate(DEFAULT_PAGE_SIZE).unwrap();
+
+        assert!(ps.read_exact_at(DEFAULT_PAGE_SIZE, &mut buf).is_err());
+        ps.read_exact_at(0, &mut buf).unwrap();
+        assert_eq!(buf, [9u8; 4]);
+    }
 }

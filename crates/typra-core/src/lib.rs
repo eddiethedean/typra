@@ -31,6 +31,7 @@ pub mod validation;
 
 pub use catalog::{Catalog, CatalogRecord, CollectionInfo};
 pub use db::Database;
+pub use db::LatestMap;
 pub use error::DbError;
 pub use error::DbErrorKind;
 pub use error::FormatError;

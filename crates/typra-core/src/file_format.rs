@@ -33,7 +33,7 @@ pub struct FileHeader {
 
 /// Distinguishes legacy minor-2 open (possible single-header upgrade) from 3+ files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OpenableMinor {
+pub enum OpenableMinor {
     V2,
     V3to6,
 }
@@ -86,9 +86,9 @@ impl FileHeader {
         buf
     }
 
-    /// After [`decode_header`], `format_minor` is always 2..=6. This helper classifies the open
-    /// path and can be called with synthetic headers in unit tests to cover the out-of-range case.
-    pub(crate) fn classify_for_open(self) -> Result<OpenableMinor, FormatError> {
+    /// After [`decode_header`], `format_minor` is always 2..=6. This classifies the open path;
+    /// it is public so callers (and integration tests) can validate synthetic headers.
+    pub fn classify_for_open(self) -> Result<OpenableMinor, FormatError> {
         if self.format_minor == 2 {
             return Ok(OpenableMinor::V2);
         }
@@ -141,10 +141,13 @@ pub fn decode_header(bytes: &[u8]) -> Result<FileHeader, DbError> {
 #[cfg(test)]
 mod tests {
     use super::FileHeader;
+    use super::decode_header;
+    use super::FILE_MAGIC;
     use super::FormatError;
     use super::OpenableMinor;
     use super::FILE_HEADER_SIZE;
     use super::FORMAT_MAJOR;
+    use crate::error::DbError;
 
     #[test]
     fn classify_for_open_v2_and_v3to6() {
@@ -179,5 +182,42 @@ mod tests {
             let e = h.classify_for_open().unwrap_err();
             assert!(matches!(e, FormatError::UnsupportedVersion { .. }));
         }
+    }
+
+    #[test]
+    fn decode_header_and_new_headers_smoke() {
+        // Exercise the `new_v0_*` helpers and `encode`.
+        let hs = [
+            FileHeader::new_v0_3(),
+            FileHeader::new_v0_4(),
+            FileHeader::new_v0_5(),
+            FileHeader::new_v0_8(),
+        ];
+        for h in hs {
+            let buf = h.encode();
+            let got = decode_header(&buf).unwrap();
+            assert_eq!(got.format_major, FORMAT_MAJOR);
+            assert_eq!(got.format_minor, h.format_minor);
+            assert_eq!(got.header_size, FILE_HEADER_SIZE as u32);
+        }
+
+        // Truncated header.
+        let e = decode_header(&[0u8; FILE_HEADER_SIZE - 1]).unwrap_err();
+        assert!(matches!(e, DbError::Format(FormatError::TruncatedHeader { .. })));
+
+        // Bad magic.
+        let mut bad_magic = FileHeader::new_v0_5().encode();
+        bad_magic[0..4].copy_from_slice(b"NOPE");
+        let e = decode_header(&bad_magic).unwrap_err();
+        assert!(matches!(e, DbError::Format(FormatError::BadMagic { .. })));
+
+        // Unsupported version (major mismatch).
+        let mut bad_ver = FileHeader::new_v0_5().encode();
+        bad_ver[4..6].copy_from_slice(&1u16.to_le_bytes());
+        let e = decode_header(&bad_ver).unwrap_err();
+        assert!(matches!(e, DbError::Format(FormatError::UnsupportedVersion { .. })));
+
+        // Sanity: FILE_MAGIC constant is what we expect.
+        assert_eq!(FILE_MAGIC, *b"TDB0");
     }
 }

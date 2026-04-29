@@ -81,3 +81,49 @@ fn parse_select_rejects_misspelled_from_keyword_as_identifier() {
     assert!(parse_select("select * form t").is_err());
 }
 
+#[test]
+fn lex_and_parse_cover_parens_qmark_comma_and_unsupported_char() {
+    // Exercises `Tok::{LParen,RParen,QMark,Comma}` in `lex`.
+    let q = parse_select("select a, b.c from t where (x = ?) and (y < ?)").unwrap();
+    assert_eq!(q.collection, "t");
+    assert_eq!(q.param_count, 2);
+    assert!(matches!(q.columns, SqlColumns::Paths(_)));
+
+    assert!(parse_select("select * from t where a = @").is_err());
+}
+
+#[test]
+fn parse_select_rejects_invalid_select_column_clause() {
+    // Forces `parse_select`'s `_ => return Err(...)` after SELECT (non-`*`, non-ident column).
+    assert!(parse_select("select 1 from t").is_err());
+}
+
+#[test]
+fn parse_select_where_errors_on_bad_path_param_and_ops() {
+    // `take_ident` failure: dotted path without following segment.
+    assert!(parse_select("select * from t where a.").is_err());
+
+    // `take_param` failure: value not `?`.
+    assert!(parse_select("select * from t where a = foo").is_err());
+
+    // `take_cmp` failure: operator not a comparison token.
+    assert!(parse_select("select * from t where a xor ?").is_err());
+}
+
+#[test]
+fn parse_select_where_errors_on_bad_parenthesized_predicate() {
+    // `parse_primary` LParen branch without closing `)`.
+    assert!(parse_select("select * from t where (a = ?").is_err());
+
+    // `parse_primary` fallback: not `(` and not a path start.
+    assert!(parse_select("select * from t where )").is_err());
+}
+
+#[test]
+fn parse_select_order_by_desc_and_full_ok_construction() {
+    let q = parse_select("select * from t order by z.desc desc limit 3").unwrap();
+    assert!(q.order_by.is_some());
+    assert_eq!(q.limit, Some(3));
+    assert_eq!(q.collection, "t");
+}
+

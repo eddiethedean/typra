@@ -257,9 +257,11 @@ mod tests {
         assert!(matches!(r, Err(DbError::NotImplemented)));
 
         let mut st = FailOnWriteStore { len: 32 };
-        let mut guard = TempSpillGuard::new(&mut st).unwrap();
-        let r = guard.append_temp_segment(b"y");
-        assert!(matches!(r, Err(DbError::NotImplemented)));
+        {
+            let mut guard = TempSpillGuard::new(&mut st).unwrap();
+            let r = guard.append_temp_segment(b"y");
+            assert!(matches!(r, Err(DbError::NotImplemented)));
+        }
 
         // `SegmentWriter` does not read for a pure append-failure; exercise `read_exact_at` and the
         // other `Store` hooks so this test helper stays fully covered.

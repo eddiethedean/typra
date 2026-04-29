@@ -32,7 +32,8 @@ use crate::validation;
 use crate::{checkpoint, publish};
 use crate::{MigrationPlan, MigrationStep};
 
-pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
+/// Latest materialized rows keyed by `(collection_id, canonical PK bytes)`.
+pub type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
 
 type PlannedInsert = (
     Vec<u8>,
@@ -529,12 +530,16 @@ impl<S: Store> Database<S> {
         &self,
         q: &crate::query::Query,
     ) -> Result<crate::query::QueryRowIter<'_>, DbError> {
+        let spill_path = match self.path.as_os_str().to_str() {
+            Some(":memory:") => None,
+            _ => Some(self.path.as_path()),
+        };
         crate::query::execute_query_iter_with_spill_path(
             self.catalog_for_read(),
             self.indexes_for_read(),
             self.latest_for_read(),
             q,
-            Some(self.path.as_path()),
+            spill_path,
         )
     }
 
