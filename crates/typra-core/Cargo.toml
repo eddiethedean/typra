@@ -21,6 +21,282 @@ criterion = "0.8"
 tempfile = "3"
 proptest = "1"
 
+[[test]]
+name = "api_stability_smoke"
+path = "tests/integration/api_stability_smoke.rs"
+
+[[test]]
+name = "catalog_codec_constraints"
+path = "tests/integration/catalog_codec_constraints.rs"
+
+[[test]]
+name = "catalog_codec_hardening"
+path = "tests/integration/catalog_codec_hardening.rs"
+
+[[test]]
+name = "catalog_codec_indexes_more"
+path = "tests/integration/catalog_codec_indexes_more.rs"
+
+[[test]]
+name = "catalog_codec_more"
+path = "tests/integration/catalog_codec_more.rs"
+
+[[test]]
+name = "catalog_lookup"
+path = "tests/integration/catalog_lookup.rs"
+
+[[test]]
+name = "catalog_registration"
+path = "tests/integration/catalog_registration.rs"
+
+[[test]]
+name = "checkpoint_more"
+path = "tests/integration/checkpoint_more.rs"
+
+[[test]]
+name = "compaction"
+path = "tests/integration/compaction.rs"
+
+[[test]]
+name = "composite_database"
+path = "tests/integration/composite_database.rs"
+
+[[test]]
+name = "coverage_core_more"
+path = "tests/integration/coverage_core_more.rs"
+
+[[test]]
+name = "coverage_db_api_more"
+path = "tests/integration/coverage_db_api_more.rs"
+
+[[test]]
+name = "coverage_db_core_more"
+path = "tests/integration/coverage_db_core_more.rs"
+
+[[test]]
+name = "coverage_low_level"
+path = "tests/integration/coverage_low_level.rs"
+
+[[test]]
+name = "coverage_more"
+path = "tests/integration/coverage_more.rs"
+
+[[test]]
+name = "database_paths"
+path = "tests/integration/database_paths.rs"
+
+[[test]]
+name = "database_registration_edges"
+path = "tests/integration/database_registration_edges.rs"
+
+[[test]]
+name = "db_insert_errors"
+path = "tests/integration/db_insert_errors.rs"
+
+[[test]]
+name = "db_multiseg_insert_edges"
+path = "tests/integration/db_multiseg_insert_edges.rs"
+
+[[test]]
+name = "db_open"
+path = "tests/integration/db_open.rs"
+
+[[test]]
+name = "db_replay_branches"
+path = "tests/integration/db_replay_branches.rs"
+
+[[test]]
+name = "e2e_inventory_workflow"
+path = "tests/integration/e2e_inventory_workflow.rs"
+
+[[test]]
+name = "e2e_production_journey"
+path = "tests/integration/e2e_production_journey.rs"
+
+[[test]]
+name = "error_display"
+path = "tests/integration/error_display.rs"
+
+[[test]]
+name = "error_more"
+path = "tests/integration/error_more.rs"
+
+[[test]]
+name = "file_format"
+path = "tests/integration/file_format.rs"
+
+[[test]]
+name = "file_header"
+path = "tests/integration/file_header.rs"
+
+[[test]]
+name = "file_locking"
+path = "tests/integration/file_locking.rs"
+
+[[test]]
+name = "file_locking_crash_release"
+path = "tests/integration/file_locking_crash_release.rs"
+
+[[test]]
+name = "format_upgrade"
+path = "tests/integration/format_upgrade.rs"
+
+[[test]]
+name = "index_codec_and_state"
+path = "tests/integration/index_codec_and_state.rs"
+
+[[test]]
+name = "manifest_corruption"
+path = "tests/integration/manifest_corruption.rs"
+
+[[test]]
+name = "manifest_decode_errors"
+path = "tests/integration/manifest_decode_errors.rs"
+
+[[test]]
+name = "manifest_roundtrip"
+path = "tests/integration/manifest_roundtrip.rs"
+
+[[test]]
+name = "multi_collection_isolation"
+path = "tests/integration/multi_collection_isolation.rs"
+
+[[test]]
+name = "nasty_bytes"
+path = "tests/integration/nasty_bytes.rs"
+
+[[test]]
+name = "open_truncated_file_branch"
+path = "tests/integration/open_truncated_file_branch.rs"
+
+[[test]]
+name = "property_invariants"
+path = "tests/integration/property_invariants.rs"
+
+[[test]]
+name = "publish_error_paths"
+path = "tests/integration/publish_error_paths.rs"
+
+[[test]]
+name = "publish_helper_branches"
+path = "tests/integration/publish_helper_branches.rs"
+
+[[test]]
+name = "query_order_by"
+path = "tests/integration/query_order_by.rs"
+
+[[test]]
+name = "query_planner_coverage"
+path = "tests/integration/query_planner_coverage.rs"
+
+[[test]]
+name = "query_range_predicates"
+path = "tests/integration/query_range_predicates.rs"
+
+[[test]]
+name = "record_payload_v1_v2_delete_edges"
+path = "tests/integration/record_payload_v1_v2_delete_edges.rs"
+
+[[test]]
+name = "record_roundtrip"
+path = "tests/integration/record_roundtrip.rs"
+
+[[test]]
+name = "record_scalar_codec"
+path = "tests/integration/record_scalar_codec.rs"
+
+[[test]]
+name = "recovery_fallback_scan"
+path = "tests/integration/recovery_fallback_scan.rs"
+
+[[test]]
+name = "recovery_torn_commit"
+path = "tests/integration/recovery_torn_commit.rs"
+
+[[test]]
+name = "row_subset_edges"
+path = "tests/integration/row_subset_edges.rs"
+
+[[test]]
+name = "row_value_codec_errors"
+path = "tests/integration/row_value_codec_errors.rs"
+
+[[test]]
+name = "scan_edge_cases"
+path = "tests/integration/scan_edge_cases.rs"
+
+[[test]]
+name = "schema_compatibility"
+path = "tests/integration/schema_compatibility.rs"
+
+[[test]]
+name = "schema_paths"
+path = "tests/integration/schema_paths.rs"
+
+[[test]]
+name = "schema_paths_multi_segment"
+path = "tests/integration/schema_paths_multi_segment.rs"
+
+[[test]]
+name = "segments_corruption"
+path = "tests/integration/segments_corruption.rs"
+
+[[test]]
+name = "segments_decode_errors"
+path = "tests/integration/segments_decode_errors.rs"
+
+[[test]]
+name = "segments_reader_error_paths"
+path = "tests/integration/segments_reader_error_paths.rs"
+
+[[test]]
+name = "segments_roundtrip"
+path = "tests/integration/segments_roundtrip.rs"
+
+[[test]]
+name = "snapshot_hardening"
+path = "tests/integration/snapshot_hardening.rs"
+
+[[test]]
+name = "spillable_aggregation"
+path = "tests/integration/spillable_aggregation.rs"
+
+[[test]]
+name = "spillable_join_foundation"
+path = "tests/integration/spillable_join_foundation.rs"
+
+[[test]]
+name = "sql_select"
+path = "tests/integration/sql_select.rs"
+
+[[test]]
+name = "store_io"
+path = "tests/integration/store_io.rs"
+
+[[test]]
+name = "superblock_errors"
+path = "tests/integration/superblock_errors.rs"
+
+[[test]]
+name = "superblock_selection"
+path = "tests/integration/superblock_selection.rs"
+
+[[test]]
+name = "transaction_recovery"
+path = "tests/integration/transaction_recovery.rs"
+
+[[test]]
+name = "txn_payload"
+path = "tests/integration/txn_payload.rs"
+
+[[test]]
+name = "validation_engine"
+path = "tests/integration/validation_engine.rs"
+
+[[test]]
+name = "vec_store"
+path = "tests/integration/vec_store.rs"
+
 [[bench]]
 name = "query"
 harness = false
