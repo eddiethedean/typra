@@ -49,7 +49,9 @@ fn display_covers_validation_path_empty_and_query_and_migration_errors() {
     };
     assert!(s1.to_string().contains("incompatible schema change"));
 
-    let s2 = SchemaError::MigrationRequired { message: "y".into() };
+    let s2 = SchemaError::MigrationRequired {
+        message: "y".into(),
+    };
     assert!(s2.to_string().contains("migration required"));
 
     let s3 = SchemaError::UniqueIndexViolation;
@@ -68,4 +70,3 @@ fn db_error_source_covers_transaction_and_query_none() {
     });
     assert!(qry.source().is_none());
 }
-

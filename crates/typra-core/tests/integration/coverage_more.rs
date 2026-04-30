@@ -4,6 +4,7 @@
 //! - record payload v2 decode error paths
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use typra_core::error::{DbError, FormatError};
 use typra_core::record::{
     decode_record_payload, encode_record_payload_v2, encode_row_value, encode_tagged_scalar,
@@ -218,6 +219,186 @@ fn validation_constraints_cover_all_variants() {
         &RowValue::Bytes(vec![1, 2]),
     )
     .unwrap();
+}
+
+#[test]
+fn validation_primitive_mismatch_uint_float_bytes_and_object_missing_required() {
+    let mut p = vec!["x".to_string()];
+
+    assert!(validate_value(&mut p, &Type::Uint64, &[], &RowValue::Int64(1)).is_err());
+    assert!(validate_value(&mut p, &Type::Float64, &[], &RowValue::Int64(1)).is_err());
+    assert!(validate_value(&mut p, &Type::Bytes, &[], &RowValue::String("x".into())).is_err());
+
+    let obj_fields = vec![FieldDef {
+        path: seg("req"),
+        ty: Type::String,
+        constraints: vec![],
+    }];
+    let row_missing = BTreeMap::new();
+    assert!(
+        validate_value(
+            &mut p,
+            &Type::Object(obj_fields.clone()),
+            &[],
+            &RowValue::Object(row_missing),
+        )
+        .is_err()
+    );
+
+    assert!(validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MinI64(0)],
+        &RowValue::String("n".into()),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MaxI64(0)],
+        &RowValue::String("n".into()),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Uint64,
+        &[Constraint::MinU64(0)],
+        &RowValue::Int64(1),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Uint64,
+        &[Constraint::MaxU64(0)],
+        &RowValue::Int64(1),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Float64,
+        &[Constraint::MinF64(0.0)],
+        &RowValue::Int64(1),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Float64,
+        &[Constraint::MaxF64(0.0)],
+        &RowValue::Int64(1),
+    )
+    .is_err());
+
+    assert!(validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MinLength(3)],
+        &RowValue::Int64(1),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MaxLength(3)],
+        &RowValue::Int64(1),
+    )
+    .is_err());
+
+    assert!(validate_value(
+        &mut p,
+        &Type::List(Box::new(Type::Int64)),
+        &[Constraint::MaxLength(1)],
+        &RowValue::List(vec![
+            RowValue::Int64(1),
+            RowValue::Int64(2),
+            RowValue::Int64(3),
+        ]),
+    )
+    .is_err());
+}
+
+#[test]
+fn validation_numeric_bound_violations_and_maxlength_wrong_type() {
+    let mut p = vec!["x".to_string()];
+    assert!(validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MaxI64(10)],
+        &RowValue::Int64(11),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Uint64,
+        &[Constraint::MinU64(10)],
+        &RowValue::Uint64(1),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Uint64,
+        &[Constraint::MaxU64(1)],
+        &RowValue::Uint64(2),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Float64,
+        &[Constraint::MinF64(10.0)],
+        &RowValue::Float64(1.0),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Float64,
+        &[Constraint::MaxF64(1.0)],
+        &RowValue::Float64(2.0),
+    )
+    .is_err());
+
+    assert!(validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MinLength(5)],
+        &RowValue::String("abcd".into()),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Bytes,
+        &[Constraint::MinLength(3)],
+        &RowValue::Bytes(vec![1, 2]),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::List(Box::new(Type::Int64)),
+        &[Constraint::MinLength(3)],
+        &RowValue::List(vec![RowValue::Int64(1)]),
+    )
+    .is_err());
+
+    assert!(validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MaxLength(1)],
+        &RowValue::String("ab".into()),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::List(Box::new(Type::Int64)),
+        &[Constraint::MaxLength(1)],
+        &RowValue::List(vec![RowValue::Int64(1), RowValue::Int64(2)]),
+    )
+    .is_err());
+
+    assert!(validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MaxLength(3)],
+        &RowValue::Int64(1),
+    )
+    .is_err());
 }
 
 #[test]

@@ -6,12 +6,7 @@ use typra_core::schema::{FieldDef, FieldPath, Type};
 use typra_core::{Database, RowValue, ScalarValue};
 
 fn obj(pairs: impl IntoIterator<Item = (&'static str, RowValue)>) -> RowValue {
-    RowValue::Object(
-        pairs
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
-    )
+    RowValue::Object(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
 }
 
 #[test]
@@ -86,10 +81,12 @@ fn insert_multisegment_schema_absent_optional_nested_field_is_allowed() {
     // omit profile entirely -> leaf is absent; optional should be accepted
     db.insert(cid, row).unwrap();
 
-    let got = db.get(cid, &ScalarValue::String("u1".into())).unwrap().unwrap();
+    let got = db
+        .get(cid, &ScalarValue::String("u1".into()))
+        .unwrap()
+        .unwrap();
     let Some(RowValue::Object(profile)) = got.get("profile") else {
         panic!("expected `profile` to be materialized as an object");
     };
     assert!(matches!(profile.get("tz"), Some(RowValue::None)));
 }
-

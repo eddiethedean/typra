@@ -1,5 +1,7 @@
 use typra_core::error::{DbError, FormatError, SchemaError};
-use typra_core::index::{decode_index_payload, encode_index_payload, IndexEntry, IndexOp, IndexState};
+use typra_core::index::{
+    decode_index_payload, encode_index_payload, IndexEntry, IndexOp, IndexState,
+};
 use typra_core::schema::IndexKind;
 use typra_core::ScalarValue;
 
@@ -23,7 +25,10 @@ fn index_state_unique_insert_delete_branches() {
     let mut e2 = e1.clone();
     e2.pk_key = ScalarValue::String("b".into()).canonical_key_bytes();
     let err = st.apply(e2).unwrap_err();
-    assert!(matches!(err, DbError::Schema(SchemaError::UniqueIndexViolation)));
+    assert!(matches!(
+        err,
+        DbError::Schema(SchemaError::UniqueIndexViolation)
+    ));
 
     // Delete mismatch is ok (no-op).
     let mut del = e1.clone();
@@ -55,7 +60,10 @@ fn decode_index_payload_rejects_unknown_kind_and_op_and_trailing_bytes() {
     let kind_pos = 2 + 4 + 4;
     bytes[kind_pos] = 9;
     let err = decode_index_payload(&bytes).unwrap_err();
-    assert!(matches!(err, DbError::Format(FormatError::InvalidCatalogPayload { .. })));
+    assert!(matches!(
+        err,
+        DbError::Format(FormatError::InvalidCatalogPayload { .. })
+    ));
 
     // Unknown op tag (v2): reset kind to 1, corrupt op.
     let mut bytes2 = encode_index_payload(&[IndexEntry {
@@ -69,7 +77,10 @@ fn decode_index_payload_rejects_unknown_kind_and_op_and_trailing_bytes() {
     let op_pos = kind_pos + 1;
     bytes2[op_pos] = 9;
     let err = decode_index_payload(&bytes2).unwrap_err();
-    assert!(matches!(err, DbError::Format(FormatError::InvalidCatalogPayload { .. })));
+    assert!(matches!(
+        err,
+        DbError::Format(FormatError::InvalidCatalogPayload { .. })
+    ));
 
     // Trailing bytes.
     let mut bytes3 = encode_index_payload(&[IndexEntry {
@@ -82,7 +93,10 @@ fn decode_index_payload_rejects_unknown_kind_and_op_and_trailing_bytes() {
     }]);
     bytes3.push(0);
     let err = decode_index_payload(&bytes3).unwrap_err();
-    assert!(matches!(err, DbError::Format(FormatError::InvalidCatalogPayload { .. })));
+    assert!(matches!(
+        err,
+        DbError::Format(FormatError::InvalidCatalogPayload { .. })
+    ));
 }
 
 #[test]
@@ -192,4 +206,3 @@ fn decode_index_payload_rejects_unexpected_eof_in_tags_and_lengths() {
         DbError::Format(FormatError::InvalidCatalogPayload { .. })
     ));
 }
-

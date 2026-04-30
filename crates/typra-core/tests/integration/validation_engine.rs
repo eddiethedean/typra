@@ -120,6 +120,95 @@ fn validate_int64_min_constraint() {
 }
 
 #[test]
+fn validate_object_optional_field_absent_is_ok() {
+    let fields = vec![FieldDef {
+        path: path_seg("x"),
+        ty: Type::Optional(Box::new(Type::String)),
+        constraints: vec![],
+    }];
+    let ty = Type::Object(fields);
+    let m = BTreeMap::new(); // missing optional field x
+    let mut p = vec!["obj".into()];
+    validate_value(&mut p, &ty, &[], &RowValue::Object(m)).unwrap();
+}
+
+#[test]
+fn validate_constraints_violation_branches() {
+    let mut p = vec!["v".into()];
+
+    // MaxI64 violation.
+    assert!(validate_value(
+        &mut p,
+        &Type::Int64,
+        &[Constraint::MaxI64(1)],
+        &RowValue::Int64(2),
+    )
+    .is_err());
+
+    // MinU64 / MaxU64 violations.
+    assert!(validate_value(
+        &mut p,
+        &Type::Uint64,
+        &[Constraint::MinU64(5)],
+        &RowValue::Uint64(1),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Uint64,
+        &[Constraint::MaxU64(1)],
+        &RowValue::Uint64(2),
+    )
+    .is_err());
+
+    // MinF64 / MaxF64 violations.
+    assert!(validate_value(
+        &mut p,
+        &Type::Float64,
+        &[Constraint::MinF64(5.0)],
+        &RowValue::Float64(1.0),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Float64,
+        &[Constraint::MaxF64(1.0)],
+        &RowValue::Float64(2.0),
+    )
+    .is_err());
+
+    // MinLength string/bytes/list violations; MaxLength list violation.
+    assert!(validate_value(
+        &mut p,
+        &Type::String,
+        &[Constraint::MinLength(3)],
+        &RowValue::String("hi".into()),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::Bytes,
+        &[Constraint::MinLength(2)],
+        &RowValue::Bytes(vec![1]),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::List(Box::new(Type::Int64)),
+        &[Constraint::MinLength(2)],
+        &RowValue::List(vec![RowValue::Int64(1)]),
+    )
+    .is_err());
+    assert!(validate_value(
+        &mut p,
+        &Type::List(Box::new(Type::Int64)),
+        &[Constraint::MaxLength(1)],
+        &RowValue::List(vec![RowValue::Int64(1), RowValue::Int64(2)]),
+    )
+    .is_err());
+}
+
+#[test]
 fn validate_string_regex_constraint_ok_and_fail() {
     let mut p = vec!["s".into()];
     validate_value(

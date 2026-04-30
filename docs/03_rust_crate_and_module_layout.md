@@ -292,7 +292,7 @@ Longer term, queries, migrations, and richer handles may join the stable surface
 
 ## Testing Strategy
 Each crate should have:
-- unit tests for local logic
+- unit tests for local logic (in **`typra-core`**, test bodies live under **`crates/typra-core/tests/unit/`** and are pulled into `#[cfg(test)]` modules via **`include!`** so they stay in the same crate and can access private items)
 - integration tests against public API
 - corruption/recovery tests for storage
 - snapshot tests for schema derivation

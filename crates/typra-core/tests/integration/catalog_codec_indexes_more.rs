@@ -70,4 +70,3 @@ fn decode_indexes_rejects_invalid_utf8_in_index_name() {
     let err = decode_catalog_payload(&b).unwrap_err();
     assert!(matches!(err, DbError::Format(_)));
 }
-

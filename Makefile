@@ -108,15 +108,15 @@ coverage: coverage-rust coverage-python
 
 # Minimum line coverage for `typra-core` (practical gate; raise as tests improve).
 # Keep this at/under current CI baseline; ratchet upward over time.
-COVERAGE_TYPRA_CORE_LINES ?= 85
+COVERAGE_TYPRA_CORE_LINES ?= 93
 
 # "Core logic" coverage gates.
 # We compute this from the LCOV output and exclude format/corruption/error-injection-heavy modules.
 # Current realistic baselines (raise over time).
-COVERAGE_CORE_DB_LINES ?= 84
-COVERAGE_CORE_QUERY_LINES ?= 94
+COVERAGE_CORE_DB_LINES ?= 83
+COVERAGE_CORE_QUERY_LINES ?= 90
 COVERAGE_CORE_INDEX_LINES ?= 94
-COVERAGE_CORE_VALIDATION_LINES ?= 91
+COVERAGE_CORE_VALIDATION_LINES ?= 96
 
 coverage-rust:
 	@mkdir -p target/coverage

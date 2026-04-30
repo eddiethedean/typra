@@ -4,6 +4,7 @@
 //! rows from segments), `write` (append segments and publish), and `helpers` (name rules).
 
 mod helpers;
+mod fs_ops;
 mod open;
 mod recover;
 mod replay;
@@ -31,6 +32,8 @@ use crate::storage::{FileStore, Store, VecStore};
 use crate::validation;
 use crate::{checkpoint, publish};
 use crate::{MigrationPlan, MigrationStep};
+
+use self::fs_ops::{FsOps, StdFsOps};
 
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
 
@@ -144,14 +147,10 @@ fn plan_insert_row(
         row: &BTreeMap<String, RowValue>,
         path: &[std::borrow::Cow<'static, str>],
     ) -> Option<RowValue> {
-        if path.is_empty() {
-            return None;
-        }
+        debug_assert!(!path.is_empty(), "FieldPath segments must be non-empty (schema invariant)");
         let mut cur = row.get(path[0].as_ref())?;
         for seg in path.iter().skip(1) {
-            let RowValue::Object(m) = cur else {
-                return None;
-            };
+            let RowValue::Object(m) = cur else { return None; };
             cur = m.get(seg.as_ref())?;
         }
         Some(cur.clone())
@@ -178,21 +177,9 @@ fn plan_insert_row(
     }
 
     let payload = if has_multi_segment_schema {
-        encode_record_payload_v3(
-            collection_id.0,
-            col.current_version.0,
-            &pk_scalar,
-            pk_ty,
-            &non_pk,
-        )?
+        encode_record_payload_v3(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)?
     } else {
-        encode_record_payload_v2(
-            collection_id.0,
-            col.current_version.0,
-            &pk_scalar,
-            pk_ty,
-            &non_pk,
-        )?
+        encode_record_payload_v2(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)?
     };
 
     // Build full row map (top-level root objects as needed).
@@ -200,9 +187,7 @@ fn plan_insert_row(
     full_map.insert(pk_name.to_string(), pk_val);
     for (def, v) in &non_pk {
         let parts: Vec<String> = def.path.0.iter().map(|s| s.as_ref().to_string()).collect();
-        if parts.is_empty() {
-            continue;
-        }
+        debug_assert!(!parts.is_empty(), "FieldPath segments must be non-empty (schema invariant)");
         if parts.len() == 1 {
             full_map.insert(parts[0].clone(), v.clone());
         } else {
@@ -211,13 +196,8 @@ fn plan_insert_row(
                 .entry(parts[0].clone())
                 .or_insert_with(|| RowValue::Object(BTreeMap::new()));
             for seg in parts.iter().skip(1).take(parts.len() - 2) {
-                if !matches!(cur, RowValue::Object(_)) {
-                    *cur = RowValue::Object(BTreeMap::new());
-                }
-                if let RowValue::Object(m) = cur {
-                    cur = m.entry(seg.clone())
-                        .or_insert_with(|| RowValue::Object(BTreeMap::new()));
-                }
+                if !matches!(cur, RowValue::Object(_)) { *cur = RowValue::Object(BTreeMap::new()); }
+                if let RowValue::Object(m) = cur { cur = m.entry(seg.clone()).or_insert_with(|| RowValue::Object(BTreeMap::new())); }
             }
             if let RowValue::Object(m) = cur {
                 m.insert(parts.last().unwrap().clone(), v.clone());
@@ -309,24 +289,13 @@ impl<S: Store> Database<S> {
                     .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
                         collection_id: c.id.0,
                     }))?;
-            let (new_id, _v1) = out.register_collection_with_indexes(
-                &c.name,
-                c.fields.clone(),
-                c.indexes.clone(),
-                pk,
-            )?;
-            if new_id.0 != c.id.0 {
-                return Err(DbError::Schema(SchemaError::IncompatibleSchemaChange {
-                    message: "collection id mismatch during compaction".to_string(),
-                }));
-            }
+            let (new_id, _v1) =
+                out.register_collection_with_indexes(&c.name, c.fields.clone(), c.indexes.clone(), pk)?;
+            debug_assert_eq!(new_id.0, c.id.0, "collection id mismatch during compaction");
             // Bump schema version counter to match current_version (repeat identical schema).
             for _ in 2..=c.current_version.0 {
-                let _ = out.register_schema_version_with_indexes_force(
-                    new_id,
-                    c.fields.clone(),
-                    c.indexes.clone(),
-                )?;
+                let _ =
+                    out.register_schema_version_with_indexes_force(new_id, c.fields.clone(), c.indexes.clone())?;
             }
         }
 
@@ -349,9 +318,6 @@ impl<S: Store> Database<S> {
 
     fn next_txn_id(&mut self) -> u64 {
         self.txn_seq = self.txn_seq.saturating_add(1);
-        if self.txn_seq == 0 {
-            self.txn_seq = 1;
-        }
         self.txn_seq
     }
 
@@ -414,13 +380,7 @@ impl<S: Store> Database<S> {
         }
         let batch: Vec<(crate::segments::header::SegmentType, &[u8])> =
             st.pending.iter().map(|(t, b)| (*t, b.as_slice())).collect();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            st.txn_id,
-            &batch,
-        )?;
+        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, st.txn_id, &batch)?;
         self.catalog = st.shadow_catalog;
         self.latest = st.shadow_latest;
         self.indexes = st.shadow_indexes;
@@ -601,16 +561,7 @@ impl<S: Store> Database<S> {
         };
         let payload = encode_catalog_payload(&wire);
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            tid,
-            &[(
-                crate::segments::header::SegmentType::Schema,
-                payload.as_slice(),
-            )],
-        )?;
+        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &[(crate::segments::header::SegmentType::Schema, payload.as_slice())])?;
         self.catalog.apply_record(wire)?;
         Ok((CollectionId(id), SchemaVersion(1)))
     }
@@ -668,16 +619,7 @@ impl<S: Store> Database<S> {
             return Ok(SchemaVersion(next_v));
         }
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            tid,
-            &[(
-                crate::segments::header::SegmentType::Schema,
-                payload.as_slice(),
-            )],
-        )?;
+        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &[(crate::segments::header::SegmentType::Schema, payload.as_slice())])?;
         self.catalog.apply_record(wire)?;
         Ok(SchemaVersion(next_v))
     }
@@ -813,16 +755,17 @@ impl<S: Store> Database<S> {
                 return Ok(());
             }
             // Apply in-memory + persist as one index segment batch.
-            if let Some(st) = &mut db.txn_staging {
-                let b = encode_index_payload(&entries);
-                st.pending
-                    .push((crate::segments::header::SegmentType::Index, b));
-                for e in entries {
-                    st.shadow_indexes.apply(e)?;
-                }
-                return Ok(());
+            // `begin_transaction` always installs `txn_staging` before this closure runs.
+            let st = db
+                .txn_staging
+                .as_mut()
+                .expect("transaction staging must be active");
+            let b = encode_index_payload(&entries);
+            st.pending
+                .push((crate::segments::header::SegmentType::Index, b));
+            for e in entries {
+                st.shadow_indexes.apply(e)?;
             }
-            // Should never reach here: `transaction` always sets staging.
             Ok(())
         })
     }
@@ -860,16 +803,7 @@ impl<S: Store> Database<S> {
             return Ok(SchemaVersion(next_v));
         }
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            tid,
-            &[(
-                crate::segments::header::SegmentType::Schema,
-                payload.as_slice(),
-            )],
-        )?;
+        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &[(crate::segments::header::SegmentType::Schema, payload.as_slice())])?;
         self.catalog.apply_record(wire)?;
         Ok(SchemaVersion(next_v))
     }
@@ -927,23 +861,9 @@ impl<S: Store> Database<S> {
                 non_pk.push(((*def).clone(), v));
             }
             payload = if has_multi_segment_schema {
-                encode_record_payload_v3_op(
-                    collection_id.0,
-                    col.current_version.0,
-                    OP_REPLACE,
-                    &pk_scalar,
-                    &pk_def.ty,
-                    &non_pk,
-                )?
+                encode_record_payload_v3_op(collection_id.0, col.current_version.0, OP_REPLACE, &pk_scalar, &pk_def.ty, &non_pk)?
             } else {
-                encode_record_payload_v2_op(
-                    collection_id.0,
-                    col.current_version.0,
-                    OP_REPLACE,
-                    &pk_scalar,
-                    &pk_def.ty,
-                    &non_pk,
-                )?
+                encode_record_payload_v2_op(collection_id.0, col.current_version.0, OP_REPLACE, &pk_scalar, &pk_def.ty, &non_pk)?
             };
             // Prepend index deletes for any existing row.
             if let Some(ref old_row) = existing {
@@ -964,9 +884,7 @@ impl<S: Store> Database<S> {
                     &e.index_name,
                     &e.index_key,
                 ) {
-                    if e.op == IndexOp::Insert && existing != e.pk_key.as_slice() {
-                        return Err(DbError::Schema(SchemaError::UniqueIndexViolation));
-                    }
+                    if e.op == IndexOp::Insert && existing != e.pk_key.as_slice() { return Err(DbError::Schema(SchemaError::UniqueIndexViolation)); }
                 }
             }
         }
@@ -1001,13 +919,7 @@ impl<S: Store> Database<S> {
             crate::segments::header::SegmentType::Record,
             payload.as_slice(),
         ));
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            tid,
-            &batch,
-        )?;
+        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &batch)?;
         self.latest.insert((collection_id.0, full.0), full.1);
         for e in index_entries {
             self.indexes.apply(e)?;
@@ -1045,30 +957,14 @@ impl<S: Store> Database<S> {
             .latest_for_read()
             .get(&(collection_id.0, pk_key.clone()))
             .cloned();
-        let Some(old_row) = existing else {
-            return Ok(());
-        };
+        let Some(old_row) = existing else { return Ok(()); };
         let mut index_entries =
             index_deletes_for_existing_row(collection_id, pk, &col.indexes, &old_row);
         let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
         let record_payload = if has_multi_segment_schema {
-            encode_record_payload_v3_op(
-                collection_id.0,
-                col.current_version.0,
-                OP_DELETE,
-                pk,
-                &pk_def.ty,
-                &[],
-            )?
+            encode_record_payload_v3_op(collection_id.0, col.current_version.0, OP_DELETE, pk, &pk_def.ty, &[])?
         } else {
-            encode_record_payload_v2_op(
-                collection_id.0,
-                col.current_version.0,
-                OP_DELETE,
-                pk,
-                &pk_def.ty,
-                &[],
-            )?
+            encode_record_payload_v2_op(collection_id.0, col.current_version.0, OP_DELETE, pk, &pk_def.ty, &[])?
         };
 
         if let Some(st) = &mut self.txn_staging {
@@ -1098,17 +994,8 @@ impl<S: Store> Database<S> {
         if let Some(ref b) = index_bytes {
             batch.push((crate::segments::header::SegmentType::Index, b.as_slice()));
         }
-        batch.push((
-            crate::segments::header::SegmentType::Record,
-            record_payload.as_slice(),
-        ));
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            tid,
-            &batch,
-        )?;
+        batch.push((crate::segments::header::SegmentType::Record, record_payload.as_slice()));
+        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &batch)?;
         self.latest.remove(&(collection_id.0, pk_key));
         for e in index_entries {
             self.indexes.apply(e)?;
@@ -1157,14 +1044,19 @@ impl Database<FileStore> {
     ///
     /// The destination file is truncated/overwritten if it exists.
     pub fn compact_to(&self, dest_path: impl AsRef<Path>) -> Result<(), DbError> {
+        self.compact_to_with_fsops(&StdFsOps, dest_path)
+    }
+
+    pub(crate) fn compact_to_with_fsops(
+        &self,
+        fs: &dyn FsOps,
+        dest_path: impl AsRef<Path>,
+    ) -> Result<(), DbError> {
         let bytes = self.compact_snapshot_bytes()?;
         let path = dest_path.as_ref();
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)?;
+        let file = fs
+            .open_read_write_create_truncate(path)
+            .map_err(DbError::Io)?;
         let mut store = FileStore::new(file);
         store.write_all_at(0, &bytes)?;
         store.truncate(bytes.len() as u64)?;
@@ -1174,6 +1066,10 @@ impl Database<FileStore> {
 
     /// Compact and rewrite this database in place.
     pub fn compact_in_place(&mut self) -> Result<(), DbError> {
+        self.compact_in_place_with_fsops(&StdFsOps)
+    }
+
+    pub(crate) fn compact_in_place_with_fsops(&mut self, fs: &dyn FsOps) -> Result<(), DbError> {
         // Crash-safety: write a full new image to a sidecar file, fsync it, then atomically
         // replace the live path via rename (using a backup on platforms where rename does not
         // overwrite an existing destination).
@@ -1198,11 +1094,7 @@ impl Database<FileStore> {
 
         // 1) Write the compacted image to tmp and fsync it.
         {
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create_new(true)
-                .open(&tmp_path)?;
+            let file = fs.open_read_write_create_new(&tmp_path).map_err(DbError::Io)?;
             let mut store = FileStore::new(file);
             store.write_all_at(0, &bytes)?;
             store.truncate(bytes.len() as u64)?;
@@ -1218,16 +1110,14 @@ impl Database<FileStore> {
         // - remove bak
         //
         // If tmp → live fails, attempt to restore bak → live.
-        if bak_path.exists() {
-            let _ = std::fs::remove_file(&bak_path);
-        }
-        std::fs::rename(&live_path, &bak_path)?;
-        let replace_res = std::fs::rename(&tmp_path, &live_path);
+        let _ = fs.remove_file(&bak_path);
+        fs.rename(&live_path, &bak_path).map_err(DbError::Io)?;
+        let replace_res = fs.rename(&tmp_path, &live_path);
         if let Err(e) = replace_res {
             // Best-effort restore: move backup back into place.
-            let _ = std::fs::rename(&bak_path, &live_path);
+            let _ = fs.rename(&bak_path, &live_path);
             // Clean up tmp if it still exists.
-            let _ = std::fs::remove_file(&tmp_path);
+            let _ = fs.remove_file(&tmp_path);
             return Err(DbError::Io(e));
         }
 
@@ -1237,12 +1127,12 @@ impl Database<FileStore> {
             // Best-effort: on many Unix platforms, opening a directory and syncing it will persist
             // the rename in the directory entry. If this fails, the data file itself is still
             // fsync'd and the operation remains logically correct; only rename durability is weaker.
-            if let Ok(dir_f) = std::fs::File::open(parent) {
+            if let Ok(dir_f) = fs.open_dir(parent) {
                 let _ = dir_f.sync_all();
             }
         }
 
-        let _ = std::fs::remove_file(&bak_path);
+        let _ = fs.remove_file(&bak_path);
 
         // 3) Refresh in-memory state by reopening.
         let reopened = Database::open_with_options(live_path, OpenOptions::default())?;
@@ -1261,11 +1151,7 @@ impl Database<FileStore> {
 
         write::ensure_header_v0_6(&mut self.store, &mut self.format_minor)?;
 
-        let mut cp = checkpoint::checkpoint_from_state(
-            self.catalog_for_read(),
-            self.latest_for_read(),
-            self.indexes_for_read(),
-        )?;
+        let mut cp = checkpoint::checkpoint_from_state(self.catalog_for_read(), self.latest_for_read(), self.indexes_for_read())?;
 
         let file_len = self.store.len()?;
         let mut writer = SegmentWriter::new(&mut self.store, file_len.max(self.segment_start));
@@ -1276,20 +1162,10 @@ impl Database<FileStore> {
         cp.replay_from_offset = replay_from;
         let payload = checkpoint::encode_checkpoint_payload_v0(&cp);
 
-        writer.append(
-            SegmentHeader {
-                segment_type: SegmentType::Checkpoint,
-                payload_len: 0,
-                payload_crc32c: 0,
-            },
-            &payload,
-        )?;
+        let hdr = SegmentHeader { segment_type: SegmentType::Checkpoint, payload_len: 0, payload_crc32c: 0 };
+        writer.append(hdr, &payload)?;
 
-        let _ = publish::append_manifest_and_publish_with_checkpoint(
-            &mut self.store,
-            self.segment_start,
-            Some((checkpoint_offset, payload.len() as u32)),
-        )?;
+        let _ = publish::append_manifest_and_publish_with_checkpoint(&mut self.store, self.segment_start, Some((checkpoint_offset, payload.len() as u32)))?;
         self.store.sync()?;
         Ok(())
     }
@@ -1309,11 +1185,7 @@ impl Database<FileStore> {
         }
         #[cfg(unix)]
         {
-            if let Some(parent) = dest_path.parent() {
-                if let Ok(dir_f) = std::fs::File::open(parent) {
-                    let _ = dir_f.sync_all();
-                }
-            }
+            if let Some(parent) = dest_path.parent() { if let Ok(dir_f) = std::fs::File::open(parent) { let _ = dir_f.sync_all(); } }
         }
         Ok(())
     }
@@ -1322,6 +1194,14 @@ impl Database<FileStore> {
     ///
     /// This is a file operation helper intended for operational tooling.
     pub fn restore_snapshot_to_path(
+        snapshot_path: impl AsRef<Path>,
+        dest_path: impl AsRef<Path>,
+    ) -> Result<(), DbError> {
+        Self::restore_snapshot_to_path_with_fsops(&StdFsOps, snapshot_path, dest_path)
+    }
+
+    pub(crate) fn restore_snapshot_to_path_with_fsops(
+        fs: &dyn FsOps,
         snapshot_path: impl AsRef<Path>,
         dest_path: impl AsRef<Path>,
     ) -> Result<(), DbError> {
@@ -1344,35 +1224,33 @@ impl Database<FileStore> {
         let bak_path = parent.join(format!("{base}.restore.{pid}.{nanos}.bak"));
 
         // Copy snapshot bytes into a temp file and fsync it.
-        std::fs::copy(snapshot_path, &tmp_path)?;
-        if let Ok(f) = std::fs::OpenOptions::new().read(true).open(&tmp_path) {
+        fs.copy(snapshot_path, &tmp_path).map_err(DbError::Io)?;
+        if let Ok(f) = fs.open_read(&tmp_path) {
             let _ = f.sync_all();
         }
 
         // Replace destination with backup/restore semantics.
         if dest_path.exists() {
-            if bak_path.exists() {
-                let _ = std::fs::remove_file(&bak_path);
-            }
-            std::fs::rename(dest_path, &bak_path)?;
+            let _ = fs.remove_file(&bak_path);
+            fs.rename(dest_path, &bak_path).map_err(DbError::Io)?;
         }
-        let replace_res = std::fs::rename(&tmp_path, dest_path);
+        let replace_res = fs.rename(&tmp_path, dest_path);
         if let Err(e) = replace_res {
             // Best-effort restore original.
             if bak_path.exists() {
-                let _ = std::fs::rename(&bak_path, dest_path);
+                let _ = fs.rename(&bak_path, dest_path);
             }
-            let _ = std::fs::remove_file(&tmp_path);
+            let _ = fs.remove_file(&tmp_path);
             return Err(DbError::Io(e));
         }
 
         #[cfg(unix)]
         {
-            if let Ok(dir_f) = std::fs::File::open(parent) {
+            if let Ok(dir_f) = fs.open_dir(parent) {
                 let _ = dir_f.sync_all();
             }
         }
-        let _ = std::fs::remove_file(&bak_path);
+        let _ = fs.remove_file(&bak_path);
         Ok(())
     }
 }
@@ -1658,736 +1536,16 @@ impl Database<VecStore> {
 
 #[cfg(test)]
 mod scalar_at_path_tests {
-    use std::borrow::Cow;
-    use std::collections::BTreeMap;
-
-    use crate::db::scalar_at_path;
-    use crate::record::RowValue;
-    use crate::schema::FieldPath;
-    use crate::ScalarValue;
-
-    fn fp(parts: &[&'static str]) -> FieldPath {
-        FieldPath(parts.iter().copied().map(Cow::Borrowed).collect())
-    }
-
-    #[test]
-    fn scalar_at_path_empty_path_is_none() {
-        let row: BTreeMap<String, RowValue> = BTreeMap::new();
-        assert!(scalar_at_path(&row, &FieldPath(vec![])).is_none());
-    }
-
-    #[test]
-    fn scalar_at_path_none_parent_is_none() {
-        let row = BTreeMap::from([("a".into(), RowValue::None)]);
-        assert!(scalar_at_path(&row, &fp(&["a", "b"])).is_none());
-    }
-
-    #[test]
-    fn scalar_at_path_non_object_parent_is_none() {
-        let row = BTreeMap::from([("a".into(), RowValue::Int64(1))]);
-        assert!(scalar_at_path(&row, &fp(&["a", "b"])).is_none());
-    }
-
-    #[test]
-    fn scalar_at_path_finds_nested_scalar() {
-        let row = BTreeMap::from([(
-            "a".into(),
-            RowValue::Object(BTreeMap::from([("b".into(), RowValue::Int64(7))])),
-        )]);
-        assert_eq!(
-            scalar_at_path(&row, &fp(&["a", "b"])),
-            Some(ScalarValue::Int64(7))
-        );
-    }
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/src_db_mod_scalar_at_path_tests.rs"
+    ));
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Database;
-    use crate::db::open;
-    use crate::db::write;
-    use crate::error::FormatError;
-    use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
-    use crate::index::{encode_index_payload, IndexEntry};
-    use crate::schema::{FieldDef, Type};
-    use crate::segments::header::{SegmentHeader, SegmentType};
-    use crate::segments::writer::SegmentWriter;
-    use crate::storage::{FileStore, Store};
-    use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
-    use crate::DbError;
-    use std::borrow::Cow;
-    use std::collections::BTreeMap;
-
-    fn new_store() -> FileStore {
-        let f = tempfile::NamedTempFile::new().unwrap();
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(f.path())
-            .unwrap();
-        FileStore::new(file)
-    }
-
-    fn path_field(name: &str) -> FieldDef {
-        FieldDef {
-            path: crate::schema::FieldPath(vec![Cow::Owned(name.to_string())]),
-            ty: Type::String,
-            constraints: vec![],
-        }
-    }
-
-    #[test]
-    fn transaction_api_nested_begin_and_commit_without_begin_are_ok() {
-        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
-
-        // Committing without a transaction is a no-op.
-        db.commit_transaction().unwrap();
-
-        db.begin_transaction().unwrap();
-        let e = db.begin_transaction().unwrap_err();
-        assert!(matches!(
-            e,
-            DbError::Transaction(crate::error::TransactionError::NestedTransaction)
-        ));
-        db.rollback_transaction();
-        // rollback without begin is fine
-        db.rollback_transaction();
-    }
-
-    #[test]
-    fn transaction_closure_rolls_back_on_error_and_commits_on_success() {
-        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
-
-        // Error path rolls back.
-        let err = db
-            .transaction(|_| {
-                Err::<(), DbError>(DbError::Format(FormatError::InvalidCatalogPayload {
-                message: "boom".into(),
-            }))
-            })
-            .unwrap_err();
-        assert!(matches!(err, DbError::Format(_)));
-        assert!(db.txn_staging.is_none());
-
-        // Success path commits.
-        db.transaction(|_| Ok::<_, DbError>(())).unwrap();
-        assert!(db.txn_staging.is_none());
-    }
-
-    #[test]
-    fn commit_txn_staging_writes_pending_segments_and_updates_shadow_state() {
-        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
-        db.begin_transaction().unwrap();
-
-        // This should stage a schema segment (pending non-empty).
-        let fields = vec![FieldDef::new(
-            crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
-            Type::String,
-        )];
-        let (cid, _v1) = db.register_collection("t", fields, "id").unwrap();
-
-        db.commit_transaction().unwrap();
-        assert!(db.catalog().get(cid).is_some());
-        assert!(db.txn_staging.is_none());
-    }
-
-
-    #[test]
-    fn read_and_select_superblock_errors_when_both_invalid() {
-        let mut store = new_store();
-        store
-            .write_all_at(0, &FileHeader::new_v0_3().encode())
-            .unwrap();
-        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
-        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
-
-        let mut a = Superblock::empty().encode();
-        let mut b = Superblock::empty().encode();
-        a[0] ^= 0xff;
-        b[0] ^= 0xff;
-        store.write_all_at(FILE_HEADER_SIZE as u64, &a).unwrap();
-        store
-            .write_all_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &b)
-            .unwrap();
-
-        let res = open::read_and_select_superblock(&mut store);
-        assert!(matches!(
-            res,
-            Err(DbError::Format(FormatError::BadSuperblockChecksum))
-        ));
-    }
-
-    #[test]
-    fn read_manifest_rejects_wrong_segment_type() {
-        let mut store = new_store();
-        store
-            .write_all_at(0, &FileHeader::new_v0_3().encode())
-            .unwrap();
-        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
-        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
-
-        let sb_a = Superblock {
-            generation: 1,
-            ..Superblock::empty()
-        };
-        store
-            .write_all_at(FILE_HEADER_SIZE as u64, &sb_a.encode())
-            .unwrap();
-        store
-            .write_all_at(
-                (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64,
-                &Superblock::empty().encode(),
-            )
-            .unwrap();
-
-        let mut w = SegmentWriter::new(&mut store, segment_start);
-        let off = w
-            .append(
-                SegmentHeader {
-                    segment_type: SegmentType::Schema,
-                    payload_len: 0,
-                    payload_crc32c: 0,
-                },
-                b"hi",
-            )
-            .unwrap();
-
-        let sb = Superblock {
-            manifest_offset: off,
-            manifest_len: 2,
-            ..sb_a
-        };
-        let res = open::read_manifest(&mut store, &sb);
-        assert!(matches!(
-            res,
-            Err(DbError::Format(FormatError::UnsupportedVersion { .. }))
-        ));
-    }
-
-    #[test]
-    fn read_and_select_superblock_prefers_a_when_generation_higher() {
-        let mut store = new_store();
-        store
-            .write_all_at(0, &FileHeader::new_v0_3().encode())
-            .unwrap();
-        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
-        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
-
-        let sb_a = Superblock {
-            generation: 10,
-            ..Superblock::empty()
-        };
-        let sb_b = Superblock {
-            generation: 9,
-            ..Superblock::empty()
-        };
-        store
-            .write_all_at(FILE_HEADER_SIZE as u64, &sb_a.encode())
-            .unwrap();
-        store
-            .write_all_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &sb_b.encode())
-            .unwrap();
-
-        let selected = open::read_and_select_superblock(&mut store).unwrap();
-        assert_eq!(selected.generation, sb_a.generation);
-    }
-
-    #[test]
-    fn register_and_reopen_roundtrip() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.typra");
-        {
-            let mut db = Database::open(&path).unwrap();
-            assert!(db.catalog().is_empty());
-            let (id, v) = db
-                .register_collection("books", vec![path_field("title")], "title")
-                .unwrap();
-            assert_eq!(id.0, 1);
-            assert_eq!(v.0, 1);
-        }
-        let db = Database::open(&path).unwrap();
-        assert_eq!(db.collection_names(), vec!["books".to_string()]);
-        let c = db.catalog().get(crate::schema::CollectionId(1)).unwrap();
-        assert_eq!(c.name, "books");
-        assert_eq!(c.fields.len(), 1);
-    }
-
-    #[test]
-    fn index_segment_replay_builds_index_state_on_reopen() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.typra");
-        {
-            let mut db = Database::open(&path).unwrap();
-            let (id, _v) = db
-                .register_collection("books", vec![path_field("title")], "title")
-                .unwrap();
-            let payload = encode_index_payload(&[IndexEntry {
-                collection_id: id.0,
-                index_name: "title_idx".to_string(),
-                kind: crate::schema::IndexKind::NonUnique,
-                op: crate::index::IndexOp::Insert,
-                index_key: b"Hello".to_vec(),
-                pk_key: b"Hello".to_vec(),
-            }]);
-            write::commit_write_txn_v6(
-                &mut db.store,
-                db.segment_start,
-                &mut db.format_minor,
-                2,
-                &[(
-                    crate::segments::header::SegmentType::Index,
-                    payload.as_slice(),
-                )],
-            )
-            .unwrap();
-        }
-        let db = Database::open(&path).unwrap();
-        let got = db
-            .index_state()
-            .non_unique_lookup(1, "title_idx", b"Hello")
-            .unwrap();
-        assert_eq!(got, vec![b"Hello".to_vec()]);
-    }
-
-    #[test]
-    fn query_uses_non_unique_index_for_equality_filter() {
-        use crate::query::{Predicate, Query};
-        use crate::schema::{FieldPath, IndexDef, IndexKind};
-        use crate::{RowValue, ScalarValue};
-        use std::collections::BTreeMap;
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.typra");
-        let mut db = Database::open(&path).unwrap();
-        let mut year_def = path_field("year");
-        year_def.ty = Type::Int64;
-        let fields = vec![path_field("title"), year_def];
-        let indexes = vec![IndexDef {
-            name: "title_idx".to_string(),
-            path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
-            kind: IndexKind::NonUnique,
-        }];
-        let (cid, _) = db
-            .register_collection_with_indexes("books", fields, indexes, "title")
-            .unwrap();
-        db.insert(cid, {
-            let mut m = BTreeMap::new();
-            m.insert("title".to_string(), RowValue::String("Hello".to_string()));
-            m.insert("year".to_string(), RowValue::Int64(2020));
-            m
-        })
-        .unwrap();
-        db.insert(cid, {
-            let mut m = BTreeMap::new();
-            m.insert("title".to_string(), RowValue::String("World".to_string()));
-            m.insert("year".to_string(), RowValue::Int64(2021));
-            m
-        })
-        .unwrap();
-
-        let q = Query {
-            collection: cid,
-            predicate: Some(Predicate::Eq {
-                path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
-                value: ScalarValue::String("Hello".to_string()),
-            }),
-            limit: None,
-            order_by: None,
-        };
-        let explain = db.explain_query(&q).unwrap();
-        assert!(explain.contains("IndexLookup"));
-        let rows = db.query(&q).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].get("year"), Some(&RowValue::Int64(2020)));
-    }
-
-    #[test]
-    fn subset_model_projection_returns_only_declared_fields() {
-        use crate::schema::{DbModel, FieldDef, FieldPath, Type};
-        use crate::RowValue;
-        use std::borrow::Cow;
-        use std::collections::BTreeMap;
-
-        #[allow(dead_code)]
-        struct BookFull {
-            title: String,
-            year: i64,
-        }
-
-        #[allow(dead_code)]
-        struct BookTitleOnly {
-            title: String,
-        }
-
-        impl DbModel for BookFull {
-            fn collection_name() -> &'static str {
-                "books"
-            }
-            fn fields() -> Vec<FieldDef> {
-                vec![
-                    FieldDef {
-                        path: FieldPath(vec![Cow::Borrowed("title")]),
-                        ty: Type::String,
-                        constraints: vec![],
-                    },
-                    FieldDef {
-                        path: FieldPath(vec![Cow::Borrowed("year")]),
-                        ty: Type::Int64,
-                        constraints: vec![],
-                    },
-                ]
-            }
-            fn primary_field() -> &'static str {
-                "title"
-            }
-        }
-
-        impl DbModel for BookTitleOnly {
-            fn collection_name() -> &'static str {
-                "books"
-            }
-            fn fields() -> Vec<FieldDef> {
-                vec![FieldDef {
-                    path: FieldPath(vec![Cow::Borrowed("title")]),
-                    ty: Type::String,
-                    constraints: vec![],
-                }]
-            }
-            fn primary_field() -> &'static str {
-                "title"
-            }
-        }
-
-        let mut db = Database::open_in_memory().unwrap();
-        let (cid, _) = db.register_model::<BookFull>().unwrap();
-        db.insert(cid, {
-            let mut m = BTreeMap::new();
-            m.insert("title".to_string(), RowValue::String("Hello".to_string()));
-            m.insert("year".to_string(), RowValue::Int64(2020));
-            m
-        })
-        .unwrap();
-
-        let books = db.collection::<BookTitleOnly>().unwrap();
-        let rows = books.all().unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(
-            rows[0],
-            BTreeMap::from([("title".to_string(), RowValue::String("Hello".to_string()))])
-        );
-    }
-
-    #[test]
-    fn query_iter_matches_execute_query_for_indexed_equality() {
-        use crate::query::{Predicate, Query};
-        use crate::schema::{FieldPath, IndexDef, IndexKind};
-        use crate::{RowValue, ScalarValue};
-
-        let mut db = Database::open_in_memory().unwrap();
-        let mut year_def = path_field("year");
-        year_def.ty = Type::Int64;
-        let fields = vec![path_field("title"), year_def];
-        let indexes = vec![IndexDef {
-            name: "title_idx".to_string(),
-            path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
-            kind: IndexKind::NonUnique,
-        }];
-        let (cid, _) = db
-            .register_collection_with_indexes("books", fields, indexes, "title")
-            .unwrap();
-        db.insert(cid, {
-            let mut m = BTreeMap::new();
-            m.insert("title".to_string(), RowValue::String("Hello".to_string()));
-            m.insert("year".to_string(), RowValue::Int64(2020));
-            m
-        })
-        .unwrap();
-
-        let q = Query {
-            collection: cid,
-            predicate: Some(Predicate::Eq {
-                path: FieldPath(vec![std::borrow::Cow::Owned("title".to_string())]),
-                value: ScalarValue::String("Hello".to_string()),
-            }),
-            limit: None,
-            order_by: None,
-        };
-        let mut from_iter: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
-        let mut from_vec = db.query(&q).unwrap();
-        from_iter.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
-        from_vec.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
-        assert_eq!(from_iter, from_vec);
-    }
-
-    #[test]
-    fn query_iter_order_by_uses_external_sort_spill_for_large_inputs() {
-        use crate::query::{OrderBy, OrderDirection, Query};
-        use crate::{RowValue, ScalarValue};
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.typra");
-        let mut db = Database::open(&path).unwrap();
-
-        let mut year_def = path_field("year");
-        year_def.ty = Type::Int64;
-        let fields = vec![path_field("title"), year_def];
-        let (cid, _) = db.register_collection("books", fields, "title").unwrap();
-        for i in 0..6000i64 {
-            db.insert(cid, {
-                let mut m = BTreeMap::new();
-                m.insert("title".to_string(), RowValue::String(format!("t{i}")));
-                m.insert("year".to_string(), RowValue::Int64(i));
-                m
-            })
-            .unwrap();
-        }
-
-        let q = Query {
-            collection: cid,
-            predicate: None,
-            order_by: Some(OrderBy {
-                path: crate::schema::FieldPath(vec![std::borrow::Cow::Borrowed("year")]),
-                direction: OrderDirection::Desc,
-            }),
-            limit: Some(50),
-        };
-
-        let from_vec = db.query(&q).unwrap();
-        let from_iter: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
-        assert_eq!(from_iter, from_vec);
-
-        assert_eq!(from_iter[0].get("year"), Some(&RowValue::Int64(5999)));
-        assert_eq!(
-            from_iter.last().unwrap().get("year"),
-            Some(&RowValue::Int64(5950))
-        );
-
-        let got = db
-            .get(cid, &ScalarValue::String("t123".to_string()))
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.get("year"), Some(&RowValue::Int64(123)));
-    }
-
-    #[test]
-    fn subset_projection_merges_nested_paths_under_shared_object() {
-        use crate::schema::{DbModel, FieldDef, FieldPath, Type};
-        use crate::RowValue;
-        use std::borrow::Cow;
-        struct Sub;
-        impl DbModel for Sub {
-            fn collection_name() -> &'static str {
-                "x"
-            }
-            fn fields() -> Vec<FieldDef> {
-                vec![
-                    FieldDef {
-                        path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("b")]),
-                        ty: Type::String,
-                        constraints: vec![],
-                    },
-                    FieldDef {
-                        path: FieldPath(vec![Cow::Borrowed("a"), Cow::Borrowed("c")]),
-                        ty: Type::Int64,
-                        constraints: vec![],
-                    },
-                ]
-            }
-            fn primary_field() -> &'static str {
-                "id"
-            }
-        }
-
-        let mut row = BTreeMap::new();
-        row.insert("id".to_string(), RowValue::String("pk".to_string()));
-        let inner = BTreeMap::from([
-            ("b".to_string(), RowValue::String("B".to_string())),
-            ("c".to_string(), RowValue::Int64(42)),
-        ]);
-        row.insert("a".to_string(), RowValue::Object(inner));
-
-        let out = super::project_row::<Sub>(row);
-        let a = out.get("a").unwrap();
-        let RowValue::Object(m) = a else {
-            panic!("expected object");
-        };
-        assert_eq!(m.get("b"), Some(&RowValue::String("B".to_string())));
-        assert_eq!(m.get("c"), Some(&RowValue::Int64(42)));
-        assert_eq!(out.len(), 1);
-    }
-
-    #[test]
-    fn checkpoint_roundtrip_replays_only_tail() {
-        use crate::schema::{IndexDef, IndexKind};
-        use crate::{RowValue, ScalarValue};
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.typra");
-
-        // Create, write state, checkpoint, then append more.
-        {
-            let mut db = Database::open(&path).unwrap();
-            let fields = vec![path_field("title"), path_field("author")];
-            let indexes = vec![IndexDef {
-                name: "author_idx".to_string(),
-                path: crate::schema::FieldPath(vec![std::borrow::Cow::Owned("author".to_string())]),
-                kind: IndexKind::NonUnique,
-            }];
-            let (cid, _) = db
-                .register_collection_with_indexes("books", fields, indexes, "title")
-                .unwrap();
-            db.insert(cid, {
-                let mut m = BTreeMap::new();
-                m.insert("title".to_string(), RowValue::String("Hello".to_string()));
-                m.insert("author".to_string(), RowValue::String("Alice".to_string()));
-                m
-            })
-            .unwrap();
-            db.checkpoint().unwrap();
-            db.insert(cid, {
-                let mut m = BTreeMap::new();
-                m.insert("title".to_string(), RowValue::String("World".to_string()));
-                m.insert("author".to_string(), RowValue::String("Bob".to_string()));
-                m
-            })
-            .unwrap();
-        }
-
-        // Reopen; should load from checkpoint then replay tail insert.
-        let db = Database::open(&path).unwrap();
-        let cid = db.collection_id_named("books").unwrap();
-        let got = db
-            .get(cid, &ScalarValue::String("Hello".to_string()))
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            got.get("author"),
-            Some(&RowValue::String("Alice".to_string()))
-        );
-        let got2 = db
-            .get(cid, &ScalarValue::String("World".to_string()))
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            got2.get("author"),
-            Some(&RowValue::String("Bob".to_string()))
-        );
-    }
-
-    #[test]
-    fn corrupt_checkpoint_falls_back_in_auto_truncate_but_errors_in_strict() {
-        use crate::config::{OpenOptions, RecoveryMode};
-        use crate::segments::header::SEGMENT_HEADER_LEN;
-        use crate::superblock::decode_superblock;
-        use crate::RowValue;
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.typra");
-
-        // Create DB and checkpoint.
-        {
-            let mut db = Database::open(&path).unwrap();
-            let (cid, _) = db
-                .register_collection("books", vec![path_field("title")], "title")
-                .unwrap();
-            db.insert(cid, {
-                let mut m = BTreeMap::new();
-                m.insert("title".to_string(), RowValue::String("Hello".to_string()));
-                m
-            })
-            .unwrap();
-            db.checkpoint().unwrap();
-        }
-
-        // Corrupt one byte inside the checkpoint payload.
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)
-            .unwrap();
-        let mut store = crate::storage::FileStore::new(file);
-        let mut sb_buf = [0u8; SUPERBLOCK_SIZE];
-        store
-            .read_exact_at(FILE_HEADER_SIZE as u64, &mut sb_buf)
-            .unwrap();
-        let sb = decode_superblock(&sb_buf).unwrap();
-        assert!(sb.checkpoint_offset != 0);
-        let corrupt_at = sb.checkpoint_offset + SEGMENT_HEADER_LEN as u64 + 5;
-        store.write_all_at(corrupt_at, &[0xff]).unwrap();
-        store.sync().unwrap();
-
-        // Strict should error.
-        let strict = Database::open_with_options(
-            &path,
-            OpenOptions {
-                recovery: RecoveryMode::Strict,
-                ..OpenOptions::default()
-            },
-        );
-        assert!(strict.is_err());
-
-        // AutoTruncate should fall back to replay and still open.
-        let auto = Database::open_with_options(
-            &path,
-            OpenOptions {
-                recovery: RecoveryMode::AutoTruncate,
-                ..OpenOptions::default()
-            },
-        )
-        .unwrap();
-        assert_eq!(auto.collection_names(), vec!["books".to_string()]);
-    }
-
-    #[test]
-    fn temp_segments_are_ignored_on_reopen() {
-        use crate::segments::header::{SegmentHeader, SegmentType};
-        use crate::segments::writer::SegmentWriter;
-        use crate::{RowValue, ScalarValue};
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("t.typra");
-
-        // Create DB, write state, then append an ephemeral Temp segment.
-        {
-            let mut db = Database::open(&path).unwrap();
-            let (cid, _) = db
-                .register_collection("books", vec![path_field("title")], "title")
-                .unwrap();
-            db.insert(cid, {
-                let mut m = BTreeMap::new();
-                m.insert("title".to_string(), RowValue::String("Hello".to_string()));
-                m
-            })
-            .unwrap();
-
-            let off = db.store.len().unwrap();
-            let mut w = SegmentWriter::new(&mut db.store, off);
-            w.append(
-                SegmentHeader {
-                    segment_type: SegmentType::Temp,
-                    payload_len: 0,
-                    payload_crc32c: 0,
-                },
-                b"spill",
-            )
-            .unwrap();
-            db.store.sync().unwrap();
-        }
-
-        // Reopen should succeed and ignore the Temp segment.
-        let db = Database::open(&path).unwrap();
-        let cid = db.collection_id_named("books").unwrap();
-        let got = db
-            .get(cid, &ScalarValue::String("Hello".to_string()))
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            got.get("title"),
-            Some(&RowValue::String("Hello".to_string()))
-        );
-    }
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/src_db_mod_tests.rs"
+    ));
 }

@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 
 use crate::error::{DbError, FormatError};
-use crate::record::scalar::{decode_tagged_scalar, decode_tagged_string, encode_tagged_scalar, Cursor, ScalarValue};
+use crate::record::scalar::{
+    decode_tagged_scalar, decode_tagged_string, encode_tagged_scalar, Cursor, ScalarValue,
+};
 use crate::schema::{FieldDef, Type};
 
 /// In-memory value for a row field (including nested structures).
@@ -153,9 +155,7 @@ pub fn decode_row_value(cur: &mut Cursor<'_>, ty: &Type) -> Result<RowValue, DbE
             }
             RowValue::Object(map)
         }
-        Type::Enum(_) => {
-            RowValue::String(decode_tagged_string(cur)?)
-        }
+        Type::Enum(_) => RowValue::String(decode_tagged_string(cur)?),
     })
 }
 

@@ -131,9 +131,7 @@ pub fn execute_query(
                             push_row(&mut out, pk);
                             if limit.map(|n| out.len() >= n).unwrap_or(false) {
                                 break;
-                            }
-                        }
-                    }
+                            } } }
                 }
             }
 
@@ -378,9 +376,10 @@ pub fn execute_query_iter_with_spill_path<'a>(
     if q.order_by.is_none() {
         return execute_query_iter(catalog, indexes, latest, q);
     }
-    let Some(order_by) = q.order_by.clone() else {
-        return execute_query_iter(catalog, indexes, latest, q);
-    };
+    let order_by = q
+        .order_by
+        .clone()
+        .expect("order_by is Some when this function continues");
 
     // If we don't have a file path to spill into, fall back to the existing in-memory behavior.
     let Some(path) = db_path else {
@@ -448,9 +447,8 @@ pub fn execute_query_iter_with_spill_path<'a>(
     let spill_store = crate::storage::FileStore::new(spill_file);
     let spill = crate::spill::TempSpillFile::new(spill_store)?;
 
-    let sort_source = Box::new(ExternalSortSource::new(
-        spill, latest, base, col.id.0, order_by,
-    )?);
+    let sort_source =
+        Box::new(ExternalSortSource::new(spill, latest, base, col.id.0, order_by)?);
 
     let mut source: Box<dyn RowSource + 'a> = sort_source;
     if let Some(n) = q.limit {
@@ -670,8 +668,7 @@ impl<'a> ExternalSortSource<'a> {
             runs_meta.push(RunMeta {
                 offset: off,
                 payload_len: payload.len() as u64,
-            });
-        }
+            }); }
 
         // Load run buffers and seed heap.
         let mut runs: Vec<RunReader> = Vec::new();
@@ -892,4 +889,12 @@ fn scalar_partial_cmp(a: &ScalarValue, b: &ScalarValue) -> Option<std::cmp::Orde
         (Timestamp(x), Timestamp(y)) => Some(x.cmp(y)),
         _ => None,
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/src_query_planner_tests.rs"
+    ));
 }

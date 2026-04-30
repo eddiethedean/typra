@@ -33,4 +33,3 @@ fn txn_payload_v0_rejects_crc_mismatch() {
     let err = decode_txn_payload_v0(&b).unwrap_err();
     assert!(matches!(err, DbError::Format(_)));
 }
-

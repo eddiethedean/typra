@@ -20,20 +20,29 @@ class LcovFile:
         return 100.0 * (self.lines_hit / self.lines_found)
 
 
-def _parse_lcov(path: Path) -> list[LcovFile]:
+def parse_lcov_files(path: Path) -> list[LcovFile]:
     files: list[LcovFile] = []
 
     cur_path: str | None = None
-    hit = 0
-    found = 0
+    da_hit = 0
+    da_found = 0
+    lf_lh_hit: int | None = None
+    lf_lh_found: int | None = None
 
     def flush() -> None:
-        nonlocal cur_path, hit, found
+        nonlocal cur_path, da_hit, da_found, lf_lh_hit, lf_lh_found
         if cur_path is not None:
-            files.append(LcovFile(cur_path, hit, found))
+            if da_found > 0:
+                files.append(LcovFile(cur_path, da_hit, da_found))
+            elif lf_lh_hit is not None and lf_lh_found is not None:
+                files.append(LcovFile(cur_path, lf_lh_hit, lf_lh_found))
+            else:
+                files.append(LcovFile(cur_path, 0, 0))
         cur_path = None
-        hit = 0
-        found = 0
+        da_hit = 0
+        da_found = 0
+        lf_lh_hit = None
+        lf_lh_found = None
 
     for raw in path.read_text().splitlines():
         if raw.startswith("SF:"):
@@ -43,9 +52,13 @@ def _parse_lcov(path: Path) -> list[LcovFile]:
             # DA:<line>,<count>[,<checksum>]
             parts = raw.removeprefix("DA:").split(",", 2)
             if len(parts) >= 2:
-                found += 1
+                da_found += 1
                 if int(parts[1]) > 0:
-                    hit += 1
+                    da_hit += 1
+        elif raw.startswith("LF:"):
+            lf_lh_found = int(raw.removeprefix("LF:").strip())
+        elif raw.startswith("LH:"):
+            lf_lh_hit = int(raw.removeprefix("LH:").strip())
         elif raw == "end_of_record":
             flush()
 
@@ -86,7 +99,7 @@ def main() -> int:
     args = ap.parse_args()
 
     repo_root = Path(os.getcwd())
-    files = _parse_lcov(args.lcov_path)
+    files = parse_lcov_files(args.lcov_path)
 
     buckets: dict[str, list[LcovFile]] = {"db": [], "query": [], "index": [], "validation": []}
 

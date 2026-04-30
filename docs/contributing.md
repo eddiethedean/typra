@@ -61,10 +61,13 @@ We aim for **practical 100%** test coverage over first-party code, with an expli
 - **Rust**: coverage is computed via `cargo llvm-cov`.
   - Exclusions are explicit and justified. For example, the PyO3 module entrypoint under `python/typra/src/lib.rs` is executed by Python import, not by `cargo test`, so Rust-only coverage runs may exclude it.
   - We primarily track **line coverage** for “practical 100%”; region/branch coverage may remain <100% in cases where the only missed regions are OS-level IO failure paths that are not deterministic to test.
+  - Prefer targeted harness tests (for example `FileStore` lock/ref-count patterns under `crates/typra-core/tests/unit/`) for IO edges we can reproduce; avoid widening `Makefile` `--ignore-filename-regex` for `typra-core` sources unless the exclusion is documented here with a concrete rationale (rename races, exotic `ErrorKind`, etc.).
 - **Python**: coverage is computed via `pytest-cov` (coverage.py).
   - Virtual environments, `site-packages`, and vendored dependencies are omitted via `.coveragerc`.
 
 The **coverage** CI job runs `cargo llvm-cov` for the workspace, then enforces a **minimum line coverage for `typra-core`** via `COVERAGE_TYPRA_CORE_LINES` (see [`Makefile`](../Makefile)). Adjust the threshold only when intentionally changing test scope.
+
+To list uncovered lines by source file from an existing `target/coverage/typra-core.lcov`, run [`scripts/coverage_typra_core_gap_rank.py`](../scripts/coverage_typra_core_gap_rank.py) (writes `target/coverage/typra-core-gaps.txt`).
 
 ## Publishing
 

@@ -8,7 +8,7 @@ use typra_core::error::{DbError, SchemaError};
 use typra_core::index::{
     decode_index_payload, encode_index_payload, IndexEntry, IndexState, INDEX_PAYLOAD_VERSION_V1,
 };
-use typra_core::query::{Predicate, Query};
+use typra_core::query::{OrderBy, OrderDirection, Predicate, Query};
 use typra_core::schema::{CollectionId, FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use typra_core::{RowValue, ScalarValue};
 
@@ -445,4 +445,131 @@ fn decode_index_payload_rejects_empty_name() {
     buf.extend_from_slice(&0u32.to_le_bytes());
     buf.extend_from_slice(&0u32.to_le_bytes());
     assert!(decode_index_payload(&buf).is_err());
+}
+
+#[test]
+fn explain_includes_order_by_for_index_lookup_plan() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![
+        path_field("title", Type::String),
+        path_field("year", Type::Int64),
+    ];
+    let indexes = vec![IndexDef {
+        name: "title_idx".into(),
+        path: FieldPath(vec![Cow::Owned("title".into())]),
+        kind: IndexKind::NonUnique,
+    }];
+    let (cid, _) = db
+        .register_collection_with_indexes("books", fields, indexes, "title")
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("title".into(), RowValue::String("A".into())),
+            ("year".into(), RowValue::Int64(1)),
+        ]),
+    )
+    .unwrap();
+
+    let q = Query {
+        collection: cid,
+        predicate: Some(Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("title".into())]),
+            value: ScalarValue::String("A".into()),
+        }),
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("year")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+    let explain = db.explain_query(&q).unwrap();
+    assert!(explain.contains("IndexLookup"), "{explain}");
+    assert!(explain.contains("OrderBy"), "{explain}");
+}
+
+#[test]
+fn indexed_non_unique_lookup_respects_limit_with_multiple_matching_rows() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![
+        path_field("title", Type::String),
+        path_field("tag", Type::String),
+    ];
+    let indexes = vec![IndexDef {
+        name: "tag_idx".into(),
+        path: FieldPath(vec![Cow::Owned("tag".into())]),
+        kind: IndexKind::NonUnique,
+    }];
+    let (cid, _) = db
+        .register_collection_with_indexes("items", fields, indexes, "title")
+        .unwrap();
+    for t in ["a", "b", "c"] {
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("title".into(), RowValue::String(t.into())),
+                ("tag".into(), RowValue::String("x".into())),
+            ]),
+        )
+        .unwrap();
+    }
+
+    let q = Query {
+        collection: cid,
+        predicate: Some(Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("tag".into())]),
+            value: ScalarValue::String("x".into()),
+        }),
+        limit: Some(2),
+        order_by: None,
+    };
+    assert_eq!(db.query(&q).unwrap().len(), 2);
+}
+
+#[test]
+fn query_iter_order_by_on_disk_exercises_external_sort_and_scalar_sort_keys() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.typra");
+    let mut db = Database::open(&path).unwrap();
+
+    let fields = vec![
+        path_field("title", Type::String),
+        path_field("u", Type::Uint64),
+        path_field("f", Type::Float64),
+        path_field("b", Type::Bool),
+        path_field("by", Type::Bytes),
+    ];
+    let (cid, _) = db.register_collection("books", fields, "title").unwrap();
+
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("title".into(), RowValue::String("t".into())),
+            ("u".into(), RowValue::Uint64(9)),
+            ("f".into(), RowValue::Float64(1.5)),
+            ("b".into(), RowValue::Bool(true)),
+            ("by".into(), RowValue::Bytes(vec![1, 2])),
+        ]),
+    )
+    .unwrap();
+
+    for (col, dir) in [
+        ("u", OrderDirection::Desc),
+        ("f", OrderDirection::Asc),
+        ("b", OrderDirection::Desc),
+        ("by", OrderDirection::Asc),
+    ] {
+        let q = Query {
+            collection: cid,
+            predicate: None,
+            limit: None,
+            order_by: Some(OrderBy {
+                path: FieldPath(vec![Cow::Borrowed(col)]),
+                direction: dir,
+            }),
+        };
+        let from_iter: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+        let from_vec = db.query(&q).unwrap();
+        assert_eq!(from_iter.len(), from_vec.len(), "col={col}");
+    }
 }

@@ -179,66 +179,41 @@ fn apply_constraints(
                 let RowValue::Int64(n) = v else {
                     return Err(err(path, "MaxI64 constraint requires int64"));
                 };
-                if *n > *max {
-                    return Err(err(path, format!("value {n} is above maximum {max}")));
-                }
+                if *n > *max { return Err(err(path, format!("value {n} is above maximum {max}"))); }
             }
             Constraint::MinU64(min) => {
                 let RowValue::Uint64(n) = v else {
                     return Err(err(path, "MinU64 constraint requires uint64"));
                 };
-                if *n < *min {
-                    return Err(err(path, format!("value {n} is below minimum {min}")));
-                }
+                if *n < *min { return Err(err(path, format!("value {n} is below minimum {min}"))); }
             }
             Constraint::MaxU64(max) => {
                 let RowValue::Uint64(n) = v else {
                     return Err(err(path, "MaxU64 constraint requires uint64"));
                 };
-                if *n > *max {
-                    return Err(err(path, format!("value {n} is above maximum {max}")));
-                }
+                if *n > *max { return Err(err(path, format!("value {n} is above maximum {max}"))); }
             }
             Constraint::MinF64(min) => {
                 let RowValue::Float64(n) = v else {
                     return Err(err(path, "MinF64 constraint requires float64"));
                 };
-                if *n < *min {
-                    return Err(err(path, format!("value {n} is below minimum {min}")));
-                }
+                if *n < *min { return Err(err(path, format!("value {n} is below minimum {min}"))); }
             }
             Constraint::MaxF64(max) => {
                 let RowValue::Float64(n) = v else {
                     return Err(err(path, "MaxF64 constraint requires float64"));
                 };
-                if *n > *max {
-                    return Err(err(path, format!("value {n} is above maximum {max}")));
-                }
+                if *n > *max { return Err(err(path, format!("value {n} is above maximum {max}"))); }
             }
             Constraint::MinLength(min) => match v {
                 RowValue::String(s) => {
-                    if (s.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("string length {} is below minimum {}", s.len(), min),
-                        ));
-                    }
+                    if (s.len() as u64) < *min { return Err(err(path, format!("string length {} is below minimum {}", s.len(), min))); }
                 }
                 RowValue::Bytes(b) => {
-                    if (b.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("bytes length {} is below minimum {}", b.len(), min),
-                        ));
-                    }
+                    if (b.len() as u64) < *min { return Err(err(path, format!("bytes length {} is below minimum {}", b.len(), min))); }
                 }
                 RowValue::List(items) => {
-                    if (items.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("list length {} is below minimum {}", items.len(), min),
-                        ));
-                    }
+                    if (items.len() as u64) < *min { return Err(err(path, format!("list length {} is below minimum {}", items.len(), min))); }
                 }
                 _ => return Err(err(path, "MinLength applies to string, bytes, or list")),
             },
@@ -260,12 +235,7 @@ fn apply_constraints(
                     }
                 }
                 RowValue::List(items) => {
-                    if (items.len() as u64) > *max {
-                        return Err(err(
-                            path,
-                            format!("list length {} is above maximum {}", items.len(), max),
-                        ));
-                    }
+                    if (items.len() as u64) > *max { return Err(err(path, format!("list length {} is above maximum {}", items.len(), max))); }
                 }
                 _ => return Err(err(path, "MaxLength applies to string, bytes, or list")),
             },

@@ -2,8 +2,9 @@ use std::borrow::Cow;
 
 use typra_core::error::{DbError, FormatError};
 use typra_core::record::{
-    decode_record_payload, decode_record_payload_v1, encode_record_payload_v1, encode_record_payload_v2_op,
-    encode_tagged_scalar, Cursor, OP_DELETE, RECORD_PAYLOAD_VERSION_V2, ScalarValue,
+    decode_record_payload, decode_record_payload_v1, encode_record_payload_v1,
+    encode_record_payload_v2_op, encode_tagged_scalar, Cursor, ScalarValue, OP_DELETE,
+    RECORD_PAYLOAD_VERSION_V2,
 };
 use typra_core::schema::{FieldDef, FieldPath, Type};
 
@@ -66,7 +67,10 @@ fn record_payload_v1_trailing_bytes_errors() {
     b.push(0);
 
     let e = decode_record_payload_v1(&b, "id", &fields[0].ty, &fields).unwrap_err();
-    assert!(matches!(e, DbError::Format(FormatError::TrailingRecordPayload)));
+    assert!(matches!(
+        e,
+        DbError::Format(FormatError::TrailingRecordPayload)
+    ));
 }
 
 #[test]
@@ -105,4 +109,3 @@ fn record_payload_v2_delete_encoder_writes_zero_count_and_decoder_rejects_nonzer
         DbError::Format(FormatError::RecordPayloadTypeMismatch)
     ));
 }
-

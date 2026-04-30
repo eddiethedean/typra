@@ -106,6 +106,10 @@ name = "db_replay_branches"
 path = "tests/integration/db_replay_branches.rs"
 
 [[test]]
+name = "db_snapshot_ops"
+path = "tests/integration/db_snapshot_ops.rs"
+
+[[test]]
 name = "e2e_inventory_workflow"
 path = "tests/integration/e2e_inventory_workflow.rs"
 

@@ -95,14 +95,7 @@ fn spillable_hash_join_match_count_i64_forced_spill_matches_baseline() {
         _,
         _,
         typra_core::storage::FileStore,
-    >(
-        left2,
-        right2,
-        &fp("k"),
-        &fp("k"),
-        10_000,
-        None,
-    )
+    >(left2, right2, &fp("k"), &fp("k"), 10_000, None)
     .unwrap();
 
     assert_eq!(got, baseline);

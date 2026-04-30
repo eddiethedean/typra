@@ -17,11 +17,11 @@ fn decode_optional_primary_name_rejects_empty_string() {
     bytes.extend_from_slice(&2u16.to_le_bytes()); // catalog payload v2
     bytes.extend_from_slice(&1u16.to_le_bytes()); // create collection
     bytes.extend_from_slice(&1u32.to_le_bytes()); // collection_id
-    // name = "a"
+                                                  // name = "a"
     bytes.extend_from_slice(&1u32.to_le_bytes());
     bytes.extend_from_slice(b"a");
     bytes.extend_from_slice(&1u32.to_le_bytes()); // schema_version
-    // fields: 0 (v2 fields encoding uses count u32 then entries; zero is accepted)
+                                                  // fields: 0 (v2 fields encoding uses count u32 then entries; zero is accepted)
     bytes.extend_from_slice(&0u32.to_le_bytes());
     // indexes absent pre-v4
     // primary_field optional name: length 1 but provide 0 bytes by truncating (forces unexpected eof)
@@ -51,4 +51,3 @@ fn decode_optional_primary_name_rejects_too_long() {
         DbError::Format(FormatError::InvalidCatalogPayload { .. })
     ));
 }
-

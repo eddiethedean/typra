@@ -95,44 +95,20 @@ struct WriterLockGuard {
 impl Drop for WriterLockGuard {
     fn drop(&mut self) {
         let mut g = writer_locks().lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(st) = g.get_mut(&self.lock_path) { st.refs = st.refs.saturating_sub(1); if st.refs == 0 { g.remove(&self.lock_path); } }
+        if let Some(st) = g.get_mut(&self.lock_path) {
+            st.refs = st.refs.saturating_sub(1);
+            if st.refs == 0 {
+                g.remove(&self.lock_path);
+            } }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use fs2::FileExt;
-
-    #[test]
-    fn open_locked_readonly_returns_wouldblock_if_lock_held_elsewhere() {
-        let dir = std::env::temp_dir().join(format!(
-            "typra-storage-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("db.typra");
-        std::fs::write(&db_path, b"").unwrap();
-
-        let lock_path = FileStore::lock_path_for_db_path(&db_path);
-        let lock_file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&lock_path)
-            .unwrap();
-        lock_file.try_lock_exclusive().unwrap();
-
-        let err = FileStore::open_locked(&db_path, OpenMode::ReadOnly).unwrap_err();
-        assert!(matches!(
-            err,
-            DbError::Io(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
-        ));
-    }
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/src_storage_tests.rs"
+    ));
 }
 
 impl FileStore {
@@ -240,7 +216,8 @@ impl FileStore {
                     .open(&lock_path)?;
                 match lock_file.try_lock_shared() {
                     Ok(()) => Some(lock_file),
-                    Err(std::fs::TryLockError::WouldBlock) | Err(std::fs::TryLockError::Error(_)) => {
+                    Err(std::fs::TryLockError::WouldBlock)
+                    | Err(std::fs::TryLockError::Error(_)) => {
                         return Err(DbError::Io(std::io::Error::new(
                             std::io::ErrorKind::WouldBlock,
                             "database is locked by another process",

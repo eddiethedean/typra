@@ -23,4 +23,3 @@ fn row_subset_handles_missing_paths_and_none_and_non_object_parents() {
     let out = db::row_subset_by_field_defs(&row, &wanted);
     assert!(out.is_empty());
 }
-
