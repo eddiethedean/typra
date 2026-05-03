@@ -32,10 +32,12 @@ def parse_lcov_files(path: Path) -> list[LcovFile]:
     def flush() -> None:
         nonlocal cur_path, da_hit, da_found, lf_lh_hit, lf_lh_found
         if cur_path is not None:
-            if da_found > 0:
-                files.append(LcovFile(cur_path, da_hit, da_found))
-            elif lf_lh_hit is not None and lf_lh_found is not None:
+            # Prefer LF/LH when present: matches `cargo llvm-cov --fail-under-lines`
+            # (DA-only aggregation can disagree when instrumentation attributes differ).
+            if lf_lh_hit is not None and lf_lh_found is not None:
                 files.append(LcovFile(cur_path, lf_lh_hit, lf_lh_found))
+            elif da_found > 0:
+                files.append(LcovFile(cur_path, da_hit, da_found))
             else:
                 files.append(LcovFile(cur_path, 0, 0))
         cur_path = None

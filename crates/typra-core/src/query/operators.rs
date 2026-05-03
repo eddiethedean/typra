@@ -28,19 +28,15 @@ impl<S: RowSource> LimitOp<S> {
 }
 
 impl<S: RowSource> RowSource for LimitOp<S> {
+    #[rustfmt::skip]
     fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
         if self.remaining == 0 {
             return None;
         }
-        match self.inner.next_key() {
-            None => None,
-            Some(Ok(rk)) => {
-                self.remaining = self.remaining.saturating_sub(1);
-                Some(Ok(rk))
-            }
-            Some(Err(e)) => Some(Err(e)),
-        }
-    }
+        let x = self.inner.next_key()?;
+        Some(match x {
+            Ok(rk) => { self.remaining = self.remaining.saturating_sub(1); Ok(rk) }
+            Err(e) => Err(e), }) }
 }
 
 #[cfg(test)]

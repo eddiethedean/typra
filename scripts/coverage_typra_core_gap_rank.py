@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Rank typra-core source files by uncovered lines (needs prior `cargo llvm-cov ... --lcov`)."""
+"""Rank typra-core source files by uncovered lines (needs prior `cargo llvm-cov ... --lcov`).
+
+Uses `LF`/`LH` from each LCOV end_of_record when present (see `coverage_core.parse_lcov_files`),
+so totals align with `cargo llvm-cov --fail-under-lines` for the same LCOV export.
+"""
 from __future__ import annotations
 
 import argparse

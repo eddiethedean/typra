@@ -2,9 +2,10 @@
     use crate::db::open;
     use crate::db::write;
     use crate::error::FormatError;
+    use crate::error::{SchemaError, ValidationError};
     use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
     use crate::index::{encode_index_payload, IndexEntry};
-    use crate::schema::{FieldDef, Type};
+    use crate::schema::{CollectionId, FieldDef, Type};
     use crate::segments::header::{SegmentHeader, SegmentType};
     use crate::segments::writer::SegmentWriter;
     use crate::storage::{FileStore, Store};
@@ -72,6 +73,18 @@
     }
 
     #[test]
+    fn transaction_closure_errors_when_called_inside_active_transaction() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        db.begin_transaction().unwrap();
+        let e = db.transaction(|_| Ok::<(), DbError>(())).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Transaction(crate::error::TransactionError::NestedTransaction)
+        ));
+        db.rollback_transaction();
+    }
+
+    #[test]
     fn commit_txn_staging_writes_pending_segments_and_updates_shadow_state() {
         let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
         db.begin_transaction().unwrap();
@@ -86,6 +99,12 @@
         db.commit_transaction().unwrap();
         assert!(db.catalog().get(cid).is_some());
         assert!(db.txn_staging.is_none());
+    }
+
+    #[test]
+    fn index_state_returns_secondary_index_snapshot() {
+        let db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let _ = db.index_state();
     }
 
     #[test]
@@ -198,6 +217,46 @@
     }
 
     #[test]
+    fn row_value_as_object_map_covers_non_object_arm() {
+        assert!(crate::RowValue::Int64(0).as_object_map().is_none());
+        let m = BTreeMap::new();
+        assert!(crate::RowValue::Object(m).as_object_map().is_some());
+    }
+
+    #[test]
+    fn collection_returns_unknown_collection_name_when_model_not_registered() {
+        #[derive(Clone)]
+        struct Missing;
+        impl crate::schema::DbModel for Missing {
+            fn collection_name() -> &'static str {
+                "no_such_table_for_collection_api_test"
+            }
+            fn primary_field() -> &'static str {
+                "id"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                    Type::Int64,
+                )]
+            }
+            fn indexes() -> Vec<crate::schema::IndexDef> {
+                vec![]
+            }
+        }
+
+        let db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let e = match db.collection::<Missing>() {
+            Ok(_) => panic!("expected UnknownCollectionName"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::UnknownCollectionName { .. })
+        ));
+    }
+
+    #[test]
     fn plan_insert_row_multi_segment_and_index_missing_path_are_covered() {
         let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
         let fields = vec![
@@ -242,6 +301,136 @@
     }
 
     #[test]
+    fn plan_insert_row_unknown_collection_errors() {
+        let db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let row = BTreeMap::from([("id".to_string(), crate::RowValue::Int64(1))]);
+
+        let err = super::plan_insert_row(db.catalog(), CollectionId(999), row).unwrap_err();
+        assert!(matches!(err, DbError::Schema(SchemaError::UnknownCollection { id: 999 })));
+    }
+
+    #[test]
+    fn plan_insert_row_no_primary_key_errors() {
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(crate::catalog::CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".into(),
+                schema_version: 1,
+                fields: vec![path_field("id")],
+                indexes: vec![],
+                primary_field: None,
+            })
+            .unwrap();
+
+        let row = BTreeMap::from([("id".to_string(), crate::RowValue::String("k".into()))]);
+        let err = super::plan_insert_row(&catalog, CollectionId(1), row).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(SchemaError::NoPrimaryKey { collection_id: 1 })
+        ));
+    }
+
+    #[test]
+    fn plan_insert_row_rejects_non_primitive_primary_key_type() {
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(crate::catalog::CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".into(),
+                schema_version: 1,
+                fields: vec![FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                    Type::Object(vec![]),
+                )],
+                indexes: vec![],
+                primary_field: Some("id".into()),
+            })
+            .unwrap();
+
+        let row = BTreeMap::from([(
+            "id".to_string(),
+            crate::RowValue::Object(BTreeMap::new()),
+        )]);
+        let err = super::plan_insert_row(&catalog, CollectionId(1), row).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Validation(ValidationError { .. })
+        ));
+    }
+
+    #[test]
+    fn plan_insert_row_row_missing_primary_key_errors() {
+        let mut catalog = crate::catalog::Catalog::default();
+        catalog
+            .apply_record(crate::catalog::CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "t".into(),
+                schema_version: 1,
+                fields: vec![FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                    Type::Int64,
+                )],
+                indexes: vec![],
+                primary_field: Some("id".into()),
+            })
+            .unwrap();
+
+        let row = BTreeMap::new();
+        let err = super::plan_insert_row(&catalog, CollectionId(1), row).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(SchemaError::RowMissingPrimary { .. })
+        ));
+    }
+
+    #[test]
+    fn plan_insert_row_multi_segment_unknown_field_errors() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let fields = vec![
+            FieldDef::new(crate::schema::FieldPath(vec![Cow::Borrowed("id")]), Type::Int64),
+            FieldDef::new(
+                crate::schema::FieldPath(vec![Cow::Borrowed("obj"), Cow::Borrowed("n"), Cow::Borrowed("x")]),
+                Type::Int64,
+            ),
+        ];
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+
+        // Unknown leaf at obj.n.y (schema only defines obj.n.x).
+        let row = BTreeMap::from([
+            ("id".to_string(), crate::RowValue::Int64(1)),
+            (
+                "obj".to_string(),
+                crate::RowValue::Object(BTreeMap::from([(
+                    "n".to_string(),
+                    crate::RowValue::Object(BTreeMap::from([("y".to_string(), crate::RowValue::Int64(7))])),
+                )])),
+            ),
+        ]);
+        let err = super::plan_insert_row(db.catalog(), cid, row).unwrap_err();
+        assert!(matches!(err, DbError::Schema(SchemaError::RowUnknownField { .. })));
+    }
+
+    #[test]
+    fn plan_insert_row_legacy_unknown_top_level_field_is_validation_error() {
+        // Legacy single-segment schema uses validate_top_level_row.
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let fields = vec![
+            FieldDef::new(crate::schema::FieldPath(vec![Cow::Borrowed("id")]), Type::Int64),
+            FieldDef::new(crate::schema::FieldPath(vec![Cow::Borrowed("x")]), Type::Int64),
+        ];
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+
+        let row = BTreeMap::from([
+            ("id".to_string(), crate::RowValue::Int64(1)),
+            ("x".to_string(), crate::RowValue::Int64(2)),
+            ("unknown".to_string(), crate::RowValue::Int64(3)),
+        ]);
+        let err = super::plan_insert_row(db.catalog(), cid, row).unwrap_err();
+        assert!(matches!(err, DbError::Validation(ValidationError { .. })));
+    }
+
+    #[test]
     fn plan_insert_row_returns_missing_field_when_intermediate_is_not_object() {
         let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
         let fields = vec![
@@ -261,6 +450,31 @@
 
         let e = super::plan_insert_row(db.catalog(), cid, row).unwrap_err();
         assert!(matches!(e, crate::DbError::Schema(_)));
+    }
+
+    #[test]
+    fn plan_insert_row_returns_missing_field_when_nested_object_key_is_absent() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let fields = vec![
+            FieldDef::new(crate::schema::FieldPath(vec![Cow::Borrowed("id")]), Type::Int64),
+            FieldDef::new(
+                crate::schema::FieldPath(vec![Cow::Borrowed("obj"), Cow::Borrowed("n"), Cow::Borrowed("x")]),
+                Type::Int64,
+            ),
+        ];
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+
+        // `obj` is an object, but missing the `n` key.
+        let row = BTreeMap::from([
+            ("id".to_string(), crate::RowValue::Int64(1)),
+            ("obj".to_string(), crate::RowValue::Object(BTreeMap::new())),
+        ]);
+
+        let e = super::plan_insert_row(db.catalog(), cid, row).unwrap_err();
+        assert!(matches!(
+            e,
+            crate::DbError::Schema(SchemaError::RowMissingField { .. })
+        ));
     }
 
     #[test]
@@ -288,6 +502,61 @@
             )
             .unwrap();
         assert!(matches!(p.change, crate::schema::SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn plan_schema_version_unknown_collection_errors() {
+        let db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let e = db
+            .plan_schema_version_with_indexes(CollectionId(999_999), vec![], vec![])
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::UnknownCollection { id }) if id == 999_999
+        ));
+    }
+
+    #[test]
+    fn register_collection_duplicate_name_in_transaction_errors_on_staging_apply() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let fields = vec![FieldDef::new(
+            crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+            Type::Int64,
+        )];
+        db.begin_transaction().unwrap();
+        db.register_collection("t", fields.clone(), "id").unwrap();
+        let e = db.register_collection("t", fields, "id").unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::DuplicateCollectionName { .. })
+        ));
+        db.rollback_transaction();
+    }
+
+    #[test]
+    fn backfill_unknown_collection_errors() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let e = db
+            .backfill_top_level_field_with_value(
+                CollectionId(99_999),
+                "extra",
+                crate::RowValue::Int64(1),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::UnknownCollection { id }) if id == 99_999
+        ));
+    }
+
+    #[test]
+    fn rebuild_indexes_unknown_collection_errors() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let e = db.rebuild_indexes_for_collection(CollectionId(88_888)).unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::UnknownCollection { id }) if id == 88_888
+        ));
     }
 
     #[test]
@@ -1354,5 +1623,118 @@
         assert_eq!(
             got.get("title"),
             Some(&RowValue::String("Hello".to_string()))
+        );
+    }
+
+    #[test]
+    fn commit_transaction_propagates_store_write_failure_when_budget_exhausted_at_commit() {
+        use std::cell::Cell;
+        use std::io;
+        use std::path::PathBuf;
+        use std::rc::Rc;
+
+        use crate::config::OpenOptions;
+        use crate::schema::{FieldDef, FieldPath};
+        use crate::storage::{Store, VecStore};
+
+        struct CountWrites {
+            n: Rc<Cell<usize>>,
+            inner: VecStore,
+        }
+
+        impl Store for CountWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                self.n.set(self.n.get() + 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        struct BudgetWrites {
+            remaining: Cell<usize>,
+            inner: VecStore,
+        }
+
+        impl Store for BudgetWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                let r = self.remaining.get();
+                if r == 0 {
+                    return Err(DbError::Io(io::Error::other(
+                        "write budget exhausted (commit)",
+                    )));
+                }
+                self.remaining.set(r - 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        let write_count = Rc::new(Cell::new(0));
+        let store = CountWrites {
+            n: write_count.clone(),
+            inner: VecStore::new(),
+        };
+        {
+            let _db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                store,
+                OpenOptions::default(),
+            )
+            .unwrap();
+        }
+        let w_open = write_count.get();
+        assert!(w_open > 0, "expected bootstrap open to perform writes");
+
+        let store2 = BudgetWrites {
+            remaining: Cell::new(w_open),
+            inner: VecStore::new(),
+        };
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            store2,
+            OpenOptions::default(),
+        )
+        .unwrap();
+
+        db.begin_transaction().unwrap();
+        let fields = vec![FieldDef::new(
+            FieldPath(vec![Cow::Borrowed("id")]),
+            Type::String,
+        )];
+        db.register_collection("c", fields, "id").unwrap();
+        let err = db.commit_transaction().unwrap_err();
+        assert!(
+            matches!(err, DbError::Io(_)),
+            "expected Io from exhausted write budget, got {err:?}"
         );
     }

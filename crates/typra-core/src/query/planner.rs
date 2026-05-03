@@ -39,7 +39,7 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
             .ok_or(DbError::Schema(SchemaError::UnknownCollection {
                 id: query.collection.0,
             }))?;
-    let plan = plan_query(col.id, &col.indexes, query)?;
+    let plan = plan_query(col.id, &col.indexes, query);
     Ok(match plan {
         Plan::IndexLookup {
             index_name,
@@ -100,7 +100,7 @@ pub fn execute_query(
             .ok_or(DbError::Schema(SchemaError::UnknownCollection {
                 id: query.collection.0,
             }))?;
-    let plan = plan_query(col.id, &col.indexes, query)?;
+    let plan = plan_query(col.id, &col.indexes, query);
 
     match plan {
         Plan::IndexLookup {
@@ -129,9 +129,9 @@ pub fn execute_query(
                     if let Some(pks) = indexes.non_unique_lookup(collection_id, &index_name, &key) {
                         for pk in pks {
                             push_row(&mut out, pk);
-                            if limit.map(|n| out.len() >= n).unwrap_or(false) {
-                                break;
-                            } } }
+                            if limit.map(|n| out.len() >= n).unwrap_or(false) { break; }
+                        }
+                    }
                 }
             }
 
@@ -307,7 +307,7 @@ pub fn execute_query_iter<'a>(
             .ok_or(DbError::Schema(SchemaError::UnknownCollection {
                 id: query.collection.0,
             }))?;
-    let plan = plan_query(col.id, &col.indexes, query)?;
+    let plan = plan_query(col.id, &col.indexes, query);
     let mut source: Box<dyn RowSource + 'a> = match plan {
         Plan::IndexLookup {
             collection_id,
@@ -396,7 +396,7 @@ pub fn execute_query_iter_with_spill_path<'a>(
         .ok_or(DbError::Schema(SchemaError::UnknownCollection {
             id: q.collection.0,
         }))?;
-    let plan = plan_query(col.id, &col.indexes, q)?;
+    let plan = plan_query(col.id, &col.indexes, q);
 
     let base: Box<dyn RowSource + 'a> = match plan.clone() {
         Plan::IndexLookup {
@@ -733,14 +733,14 @@ fn plan_query(
     collection: CollectionId,
     indexes: &[crate::schema::IndexDef],
     query: &Query,
-) -> Result<Plan, DbError> {
+) -> Plan {
     let Some(pred) = query.predicate.clone() else {
-        return Ok(Plan::CollectionScan {
+        return Plan::CollectionScan {
             collection_id: collection.0,
             predicate: None,
             limit: query.limit,
             order_by: query.order_by.clone(),
-        });
+        };
     };
 
     let (best, residual) = match choose_index(indexes, &pred) {
@@ -752,7 +752,7 @@ fn plan_query(
     };
 
     if let Some((idx, value)) = best {
-        Ok(Plan::IndexLookup {
+        Plan::IndexLookup {
             collection_id: collection.0,
             index_name: idx.name.clone(),
             kind: idx.kind,
@@ -760,14 +760,14 @@ fn plan_query(
             residual,
             limit: query.limit,
             order_by: query.order_by.clone(),
-        })
+        }
     } else {
-        Ok(Plan::CollectionScan {
+        Plan::CollectionScan {
             collection_id: collection.0,
             predicate: residual,
             limit: query.limit,
             order_by: query.order_by.clone(),
-        })
+        }
     }
 }
 

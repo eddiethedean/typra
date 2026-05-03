@@ -1,3 +1,5 @@
+    use std::cell::Cell;
+
     use super::{PagedStore, DEFAULT_PAGE_SIZE};
     use crate::storage::{Store, VecStore};
 
@@ -71,4 +73,133 @@
         ps.truncate(DEFAULT_PAGE_SIZE).unwrap();
 
         assert!(ps.read_exact_at(DEFAULT_PAGE_SIZE + 1, &mut buf).is_err());
+    }
+
+    /// Second call to `inner.len()` fails — exercises EOF sizing branch that reads `len` inside `get_page`.
+    struct LenSecondFails {
+        inner: VecStore,
+        calls: Cell<u32>,
+    }
+
+    impl Store for LenSecondFails {
+        fn len(&self) -> Result<u64, crate::error::DbError> {
+            let n = self.calls.get().saturating_add(1);
+            self.calls.set(n);
+            if n >= 2 {
+                return Err(crate::error::DbError::Io(std::io::Error::other(
+                    "len fails on second call",
+                )));
+            }
+            self.inner.len()
+        }
+
+        fn read_exact_at(
+            &mut self,
+            offset: u64,
+            buf: &mut [u8],
+        ) -> Result<(), crate::error::DbError> {
+            self.inner.read_exact_at(offset, buf)
+        }
+
+        fn write_all_at(
+            &mut self,
+            offset: u64,
+            data: &[u8],
+        ) -> Result<(), crate::error::DbError> {
+            self.inner.write_all_at(offset, data)
+        }
+
+        fn sync(&mut self) -> Result<(), crate::error::DbError> {
+            self.inner.sync()
+        }
+
+        fn truncate(&mut self, len: u64) -> Result<(), crate::error::DbError> {
+            self.inner.truncate(len)
+        }
+    }
+
+    #[test]
+    fn read_exact_at_propagates_inner_len_error_from_get_page() {
+        let mut inner = VecStore::new();
+        inner.write_all_at(0, &[1u8; 100]).unwrap();
+        let mut ps = PagedStore::new(
+            LenSecondFails {
+                inner,
+                calls: Cell::new(0),
+            },
+            DEFAULT_PAGE_SIZE,
+        );
+        let mut buf = [0u8; 16];
+        let err = ps.read_exact_at(0, &mut buf).unwrap_err();
+        assert!(matches!(err, crate::error::DbError::Io(_)));
+    }
+
+    /// Fails the second `read_exact_at` on the inner store (multi-page logical read).
+    struct FailSecondRead {
+        inner: VecStore,
+        n: Cell<u8>,
+    }
+
+    impl Store for FailSecondRead {
+        fn len(&self) -> Result<u64, crate::error::DbError> {
+            self.inner.len()
+        }
+
+        fn read_exact_at(
+            &mut self,
+            offset: u64,
+            buf: &mut [u8],
+        ) -> Result<(), crate::error::DbError> {
+            let v = self.n.get().saturating_add(1);
+            self.n.set(v);
+            if v >= 2 {
+                return Err(crate::error::DbError::Io(std::io::Error::other(
+                    "inner read fails on second call",
+                )));
+            }
+            self.inner.read_exact_at(offset, buf)
+        }
+
+        fn write_all_at(
+            &mut self,
+            offset: u64,
+            data: &[u8],
+        ) -> Result<(), crate::error::DbError> {
+            self.inner.write_all_at(offset, data)
+        }
+
+        fn sync(&mut self) -> Result<(), crate::error::DbError> {
+            self.inner.sync()
+        }
+
+        fn truncate(&mut self, len: u64) -> Result<(), crate::error::DbError> {
+            self.inner.truncate(len)
+        }
+    }
+
+    #[test]
+    fn read_exact_at_propagates_inner_read_error_across_pages() {
+        let mut inner = VecStore::new();
+        inner
+            .write_all_at(0, &[7u8; DEFAULT_PAGE_SIZE as usize])
+            .unwrap();
+        inner
+            .write_all_at(
+                DEFAULT_PAGE_SIZE,
+                &[8u8; (DEFAULT_PAGE_SIZE as usize).saturating_sub(10)],
+            )
+            .unwrap();
+
+        let mut ps = PagedStore::new(
+            FailSecondRead {
+                inner,
+                n: Cell::new(0),
+            },
+            DEFAULT_PAGE_SIZE,
+        );
+
+        let mut buf = [0u8; 64];
+        let off = DEFAULT_PAGE_SIZE - 8;
+        let err = ps.read_exact_at(off, &mut buf).unwrap_err();
+        assert!(matches!(err, crate::error::DbError::Io(_)));
     }

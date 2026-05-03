@@ -60,6 +60,14 @@ impl RowValue {
         self.as_scalar()
             .ok_or(DbError::Format(FormatError::RecordPayloadTypeMismatch))
     }
+
+    #[inline]
+    pub(crate) fn as_object_map(&self) -> Option<&BTreeMap<String, RowValue>> {
+        match self {
+            RowValue::Object(m) => Some(m),
+            _ => None,
+        }
+    }
 }
 
 /// Encode a row value according to `ty` (record payload v2).

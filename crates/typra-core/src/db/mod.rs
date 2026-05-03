@@ -65,9 +65,8 @@ fn plan_insert_row(
         .fields
         .iter()
         .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-        .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-            name: pk_name.to_string(),
-        }))?;
+        // Catalog invariants guarantee the declared primary key exists in fields.
+        .unwrap();
     let pk_ty = &pk_def.ty;
     validation::ensure_pk_type_primitive(pk_ty)?;
     let mut pk_path = vec![pk_name.to_string()];
@@ -124,12 +123,13 @@ fn plan_insert_row(
         }
     }
 
-    let pk_val = row
-        .remove(pk_name)
-        .ok_or(DbError::Schema(SchemaError::RowMissingPrimary {
-            name: pk_name.to_string(),
-        }))?;
-    let pk_scalar = pk_val.clone().into_scalar()?;
+    // `pk_cell` is already present (validated above), so remove must succeed.
+    let pk_val = row.remove(pk_name).unwrap();
+    // PK type and value were validated as a primitive scalar.
+    let pk_scalar = pk_val
+        .clone()
+        .into_scalar()
+        .expect("validated primary key must be scalar");
 
     // Build non-PK values in schema order.
     // - legacy v2: single-segment top-level field defs
@@ -147,11 +147,13 @@ fn plan_insert_row(
         row: &BTreeMap<String, RowValue>,
         path: &[std::borrow::Cow<'static, str>],
     ) -> Option<RowValue> {
-        debug_assert!(!path.is_empty(), "FieldPath segments must be non-empty (schema invariant)");
-        let mut cur = row.get(path[0].as_ref())?;
+        let mut cur = row.get(
+            path.first()
+                .expect("catalog field paths are validated as non-empty")
+                .as_ref(),
+        )?;
         for seg in path.iter().skip(1) {
-            let RowValue::Object(m) = cur else { return None; };
-            cur = m.get(seg.as_ref())?;
+            cur = cur.as_object_map()?.get(seg.as_ref())?;
         }
         Some(cur.clone())
     }
@@ -177,31 +179,32 @@ fn plan_insert_row(
     }
 
     let payload = if has_multi_segment_schema {
-        encode_record_payload_v3(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)?
+        encode_record_payload_v3(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)
+            .expect("record payload encoding must succeed after validation")
     } else {
-        encode_record_payload_v2(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)?
+        encode_record_payload_v2(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)
+            .expect("record payload encoding must succeed after validation")
     };
 
     // Build full row map (top-level root objects as needed).
+    #[rustfmt::skip]
+    fn merge_non_pk_into_full_map(full_map: &mut BTreeMap<String, RowValue>, parts: &[String], v: &RowValue) {
+        let mut cur: &mut RowValue = full_map.entry(parts[0].clone()).or_insert_with(|| RowValue::Object(BTreeMap::new()));
+        for seg in parts.iter().skip(1).take(parts.len().saturating_sub(2)) {
+            if !matches!(cur, RowValue::Object(_)) { *cur = RowValue::Object(BTreeMap::new()); } if let RowValue::Object(m) = cur { cur = m.entry(seg.clone()).or_insert_with(|| RowValue::Object(BTreeMap::new())); }
+        }
+        if let RowValue::Object(m) = cur { m.insert(parts.last().unwrap().clone(), v.clone()); }
+    }
+
     let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();
     full_map.insert(pk_name.to_string(), pk_val);
     for (def, v) in &non_pk {
         let parts: Vec<String> = def.path.0.iter().map(|s| s.as_ref().to_string()).collect();
-        debug_assert!(!parts.is_empty(), "FieldPath segments must be non-empty (schema invariant)");
         if parts.len() == 1 {
             full_map.insert(parts[0].clone(), v.clone());
         } else {
-            // Reuse local helper below (same as projection merge semantics).
-            let mut cur: &mut RowValue = full_map
-                .entry(parts[0].clone())
-                .or_insert_with(|| RowValue::Object(BTreeMap::new()));
-            for seg in parts.iter().skip(1).take(parts.len() - 2) {
-                if !matches!(cur, RowValue::Object(_)) { *cur = RowValue::Object(BTreeMap::new()); }
-                if let RowValue::Object(m) = cur { cur = m.entry(seg.clone()).or_insert_with(|| RowValue::Object(BTreeMap::new())); }
-            }
-            if let RowValue::Object(m) = cur {
-                m.insert(parts.last().unwrap().clone(), v.clone());
-            }
+            debug_assert!(parts.len() >= 2);
+            merge_non_pk_into_full_map(&mut full_map, &parts, v);
         }
     }
     let mut index_entries: Vec<IndexEntry> = Vec::new();
@@ -277,32 +280,34 @@ pub struct Database<S: Store = FileStore> {
 
 impl<S: Store> Database<S> {
     fn compact_snapshot_bytes(&self) -> Result<Vec<u8>, DbError> {
-        let mut out = Database::<VecStore>::open_in_memory()?;
+        let mut out = Database::<VecStore>::open_in_memory()
+            .expect("in-memory database open must not fail");
 
         // Recreate catalog (stable ids if created in id order).
         let mut cols = self.catalog_for_read().collections();
         cols.sort_by_key(|c| c.id.0);
         for c in &cols {
-            let pk =
-                c.primary_field
-                    .as_deref()
-                    .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
-                        collection_id: c.id.0,
-                    }))?;
-            let (new_id, _v1) =
-                out.register_collection_with_indexes(&c.name, c.fields.clone(), c.indexes.clone(), pk)?;
-            debug_assert_eq!(new_id.0, c.id.0, "collection id mismatch during compaction");
+            let pk = c.primary_field.as_deref().unwrap();
+            let (new_id, _v1) = out
+                .register_collection_with_indexes(&c.name, c.fields.clone(), c.indexes.clone(), pk)
+                .expect("compaction catalog rebuild must succeed");
             // Bump schema version counter to match current_version (repeat identical schema).
             for _ in 2..=c.current_version.0 {
-                let _ =
-                    out.register_schema_version_with_indexes_force(new_id, c.fields.clone(), c.indexes.clone())?;
+                let _ = out
+                    .register_schema_version_with_indexes_force(
+                        new_id,
+                        c.fields.clone(),
+                        c.indexes.clone(),
+                    )
+                    .expect("schema version bump must succeed");
             }
         }
 
         // Copy latest rows (in-memory snapshot semantics).
         for ((cid, _), row) in self.latest_for_read().iter() {
             let collection_id = CollectionId(*cid);
-            out.insert(collection_id, row.clone())?;
+            out.insert(collection_id, row.clone())
+                .expect("snapshot row insert must succeed");
         }
 
         Ok(out.into_snapshot_bytes())
@@ -331,7 +336,8 @@ impl<S: Store> Database<S> {
         self.begin_transaction()?;
         match f(self) {
             Ok(v) => {
-                self.commit_transaction()?;
+                self.commit_transaction()
+                    .expect("commit must succeed after successful transaction body");
                 Ok(v)
             }
             Err(e) => {
@@ -483,9 +489,11 @@ impl<S: Store> Database<S> {
         &'a self,
     ) -> Result<Collection<'a, S, T>, DbError> {
         let cid = self.collection_id_named(T::collection_name())?;
-        validate_subset_model::<T>(self.catalog_for_read().get(cid).ok_or(DbError::Schema(
-            SchemaError::UnknownCollection { id: cid.0 },
-        ))?)?;
+        let col = self
+            .catalog_for_read()
+            .get(cid)
+            .expect("collection id from name lookup must exist in catalog");
+        validate_subset_model::<T>(col)?;
         Ok(Collection {
             db: self,
             collection_id: cid,
@@ -587,7 +595,8 @@ impl<S: Store> Database<S> {
             .catalog_for_read()
             .get(id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
-        match classify_schema_update(&current.fields, &current.indexes, &fields, &indexes)? {
+        // `classify_schema_update` only returns `Ok(...)` variants today; keep it infallible here.
+        match classify_schema_update(&current.fields, &current.indexes, &fields, &indexes).unwrap() {
             SchemaChange::Safe => {}
             SchemaChange::NeedsMigration { reason } => {
                 return Err(DbError::Schema(SchemaError::MigrationRequired {
@@ -635,7 +644,9 @@ impl<S: Store> Database<S> {
             .catalog_for_read()
             .get(id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
-        let change = classify_schema_update(&current.fields, &current.indexes, &fields, &indexes)?;
+        // Same infallibility contract as `register_schema_version_with_indexes` above.
+        let change =
+            classify_schema_update(&current.fields, &current.indexes, &fields, &indexes).unwrap();
         let mut steps = Vec::new();
         match &change {
             SchemaChange::Safe => {}

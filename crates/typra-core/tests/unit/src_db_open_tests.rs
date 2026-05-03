@@ -210,3 +210,33 @@
         // If we reached here, we executed the `flen == 0` initialization tuple branch.
         assert_eq!(db.segment_start, (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64);
     }
+
+    #[test]
+    fn open_with_store_returns_error_when_store_len_fails() {
+        #[derive(Debug)]
+        struct LenErr;
+
+        impl Store for LenErr {
+            fn len(&self) -> Result<u64, DbError> {
+                Err(DbError::NotImplemented)
+            }
+            fn read_exact_at(&mut self, _offset: u64, _buf: &mut [u8]) -> Result<(), DbError> {
+                Ok(())
+            }
+            fn write_all_at(&mut self, _offset: u64, _buf: &[u8]) -> Result<(), DbError> {
+                Ok(())
+            }
+            fn sync(&mut self) -> Result<(), DbError> {
+                Ok(())
+            }
+            fn truncate(&mut self, _len: u64) -> Result<(), DbError> {
+                Ok(())
+            }
+        }
+
+        let err = match open_with_store(PathBuf::from(":memory:"), LenErr, OpenOptions::default()) {
+            Err(e) => e,
+            Ok(_) => panic!("expected open to fail when store.len errors"),
+        };
+        assert!(matches!(err, DbError::NotImplemented));
+    }

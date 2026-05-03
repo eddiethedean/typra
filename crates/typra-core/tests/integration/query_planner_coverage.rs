@@ -527,6 +527,93 @@ fn indexed_non_unique_lookup_respects_limit_with_multiple_matching_rows() {
 }
 
 #[test]
+fn explain_collection_scan_includes_order_by_without_filter_or_limit() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![
+        path_field("title", Type::String),
+        path_field("year", Type::Int64),
+    ];
+    let (cid, _) = db.register_collection("books", fields, "title").unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("title".into(), RowValue::String("A".into())),
+            ("year".into(), RowValue::Int64(1)),
+        ]),
+    )
+    .unwrap();
+
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("year")]),
+            direction: OrderDirection::Desc,
+        }),
+    };
+    let explain = db.explain_query(&q).unwrap();
+    assert!(explain.contains("CollectionScan"), "{explain}");
+    assert!(
+        !explain.contains("Filter"),
+        "unexpected Filter line:\n{explain}"
+    );
+    assert!(explain.contains("OrderBy"), "{explain}");
+}
+
+#[test]
+fn explain_index_lookup_includes_residual_limit_and_order_by() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![
+        path_field("title", Type::String),
+        path_field("sku", Type::String),
+        path_field("year", Type::Int64),
+    ];
+    let indexes = vec![IndexDef {
+        name: "sku_idx".into(),
+        path: FieldPath(vec![Cow::Owned("sku".into())]),
+        kind: IndexKind::Unique,
+    }];
+    let (cid, _) = db
+        .register_collection_with_indexes("items", fields, indexes, "title")
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("title".into(), RowValue::String("t1".into())),
+            ("sku".into(), RowValue::String("S1".into())),
+            ("year".into(), RowValue::Int64(2020)),
+        ]),
+    )
+    .unwrap();
+
+    let pred = Predicate::And(vec![
+        Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("sku".into())]),
+            value: ScalarValue::String("S1".into()),
+        },
+        Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("year".into())]),
+            value: ScalarValue::Int64(2020),
+        },
+    ]);
+    let q = Query {
+        collection: cid,
+        predicate: Some(pred),
+        limit: Some(3),
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("title")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+    let explain = db.explain_query(&q).unwrap();
+    assert!(explain.contains("IndexLookup"), "{explain}");
+    assert!(explain.contains("ResidualFilter"), "{explain}");
+    assert!(explain.contains("Limit 3"), "{explain}");
+    assert!(explain.contains("OrderBy"), "{explain}");
+}
+
+#[test]
 fn query_iter_order_by_on_disk_exercises_external_sort_and_scalar_sort_keys() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.typra");

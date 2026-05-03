@@ -52,7 +52,7 @@ impl<S: Store> PagedStore<S> {
         if let Some(hit) = self
             .cache
             .lock()
-            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?
+            .unwrap_or_else(|e| e.into_inner())
             .get(&page_idx)
             .cloned()
         {
@@ -78,7 +78,7 @@ impl<S: Store> PagedStore<S> {
 
         self.cache
             .lock()
-            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?
+            .unwrap_or_else(|e| e.into_inner())
             .insert(page_idx, page.clone());
 
         Ok(page)
@@ -89,10 +89,7 @@ impl<S: Store> PagedStore<S> {
             return Ok(());
         }
         let pages = self.page_range_touched(offset, len);
-        let mut cache = self
-            .cache
-            .lock()
-            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?;
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         for p in pages {
             cache.remove(&p);
         }
@@ -100,10 +97,7 @@ impl<S: Store> PagedStore<S> {
     }
 
     fn clear_truncated(&mut self, new_len: u64) -> Result<(), DbError> {
-        let mut cache = self
-            .cache
-            .lock()
-            .map_err(|_| DbError::Io(io::Error::other("pager mutex poisoned")))?;
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let ps = self.page_size;
         cache.retain(|page_idx, _| {
             let start = page_idx.saturating_mul(ps);

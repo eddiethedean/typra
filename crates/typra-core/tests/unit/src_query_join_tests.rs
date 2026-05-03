@@ -1,4 +1,5 @@
     use super::*;
+    use crate::error::FormatError;
     use crate::spill::TempSpillFile;
     use crate::storage::VecStore;
     use std::collections::BTreeMap;
@@ -55,6 +56,44 @@
         )
         .unwrap_err();
         assert!(matches!(err, DbError::Query(_)));
+    }
+
+    #[test]
+    fn join_propagates_left_row_error() {
+        let left = vec![Err(DbError::Format(FormatError::InvalidCatalogPayload {
+            message: "boom".into(),
+        }))]
+        .into_iter();
+        let right = vec![Ok(row(1))].into_iter();
+        let err = spillable_hash_join_match_count_i64::<_, _, VecStore>(
+            left,
+            right,
+            &fp("k"),
+            &fp("k"),
+            10,
+            None,
+        )
+        .unwrap_err();
+        assert!(matches!(err, DbError::Format(_)));
+    }
+
+    #[test]
+    fn join_propagates_right_row_error() {
+        let left = vec![Ok(row(1))].into_iter();
+        let right = vec![Err(DbError::Format(FormatError::InvalidCatalogPayload {
+            message: "boom".into(),
+        }))]
+        .into_iter();
+        let err = spillable_hash_join_match_count_i64::<_, _, VecStore>(
+            left,
+            right,
+            &fp("k"),
+            &fp("k"),
+            10,
+            None,
+        )
+        .unwrap_err();
+        assert!(matches!(err, DbError::Format(_)));
     }
 
     #[test]
