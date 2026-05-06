@@ -39,6 +39,15 @@
     }
 
     #[test]
+    fn decode_field_path_rejects_invalid_utf8_segment() {
+        let mut buf = vec![1u8, 3u8, 0u8];
+        buf.extend_from_slice(&[0xFF, 0xFE, 0xFF]);
+        let mut cur = Cursor::new(&buf);
+        let err = decode_field_path(&mut cur).unwrap_err();
+        assert!(matches!(err, DbError::Schema(SchemaError::InvalidFieldPath)));
+    }
+
+    #[test]
     fn insert_value_at_path_nested_existing_object_children() {
         let mut root = BTreeMap::new();
         root.insert(
@@ -88,6 +97,25 @@
         ]);
         insert_value_at_path(&mut root2, &path2, RowValue::Int64(9)).unwrap();
         assert!(matches!(root2.get("a"), Some(RowValue::Object(_))));
+    }
+
+    #[test]
+    fn insert_value_at_path_rejects_scalar_at_penultimate_segment() {
+        // `a` is an object but `a.b` already holds a scalar; we cannot attach leaf `c` under `b`.
+        let mut inner = BTreeMap::new();
+        inner.insert("b".to_string(), RowValue::Int64(1));
+        let mut root = BTreeMap::new();
+        root.insert("a".to_string(), RowValue::Object(inner));
+        let path = FieldPath(vec![
+            Cow::Borrowed("a"),
+            Cow::Borrowed("b"),
+            Cow::Borrowed("c"),
+        ]);
+        let err = insert_value_at_path(&mut root, &path, RowValue::Int64(99)).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Format(FormatError::RecordPayloadTypeMismatch)
+        ));
     }
 
     #[test]

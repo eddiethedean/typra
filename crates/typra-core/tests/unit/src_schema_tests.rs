@@ -189,3 +189,41 @@
         let ch = classify_schema_update(&[old], &[], &[new], &[]).unwrap();
         assert!(matches!(ch, SchemaChange::Safe));
     }
+
+    #[test]
+    fn classify_schema_update_enum_narrowing_is_breaking() {
+        let old = FieldDef::new(
+            fp(&["e"]),
+            Type::Enum(vec!["a".to_string(), "b".to_string()]),
+        );
+        let new = FieldDef::new(fp(&["e"]), Type::Enum(vec!["a".to_string()]));
+        let ch = classify_schema_update(&[old], &[], &[new], &[]).unwrap();
+        assert!(matches!(ch, SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_list_element_change_is_breaking() {
+        let ch = classify_schema_update(
+            &[FieldDef::new(fp(&["x"]), Type::List(Box::new(Type::Int64)))],
+            &[],
+            &[FieldDef::new(fp(&["x"]), Type::List(Box::new(Type::String)))],
+            &[],
+        )
+        .unwrap();
+        assert!(matches!(ch, SchemaChange::Breaking { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_optional_wrapping_is_breaking() {
+        let ch = classify_schema_update(
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[],
+            &[FieldDef::new(
+                fp(&["x"]),
+                Type::Optional(Box::new(Type::Int64)),
+            )],
+            &[],
+        )
+        .unwrap();
+        assert!(matches!(ch, SchemaChange::Breaking { .. }));
+    }

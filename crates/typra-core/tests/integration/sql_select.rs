@@ -68,4 +68,13 @@ fn sql_lex_and_parse_errors_and_branches() {
     assert!(parse_select("SELECT * FROM t WHERE x = y").is_err());
     // Hit: expected predicate
     assert!(parse_select("SELECT * FROM t WHERE )").is_err());
+
+    // Lex: integer literal does not fit `usize`.
+    assert!(parse_select("SELECT * FROM t LIMIT 18446744073709551616").is_err());
+
+    // Parser: comparison operator missing after path.
+    assert!(parse_select("SELECT * FROM t WHERE x FROM ?").is_err());
+
+    // LIMIT: token after LIMIT is not a number or parseable ident.
+    assert!(parse_select("SELECT * FROM t LIMIT (").is_err());
 }
