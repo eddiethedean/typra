@@ -70,6 +70,23 @@ fn decode_segment_header_rejects_header_len_mismatch() {
 }
 
 #[test]
+fn decode_segment_header_rejects_bad_header_crc() {
+    let mut bytes = SegmentHeader {
+        segment_type: SegmentType::Schema,
+        payload_len: 0,
+        payload_crc32c: 0,
+    }
+    .encode();
+    bytes[31] ^= 0xFF;
+
+    let res = decode_segment_header(&bytes);
+    assert!(matches!(
+        res,
+        Err(DbError::Format(FormatError::BadSegmentHeaderChecksum))
+    ));
+}
+
+#[test]
 fn decode_segment_header_rejects_checksum_kind_mismatch() {
     let mut bytes = SegmentHeader {
         segment_type: SegmentType::Schema,

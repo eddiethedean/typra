@@ -87,3 +87,105 @@
         .unwrap();
         assert!(matches!(ch, SchemaChange::Breaking { .. }));
     }
+
+    #[test]
+    fn classify_schema_update_field_removed_is_breaking() {
+        let ch = classify_schema_update(
+            &[
+                FieldDef::new(fp(&["x"]), Type::Int64),
+                FieldDef::new(fp(&["y"]), Type::Int64),
+            ],
+            &[],
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[],
+        )
+        .unwrap();
+        match ch {
+            SchemaChange::Breaking { reason } => assert!(reason.contains("field removed")),
+            o => panic!("expected Breaking, got {o:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_schema_update_new_optional_field_is_safe() {
+        let ch = classify_schema_update(
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[],
+            &[
+                FieldDef::new(fp(&["x"]), Type::Int64),
+                FieldDef::new(fp(&["y"]), Type::Optional(Box::new(Type::Int64))),
+            ],
+            &[],
+        )
+        .unwrap();
+        assert!(matches!(ch, SchemaChange::Safe));
+    }
+
+    #[test]
+    fn classify_schema_update_dropping_index_is_safe() {
+        let old_idx = IndexDef {
+            name: "i".to_string(),
+            path: fp(&["x"]),
+            kind: IndexKind::NonUnique,
+        };
+        let ch = classify_schema_update(
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[old_idx],
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[],
+        )
+        .unwrap();
+        assert!(matches!(ch, SchemaChange::Safe));
+    }
+
+    #[test]
+    fn classify_schema_update_adding_nonunique_index_is_safe() {
+        let new_idx = IndexDef {
+            name: "n".to_string(),
+            path: fp(&["x"]),
+            kind: IndexKind::NonUnique,
+        };
+        let ch = classify_schema_update(
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[],
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[new_idx],
+        )
+        .unwrap();
+        assert!(matches!(ch, SchemaChange::Safe));
+    }
+
+    #[test]
+    fn classify_schema_update_adding_unique_index_needs_migration() {
+        let new_idx = IndexDef {
+            name: "u".to_string(),
+            path: fp(&["x"]),
+            kind: IndexKind::Unique,
+        };
+        let ch = classify_schema_update(
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[],
+            &[FieldDef::new(fp(&["x"]), Type::Int64)],
+            &[new_idx],
+        )
+        .unwrap();
+        assert!(matches!(ch, SchemaChange::NeedsMigration { .. }));
+    }
+
+    #[test]
+    fn classify_schema_update_enum_superset_is_safe() {
+        let old = FieldDef::new(
+            fp(&["e"]),
+            Type::Enum(vec!["a".to_string(), "b".to_string()]),
+        );
+        let new = FieldDef::new(
+            fp(&["e"]),
+            Type::Enum(vec![
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string(),
+            ]),
+        );
+        let ch = classify_schema_update(&[old], &[], &[new], &[]).unwrap();
+        assert!(matches!(ch, SchemaChange::Safe));
+    }
