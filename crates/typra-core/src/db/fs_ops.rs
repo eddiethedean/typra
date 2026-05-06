@@ -10,6 +10,9 @@ pub(crate) trait FsOps {
 
     fn open_read_write_create_truncate(&self, path: &Path) -> std::io::Result<std::fs::File>;
     fn open_read_write_create_new(&self, path: &Path) -> std::io::Result<std::fs::File>;
+
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>>;
+    fn write(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()>;
 }
 
 pub(crate) struct StdFsOps;
@@ -50,6 +53,14 @@ impl FsOps for StdFsOps {
             .write(true)
             .create_new(true)
             .open(path)
+    }
+
+    fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        std::fs::read(path)
+    }
+
+    fn write(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        std::fs::write(path, bytes)
     }
 }
 

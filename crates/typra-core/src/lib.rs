@@ -21,6 +21,7 @@ pub mod publish;
 pub mod query;
 pub mod record;
 pub mod schema;
+pub mod schema_compat;
 pub mod segments;
 pub mod spill;
 pub mod sql;

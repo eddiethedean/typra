@@ -8,6 +8,9 @@ mod fs_ops;
 mod open;
 mod recover;
 mod replay;
+mod row_materialize;
+mod row_merge;
+mod row_paths;
 mod write;
 
 use std::collections::{BTreeMap, HashMap};
@@ -82,45 +85,7 @@ fn plan_insert_row(
     if !has_multi_segment_schema {
         validation::validate_top_level_row(&col.fields, pk_name, &row)?;
     } else {
-        fn walk_row(out: &mut Vec<Vec<String>>, prefix: &mut Vec<String>, v: &RowValue) {
-            match v {
-                RowValue::Object(map) => {
-                    for (k, child) in map {
-                        prefix.push(k.clone());
-                        walk_row(out, prefix, child);
-                        prefix.pop();
-                    }
-                }
-                // Lists/enums/scalars/None are treated as leaves at this path.
-                _ => out.push(prefix.clone()),
-            }
-        }
-
-        let mut leaf_paths: Vec<Vec<String>> = Vec::new();
-        for (k, v) in &row {
-            if k == pk_name {
-                continue;
-            }
-            let mut prefix = vec![k.clone()];
-            walk_row(&mut leaf_paths, &mut prefix, v);
-        }
-
-        // Allowed leaf paths are exactly the schema field defs (excluding PK).
-        let mut allowed: std::collections::HashSet<Vec<String>> = std::collections::HashSet::new();
-        for f in &col.fields {
-            if f.path.0.len() == 1 && f.path.0[0] == pk_name {
-                continue;
-            }
-            allowed.insert(f.path.0.iter().map(|s| s.as_ref().to_string()).collect());
-        }
-
-        for p in &leaf_paths {
-            if !allowed.contains(p) {
-                return Err(DbError::Schema(SchemaError::RowUnknownField {
-                    name: p.join("."),
-                }));
-            }
-        }
+        row_paths::validate_unknown_fields_for_multiseg_schema(&col.fields, pk_name, &row)?;
     }
 
     // `pk_cell` is already present (validated above), so remove must succeed.
@@ -142,41 +107,7 @@ fn plan_insert_row(
     } else {
         non_pk_defs_in_order(&col.fields, pk_name)
     };
-
-    fn row_value_at_path(
-        row: &BTreeMap<String, RowValue>,
-        path: &[std::borrow::Cow<'static, str>],
-    ) -> Option<RowValue> {
-        let mut cur = row.get(
-            path.first()
-                .expect("catalog field paths are validated as non-empty")
-                .as_ref(),
-        )?;
-        for seg in path.iter().skip(1) {
-            cur = cur.as_object_map()?.get(seg.as_ref())?;
-        }
-        Some(cur.clone())
-    }
-
-    let mut non_pk: Vec<(FieldDef, RowValue)> = Vec::with_capacity(non_pk_defs.len());
-    for def in &non_pk_defs {
-        let v = match row_value_at_path(&row, &def.path.0) {
-            Some(x) => x,
-            None if validation::allows_absent_root(&def.ty) => RowValue::None,
-            None => {
-                return Err(DbError::Schema(SchemaError::RowMissingField {
-                    name: def
-                        .path
-                        .0
-                        .iter()
-                        .map(|s| s.as_ref())
-                        .collect::<Vec<_>>()
-                        .join("."),
-                }));
-            }
-        };
-        non_pk.push(((*def).clone(), v));
-    }
+    let non_pk = row_materialize::build_non_pk_values_in_schema_order(&row, &non_pk_defs)?;
 
     let payload = if has_multi_segment_schema {
         encode_record_payload_v3(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)
@@ -186,16 +117,6 @@ fn plan_insert_row(
             .expect("record payload encoding must succeed after validation")
     };
 
-    // Build full row map (top-level root objects as needed).
-    #[rustfmt::skip]
-    fn merge_non_pk_into_full_map(full_map: &mut BTreeMap<String, RowValue>, parts: &[String], v: &RowValue) {
-        let mut cur: &mut RowValue = full_map.entry(parts[0].clone()).or_insert_with(|| RowValue::Object(BTreeMap::new()));
-        for seg in parts.iter().skip(1).take(parts.len().saturating_sub(2)) {
-            if !matches!(cur, RowValue::Object(_)) { *cur = RowValue::Object(BTreeMap::new()); } if let RowValue::Object(m) = cur { cur = m.entry(seg.clone()).or_insert_with(|| RowValue::Object(BTreeMap::new())); }
-        }
-        if let RowValue::Object(m) = cur { m.insert(parts.last().unwrap().clone(), v.clone()); }
-    }
-
     let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();
     full_map.insert(pk_name.to_string(), pk_val);
     for (def, v) in &non_pk {
@@ -204,7 +125,7 @@ fn plan_insert_row(
             full_map.insert(parts[0].clone(), v.clone());
         } else {
             debug_assert!(parts.len() >= 2);
-            merge_non_pk_into_full_map(&mut full_map, &parts, v);
+            row_merge::merge_non_pk_into_full_map(&mut full_map, &parts, v);
         }
     }
     let mut index_entries: Vec<IndexEntry> = Vec::new();
@@ -1186,17 +1107,29 @@ impl Database<FileStore> {
     /// This writes a checkpoint (for fast reopen and a stable state marker) and then copies the
     /// underlying file bytes to `dest_path`.
     pub fn export_snapshot_to_path(&mut self, dest_path: impl AsRef<Path>) -> Result<(), DbError> {
+        self.export_snapshot_to_path_with_fsops(&StdFsOps, dest_path)
+    }
+
+    pub(crate) fn export_snapshot_to_path_with_fsops(
+        &mut self,
+        fs: &dyn FsOps,
+        dest_path: impl AsRef<Path>,
+    ) -> Result<(), DbError> {
         self.checkpoint()?;
         let dest_path = dest_path.as_ref();
-        std::fs::copy(&self.path, dest_path)?;
+        fs.copy(&self.path, dest_path).map_err(DbError::Io)?;
         // Strengthen durability of the copied snapshot: fsync the destination and best-effort
         // fsync its parent directory so the directory entry is persisted.
-        if let Ok(f) = std::fs::OpenOptions::new().read(true).open(dest_path) {
+        if let Ok(f) = fs.open_read(dest_path) {
             let _ = f.sync_all();
         }
         #[cfg(unix)]
         {
-            if let Some(parent) = dest_path.parent() { if let Ok(dir_f) = std::fs::File::open(parent) { let _ = dir_f.sync_all(); } }
+            if let Some(parent) = dest_path.parent() {
+                if let Ok(dir_f) = fs.open_dir(parent) {
+                    let _ = dir_f.sync_all();
+                }
+            }
         }
         Ok(())
     }
@@ -1534,13 +1467,21 @@ impl Database<VecStore> {
 
     /// Write the full in-memory database image to `dest_path`.
     pub fn export_snapshot_to_path(&self, dest_path: impl AsRef<Path>) -> Result<(), DbError> {
-        std::fs::write(dest_path.as_ref(), self.snapshot_bytes())?;
+        Self::export_snapshot_to_path_with_fsops(&StdFsOps, dest_path, &self.snapshot_bytes())
+    }
+
+    pub(crate) fn export_snapshot_to_path_with_fsops(
+        fs: &dyn FsOps,
+        dest_path: impl AsRef<Path>,
+        bytes: &[u8],
+    ) -> Result<(), DbError> {
+        fs.write(dest_path.as_ref(), bytes).map_err(DbError::Io)?;
         Ok(())
     }
 
     /// Open an in-memory database from a snapshot file.
     pub fn open_snapshot_path(path: impl AsRef<Path>) -> Result<Self, DbError> {
-        let bytes = std::fs::read(path.as_ref())?;
+        let bytes = StdFsOps.read(path.as_ref()).map_err(DbError::Io)?;
         Self::from_snapshot_bytes(bytes)
     }
 }
