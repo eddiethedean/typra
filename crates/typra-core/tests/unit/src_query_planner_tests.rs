@@ -375,6 +375,117 @@ fn execute_query_non_unique_index_lookup_hits_loop_body() {
 }
 
 #[test]
+fn execute_query_non_unique_index_lookup_missing_key_returns_empty() {
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![IndexDef {
+            name: "x_n".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            kind: IndexKind::NonUnique,
+        }],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"pk".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(1)),
+            ("x".to_string(), RowValue::Int64(7)),
+        ]),
+    );
+
+    let mut idx = IndexState::default();
+    idx.apply(crate::index::IndexEntry {
+        collection_id: 1,
+        index_name: "x_n".to_string(),
+        kind: IndexKind::NonUnique,
+        op: crate::index::IndexOp::Insert,
+        index_key: ScalarValue::Int64(7).canonical_key_bytes(),
+        pk_key: b"pk".to_vec(),
+    })
+    .unwrap();
+    assert!(idx
+        .non_unique_lookup(1, "x_n", &ScalarValue::Int64(99).canonical_key_bytes())
+        .is_none());
+
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: Some(Predicate::Eq {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            value: ScalarValue::Int64(99),
+        }),
+        limit: None,
+        order_by: None,
+    };
+    assert!(super::execute_query(&cat, &idx, &latest, &q).unwrap().is_empty());
+}
+
+#[test]
+fn execute_query_non_unique_index_lookup_limit_exceeds_matches_no_early_break() {
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![IndexDef {
+            name: "x_n".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            kind: IndexKind::NonUnique,
+        }],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"p1".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(1)),
+            ("x".to_string(), RowValue::Int64(7)),
+        ]),
+    );
+    latest.insert(
+        (1, b"p2".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(2)),
+            ("x".to_string(), RowValue::Int64(7)),
+        ]),
+    );
+
+    let mut idx = IndexState::default();
+    for pk in [b"p1".as_slice(), b"p2".as_slice()] {
+        idx.apply(crate::index::IndexEntry {
+            collection_id: 1,
+            index_name: "x_n".to_string(),
+            kind: IndexKind::NonUnique,
+            op: crate::index::IndexOp::Insert,
+            index_key: ScalarValue::Int64(7).canonical_key_bytes(),
+            pk_key: pk.to_vec(),
+        })
+        .unwrap();
+    }
+
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: Some(Predicate::Eq {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            value: ScalarValue::Int64(7),
+        }),
+        limit: Some(10),
+        order_by: None,
+    };
+    let out = super::execute_query(&cat, &idx, &latest, &q).unwrap();
+    assert_eq!(out.len(), 2);
+}
+
+#[test]
 fn execute_query_iter_with_spill_path_index_lookup_unique_and_nonunique() {
     let dir = tempfile::tempdir().unwrap();
     let spill_path = dir.path().join("db.typra");
