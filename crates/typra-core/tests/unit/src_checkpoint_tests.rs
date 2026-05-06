@@ -4,6 +4,7 @@
     use crate::catalog::{Catalog, CatalogRecordWire};
     use crate::checkpoint::checkpoint_from_state;
     use crate::db::LatestMap;
+    use crate::error::{DbError, SchemaError};
     use crate::index::IndexState;
     use crate::record::RowValue;
     use crate::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
@@ -107,5 +108,28 @@
 
         let indexes_state = IndexState::default();
         let err = checkpoint_from_state(&catalog, &latest, &indexes_state).unwrap_err();
-        assert!(matches!(err, crate::error::DbError::Format(_)));
+        assert!(matches!(err, DbError::Format(_)));
+    }
+
+    #[test]
+    fn checkpoint_from_state_errors_when_collection_has_no_primary_field() {
+        let mut catalog = Catalog::default();
+        catalog
+            .apply_record(CatalogRecordWire::CreateCollection {
+                collection_id: 1,
+                name: "books".into(),
+                schema_version: 1,
+                fields: vec![FieldDef::new(fp(&["id"]), Type::String)],
+                indexes: vec![],
+                primary_field: None,
+            })
+            .unwrap();
+
+        let latest = LatestMap::default();
+        let indexes_state = IndexState::default();
+        let err = checkpoint_from_state(&catalog, &latest, &indexes_state).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(SchemaError::NoPrimaryKey { collection_id: 1 })
+        ));
     }

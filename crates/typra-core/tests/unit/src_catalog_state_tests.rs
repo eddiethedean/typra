@@ -253,3 +253,18 @@
             ))
         ));
     }
+
+    #[test]
+    fn new_schema_version_unknown_collection_errors() {
+        let mut c = Catalog::default();
+        let err = c.apply_record(CatalogRecordWire::NewSchemaVersion {
+            collection_id: 42,
+            schema_version: 2,
+            fields: vec![],
+            indexes: vec![],
+        });
+        assert!(matches!(
+            err,
+            Err(DbError::Schema(SchemaError::UnknownCollection { id: 42 }))
+        ));
+    }
