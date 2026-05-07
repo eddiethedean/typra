@@ -38,6 +38,18 @@ use crate::{MigrationPlan, MigrationStep};
 
 use self::fs_ops::{FsOps, StdFsOps};
 
+/// Best-effort `fsync` on `dest_path`'s parent directory (Unix only).
+#[cfg(unix)]
+fn best_effort_fsync_parent_dir(fs: &dyn FsOps, dest_path: &Path) {
+    let Some(parent) = dest_path.parent() else {
+        return;
+    };
+    let Ok(dir_f) = fs.open_dir(parent) else {
+        return;
+    };
+    let _ = dir_f.sync_all();
+}
+
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;
 
 type PlannedInsert = (
@@ -1124,13 +1136,7 @@ impl Database<FileStore> {
             let _ = f.sync_all();
         }
         #[cfg(unix)]
-        {
-            if let Some(parent) = dest_path.parent() {
-                if let Ok(dir_f) = fs.open_dir(parent) {
-                    let _ = dir_f.sync_all();
-                }
-            }
-        }
+        best_effort_fsync_parent_dir(fs, dest_path);
         Ok(())
     }
 
