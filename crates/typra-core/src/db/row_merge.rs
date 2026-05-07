@@ -2,16 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::record::RowValue;
 
-fn object_map_mut(v: &mut RowValue) -> &mut BTreeMap<String, RowValue> {
-    if !matches!(v, RowValue::Object(_)) {
-        *v = RowValue::Object(BTreeMap::new());
-    }
-    let RowValue::Object(m) = v else {
-        unreachable!("merge_non_pk_into_full_map: value was coerced to Object");
-    };
-    m
-}
-
+/// Merge a non-primary-key value into `full_map` along a multi-segment path.
+///
+/// **Contract:** `parts.len() >= 2` (callers use a direct insert for a single segment).
 pub(crate) fn merge_non_pk_into_full_map(
     full_map: &mut BTreeMap<String, RowValue>,
     parts: &[String],
@@ -21,13 +14,21 @@ pub(crate) fn merge_non_pk_into_full_map(
     let mut cur: &mut RowValue = full_map
         .entry(parts[0].clone())
         .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+
     for seg in parts.iter().skip(1).take(parts.len().saturating_sub(2)) {
-        cur = object_map_mut(cur)
-            .entry(seg.clone())
-            .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+        if !matches!(cur, RowValue::Object(_)) {
+            *cur = RowValue::Object(BTreeMap::new());
+        }
+        if let RowValue::Object(m) = cur {
+            cur = m
+                .entry(seg.clone())
+                .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+        }
     }
+
     if let RowValue::Object(m) = cur {
-        m.insert(parts.last().unwrap().clone(), v.clone());
+        let leaf = &parts[parts.len() - 1];
+        m.insert(leaf.clone(), v.clone());
     }
 }
 
@@ -69,4 +70,3 @@ mod tests {
         assert_eq!(y.get("z"), Some(&RowValue::Bool(false)));
     }
 }
-
