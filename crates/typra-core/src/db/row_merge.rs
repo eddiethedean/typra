@@ -26,3 +26,54 @@ pub(crate) fn merge_non_pk_into_full_map(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::merge_non_pk_into_full_map;
+    use crate::record::RowValue;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn merge_turns_scalar_prefix_into_object_for_deeper_path() {
+        let mut m = BTreeMap::new();
+        m.insert("a".into(), RowValue::Int64(7));
+        merge_non_pk_into_full_map(
+            &mut m,
+            &["a".into(), "b".into(), "c".into()],
+            &RowValue::String("leaf".into()),
+        );
+        let inner = match m.get("a").unwrap() {
+            RowValue::Object(o) => o,
+            _ => panic!("expected object"),
+        };
+        let mid = match inner.get("b").unwrap() {
+            RowValue::Object(o) => o,
+            _ => panic!("expected nested object"),
+        };
+        assert_eq!(mid.get("c"), Some(&RowValue::String("leaf".into())));
+    }
+
+    #[test]
+    fn merge_three_segments_overwrites_leaf() {
+        let mut m = BTreeMap::new();
+        merge_non_pk_into_full_map(
+            &mut m,
+            &["x".into(), "y".into(), "z".into()],
+            &RowValue::Bool(true),
+        );
+        merge_non_pk_into_full_map(
+            &mut m,
+            &["x".into(), "y".into(), "z".into()],
+            &RowValue::Bool(false),
+        );
+        let x = match m.get("x").unwrap() {
+            RowValue::Object(o) => o,
+            _ => panic!("expected object"),
+        };
+        let y = match x.get("y").unwrap() {
+            RowValue::Object(o) => o,
+            _ => panic!("expected object"),
+        };
+        assert_eq!(y.get("z"), Some(&RowValue::Bool(false)));
+    }
+}
+

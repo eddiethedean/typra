@@ -27,8 +27,8 @@ fn indexes_count_pos_for_name_len(name_len: usize) -> usize {
 fn decode_indexes_rejects_unknown_kind_tag() {
     let mut b = v4_create_with_one_index();
     let count_pos = indexes_count_pos_for_name_len(1);
-    let kind_tag_pos = count_pos + 4 /*count*/ + 0 /*start entry*/;
     // After count u32, first byte is kind_tag.
+    let kind_tag_pos = count_pos + 4;
     b[kind_tag_pos] = 9;
     let err = decode_catalog_payload(&b).unwrap_err();
     assert!(matches!(err, DbError::Format(_)));

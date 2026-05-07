@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 
 use crate::error::{DbError, SchemaError};
-use crate::validation;
 
 pub use crate::schema_compat::classify_schema_update;
 

@@ -106,3 +106,27 @@ fn vecstore_export_and_open_snapshot_path_roundtrips() {
     );
 }
 
+/// Exercise [`Database::export_snapshot_to_path`] with a multi-component destination path so the
+/// Unix-only parent-directory `fsync` best-effort path sees a normal directory parent.
+#[cfg(unix)]
+#[test]
+fn export_snapshot_to_nested_file_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("a").join("b");
+    std::fs::create_dir_all(&nested).unwrap();
+    let src = nested.join("live.typra");
+    let snapshot = nested.join("nested.snap");
+
+    let mut db = Database::open(&src).unwrap();
+    let (cid, _) = db
+        .register_collection("t", vec![field("id", Type::Int64)], "id")
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([("id".to_string(), RowValue::Int64(1))]),
+    )
+    .unwrap();
+    db.export_snapshot_to_path(&snapshot).unwrap();
+    assert!(snapshot.is_file());
+}
+

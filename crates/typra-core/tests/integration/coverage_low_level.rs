@@ -42,6 +42,7 @@ fn segment_header_roundtrip_all_segment_types() {
         SegmentType::TxnBegin,
         SegmentType::TxnCommit,
         SegmentType::TxnAbort,
+        SegmentType::Temp,
     ] {
         let h = SegmentHeader {
             segment_type: ty,

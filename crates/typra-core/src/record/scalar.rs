@@ -257,7 +257,7 @@ pub fn decode_tagged_string(cur: &mut Cursor<'_>) -> Result<String, DbError> {
     }
     let n = cur.take_u32()? as usize;
     let b = cur.take_bytes(n)?;
-    Ok(String::from_utf8(b).map_err(|_| DbError::Format(FormatError::InvalidRecordUtf8))?)
+    String::from_utf8(b).map_err(|_| DbError::Format(FormatError::InvalidRecordUtf8))
 }
 
 #[cfg(test)]

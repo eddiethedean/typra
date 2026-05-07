@@ -358,14 +358,6 @@ fn load_catalog_latest_and_indexes_v6<S: Store>(
     Ok((catalog, latest, indexes))
 }
 
-#[cfg(test)]
-mod tests {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/unit/src_db_replay_tests.rs"
-    ));
-}
-
 fn apply_record_segment(
     payload: &[u8],
     catalog: &Catalog,
@@ -415,4 +407,12 @@ fn apply_record_segment(
     }
     latest.insert((collection_id, pk_key), full);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/unit/src_db_replay_tests.rs"
+    ));
 }
