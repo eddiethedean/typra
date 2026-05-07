@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 
 use typra_core::error::{FormatError, TransactionError};
 use typra_core::record::RowValue;
-use typra_core::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use typra_core::schema::SchemaChange;
+use typra_core::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use typra_core::{CollectionId, Database, DbError, MigrationStep, ScalarValue};
 
 fn field(name: &str, ty: Type) -> FieldDef {
@@ -108,20 +108,18 @@ fn plan_schema_version_reports_backfill_when_adding_required_field() {
     let mut db = Database::open_in_memory().unwrap();
     let fields = vec![field("title", Type::String)];
     let (cid, _) = db.register_collection("books", fields, "title").unwrap();
-    let proposed = vec![
-        field("title", Type::String),
-        field("year", Type::Int64),
-    ];
-    let plan = db.plan_schema_version_with_indexes(cid, proposed, vec![]).unwrap();
+    let proposed = vec![field("title", Type::String), field("year", Type::Int64)];
+    let plan = db
+        .plan_schema_version_with_indexes(cid, proposed, vec![])
+        .unwrap();
     assert!(matches!(
         plan.change,
         SchemaChange::NeedsMigration { ref reason } if reason.contains("new required field")
     ));
     assert!(
-        plan.steps.iter().any(|s| matches!(
-            s,
-            MigrationStep::BackfillTopLevelField { .. }
-        )),
+        plan.steps
+            .iter()
+            .any(|s| matches!(s, MigrationStep::BackfillTopLevelField { .. })),
         "{plan:?}"
     );
 }
@@ -148,10 +146,7 @@ fn plan_schema_version_reports_rebuild_when_adding_unique_index() {
 #[test]
 fn backfill_top_level_field_runs_inside_transaction_over_snapshot_rows() {
     let mut db = Database::open_in_memory().unwrap();
-    let fields = vec![
-        field("title", Type::String),
-        field("sku", Type::String),
-    ];
+    let fields = vec![field("title", Type::String), field("sku", Type::String)];
     let (cid, _) = db.register_collection("books", fields, "title").unwrap();
     db.insert(
         cid,
@@ -186,10 +181,7 @@ fn backfill_top_level_field_runs_inside_transaction_over_snapshot_rows() {
 #[test]
 fn rebuild_indexes_for_collection_applies_pending_index_segment() {
     let mut db = Database::open_in_memory().unwrap();
-    let fields = vec![
-        field("title", Type::String),
-        field("tag", Type::String),
-    ];
+    let fields = vec![field("title", Type::String), field("tag", Type::String)];
     let indexes = vec![IndexDef {
         name: "tag_idx".to_string(),
         path: FieldPath(vec![Cow::Borrowed("tag")]),
@@ -241,10 +233,9 @@ fn insert_nested_multi_segment_field_paths_round_trips() {
         .unwrap()
         .unwrap();
     match got.get("meta") {
-        Some(RowValue::Object(m)) => assert_eq!(
-            m.get("tag"),
-            Some(&RowValue::String("hello".into()))
-        ),
+        Some(RowValue::Object(m)) => {
+            assert_eq!(m.get("tag"), Some(&RowValue::String("hello".into())))
+        }
         o => panic!("expected nested object, got {o:?}"),
     }
 }
@@ -294,27 +285,23 @@ fn replace_multi_segment_row_rewrites_payload() {
 fn register_schema_version_force_inside_transaction_commits() {
     let mut db = Database::open_in_memory().unwrap();
     let (cid, _) = db
-        .register_collection(
-            "books",
-            vec![field("title", Type::String)],
-            "title",
-        )
+        .register_collection("books", vec![field("title", Type::String)], "title")
         .unwrap();
 
     db.begin_transaction().unwrap();
     db.register_schema_version_with_indexes_force(
         cid,
-        vec![
-            field("title", Type::String),
-            field("extra", Type::Int64),
-        ],
+        vec![field("title", Type::String), field("extra", Type::Int64)],
         vec![],
     )
     .unwrap();
     db.commit_transaction().unwrap();
 
     let col = db.catalog().get(cid).unwrap();
-    assert!(col.fields.iter().any(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == "extra"));
+    assert!(col
+        .fields
+        .iter()
+        .any(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == "extra"));
 }
 
 #[test]

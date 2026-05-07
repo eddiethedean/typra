@@ -16,19 +16,23 @@ pub(crate) fn merge_non_pk_into_full_map(
         .or_insert_with(|| RowValue::Object(BTreeMap::new()));
 
     for seg in parts.iter().skip(1).take(parts.len().saturating_sub(2)) {
-        if !matches!(cur, RowValue::Object(_)) {
-            *cur = RowValue::Object(BTreeMap::new());
-        }
-        if let RowValue::Object(m) = cur {
-            cur = m
-                .entry(seg.clone())
-                .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+        loop {
+            match cur {
+                RowValue::Object(m) => {
+                    cur = m
+                        .entry(seg.clone())
+                        .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+                    break;
+                }
+                _ => {
+                    *cur = RowValue::Object(BTreeMap::new());
+                }
+            }
         }
     }
 
     if let RowValue::Object(m) = cur {
-        let leaf = &parts[parts.len() - 1];
-        m.insert(leaf.clone(), v.clone());
+        m.insert(parts[parts.len() - 1].clone(), v.clone());
     }
 }
 
@@ -68,5 +72,25 @@ mod tests {
         let x = m.get("x").unwrap().as_object_map().unwrap();
         let y = x.get("y").unwrap().as_object_map().unwrap();
         assert_eq!(y.get("z"), Some(&RowValue::Bool(false)));
+    }
+
+    /// Second merge shares intermediate segments so `or_insert_with` does not run its closure.
+    #[test]
+    fn merge_reuses_existing_intermediate_segment() {
+        let mut m = BTreeMap::new();
+        merge_non_pk_into_full_map(
+            &mut m,
+            &["a".into(), "b".into(), "c".into()],
+            &RowValue::Int64(1),
+        );
+        merge_non_pk_into_full_map(
+            &mut m,
+            &["a".into(), "b".into(), "d".into()],
+            &RowValue::Int64(2),
+        );
+        let a = m.get("a").unwrap().as_object_map().unwrap();
+        let b = a.get("b").unwrap().as_object_map().unwrap();
+        assert_eq!(b.get("c"), Some(&RowValue::Int64(1)));
+        assert_eq!(b.get("d"), Some(&RowValue::Int64(2)));
     }
 }

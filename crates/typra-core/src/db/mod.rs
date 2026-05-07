@@ -3,8 +3,8 @@
 //! [`Database`] is implemented using internal modules `open` (bootstrap), `replay` (catalog and
 //! rows from segments), `write` (append segments and publish), and `helpers` (name rules).
 
-mod helpers;
 mod fs_ops;
+mod helpers;
 mod open;
 mod recover;
 mod replay;
@@ -122,11 +122,23 @@ fn plan_insert_row(
     let non_pk = row_materialize::build_non_pk_values_in_schema_order(&row, &non_pk_defs)?;
 
     let payload = if has_multi_segment_schema {
-        encode_record_payload_v3(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)
-            .expect("record payload encoding must succeed after validation")
+        encode_record_payload_v3(
+            collection_id.0,
+            col.current_version.0,
+            &pk_scalar,
+            pk_ty,
+            &non_pk,
+        )
+        .expect("record payload encoding must succeed after validation")
     } else {
-        encode_record_payload_v2(collection_id.0, col.current_version.0, &pk_scalar, pk_ty, &non_pk)
-            .expect("record payload encoding must succeed after validation")
+        encode_record_payload_v2(
+            collection_id.0,
+            col.current_version.0,
+            &pk_scalar,
+            pk_ty,
+            &non_pk,
+        )
+        .expect("record payload encoding must succeed after validation")
     };
 
     let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();
@@ -213,8 +225,8 @@ pub struct Database<S: Store = FileStore> {
 
 impl<S: Store> Database<S> {
     fn compact_snapshot_bytes(&self) -> Result<Vec<u8>, DbError> {
-        let mut out = Database::<VecStore>::open_in_memory()
-            .expect("in-memory database open must not fail");
+        let mut out =
+            Database::<VecStore>::open_in_memory().expect("in-memory database open must not fail");
 
         // Recreate catalog (stable ids if created in id order).
         let mut cols = self.catalog_for_read().collections();
@@ -319,7 +331,13 @@ impl<S: Store> Database<S> {
         }
         let batch: Vec<(crate::segments::header::SegmentType, &[u8])> =
             st.pending.iter().map(|(t, b)| (*t, b.as_slice())).collect();
-        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, st.txn_id, &batch)?;
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            st.txn_id,
+            &batch,
+        )?;
         self.catalog = st.shadow_catalog;
         self.latest = st.shadow_latest;
         self.indexes = st.shadow_indexes;
@@ -502,7 +520,16 @@ impl<S: Store> Database<S> {
         };
         let payload = encode_catalog_payload(&wire);
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &[(crate::segments::header::SegmentType::Schema, payload.as_slice())])?;
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            tid,
+            &[(
+                crate::segments::header::SegmentType::Schema,
+                payload.as_slice(),
+            )],
+        )?;
         self.catalog.apply_record(wire)?;
         Ok((CollectionId(id), SchemaVersion(1)))
     }
@@ -529,7 +556,8 @@ impl<S: Store> Database<S> {
             .get(id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
         // `classify_schema_update` only returns `Ok(...)` variants today; keep it infallible here.
-        match classify_schema_update(&current.fields, &current.indexes, &fields, &indexes).unwrap() {
+        match classify_schema_update(&current.fields, &current.indexes, &fields, &indexes).unwrap()
+        {
             SchemaChange::Safe => {}
             SchemaChange::NeedsMigration { reason } => {
                 return Err(DbError::Schema(SchemaError::MigrationRequired {
@@ -561,7 +589,16 @@ impl<S: Store> Database<S> {
             return Ok(SchemaVersion(next_v));
         }
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &[(crate::segments::header::SegmentType::Schema, payload.as_slice())])?;
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            tid,
+            &[(
+                crate::segments::header::SegmentType::Schema,
+                payload.as_slice(),
+            )],
+        )?;
         self.catalog.apply_record(wire)?;
         Ok(SchemaVersion(next_v))
     }
@@ -747,7 +784,16 @@ impl<S: Store> Database<S> {
             return Ok(SchemaVersion(next_v));
         }
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &[(crate::segments::header::SegmentType::Schema, payload.as_slice())])?;
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            tid,
+            &[(
+                crate::segments::header::SegmentType::Schema,
+                payload.as_slice(),
+            )],
+        )?;
         self.catalog.apply_record(wire)?;
         Ok(SchemaVersion(next_v))
     }
@@ -805,9 +851,23 @@ impl<S: Store> Database<S> {
                 non_pk.push(((*def).clone(), v));
             }
             payload = if has_multi_segment_schema {
-                encode_record_payload_v3_op(collection_id.0, col.current_version.0, OP_REPLACE, &pk_scalar, &pk_def.ty, &non_pk)?
+                encode_record_payload_v3_op(
+                    collection_id.0,
+                    col.current_version.0,
+                    OP_REPLACE,
+                    &pk_scalar,
+                    &pk_def.ty,
+                    &non_pk,
+                )?
             } else {
-                encode_record_payload_v2_op(collection_id.0, col.current_version.0, OP_REPLACE, &pk_scalar, &pk_def.ty, &non_pk)?
+                encode_record_payload_v2_op(
+                    collection_id.0,
+                    col.current_version.0,
+                    OP_REPLACE,
+                    &pk_scalar,
+                    &pk_def.ty,
+                    &non_pk,
+                )?
             };
             // Prepend index deletes for any existing row.
             if let Some(ref old_row) = existing {
@@ -828,7 +888,9 @@ impl<S: Store> Database<S> {
                     &e.index_name,
                     &e.index_key,
                 ) {
-                    if e.op == IndexOp::Insert && existing != e.pk_key.as_slice() { return Err(DbError::Schema(SchemaError::UniqueIndexViolation)); }
+                    if e.op == IndexOp::Insert && existing != e.pk_key.as_slice() {
+                        return Err(DbError::Schema(SchemaError::UniqueIndexViolation));
+                    }
                 }
             }
         }
@@ -863,7 +925,13 @@ impl<S: Store> Database<S> {
             crate::segments::header::SegmentType::Record,
             payload.as_slice(),
         ));
-        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &batch)?;
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            tid,
+            &batch,
+        )?;
         self.latest.insert((collection_id.0, full.0), full.1);
         for e in index_entries {
             self.indexes.apply(e)?;
@@ -901,14 +969,30 @@ impl<S: Store> Database<S> {
             .latest_for_read()
             .get(&(collection_id.0, pk_key.clone()))
             .cloned();
-        let Some(old_row) = existing else { return Ok(()); };
+        let Some(old_row) = existing else {
+            return Ok(());
+        };
         let mut index_entries =
             index_deletes_for_existing_row(collection_id, pk, &col.indexes, &old_row);
         let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
         let record_payload = if has_multi_segment_schema {
-            encode_record_payload_v3_op(collection_id.0, col.current_version.0, OP_DELETE, pk, &pk_def.ty, &[])?
+            encode_record_payload_v3_op(
+                collection_id.0,
+                col.current_version.0,
+                OP_DELETE,
+                pk,
+                &pk_def.ty,
+                &[],
+            )?
         } else {
-            encode_record_payload_v2_op(collection_id.0, col.current_version.0, OP_DELETE, pk, &pk_def.ty, &[])?
+            encode_record_payload_v2_op(
+                collection_id.0,
+                col.current_version.0,
+                OP_DELETE,
+                pk,
+                &pk_def.ty,
+                &[],
+            )?
         };
 
         if let Some(st) = &mut self.txn_staging {
@@ -938,8 +1022,17 @@ impl<S: Store> Database<S> {
         if let Some(ref b) = index_bytes {
             batch.push((crate::segments::header::SegmentType::Index, b.as_slice()));
         }
-        batch.push((crate::segments::header::SegmentType::Record, record_payload.as_slice()));
-        write::commit_write_txn_v6(&mut self.store, self.segment_start, &mut self.format_minor, tid, &batch)?;
+        batch.push((
+            crate::segments::header::SegmentType::Record,
+            record_payload.as_slice(),
+        ));
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            tid,
+            &batch,
+        )?;
         self.latest.remove(&(collection_id.0, pk_key));
         for e in index_entries {
             self.indexes.apply(e)?;
@@ -1038,7 +1131,9 @@ impl Database<FileStore> {
 
         // 1) Write the compacted image to tmp and fsync it.
         {
-            let file = fs.open_read_write_create_new(&tmp_path).map_err(DbError::Io)?;
+            let file = fs
+                .open_read_write_create_new(&tmp_path)
+                .map_err(DbError::Io)?;
             let mut store = FileStore::new(file);
             store.write_all_at(0, &bytes)?;
             store.truncate(bytes.len() as u64)?;
@@ -1095,7 +1190,11 @@ impl Database<FileStore> {
 
         write::ensure_header_v0_6(&mut self.store, &mut self.format_minor)?;
 
-        let mut cp = checkpoint::checkpoint_from_state(self.catalog_for_read(), self.latest_for_read(), self.indexes_for_read())?;
+        let mut cp = checkpoint::checkpoint_from_state(
+            self.catalog_for_read(),
+            self.latest_for_read(),
+            self.indexes_for_read(),
+        )?;
 
         let file_len = self.store.len()?;
         let mut writer = SegmentWriter::new(&mut self.store, file_len.max(self.segment_start));
@@ -1106,10 +1205,18 @@ impl Database<FileStore> {
         cp.replay_from_offset = replay_from;
         let payload = checkpoint::encode_checkpoint_payload_v0(&cp);
 
-        let hdr = SegmentHeader { segment_type: SegmentType::Checkpoint, payload_len: 0, payload_crc32c: 0 };
+        let hdr = SegmentHeader {
+            segment_type: SegmentType::Checkpoint,
+            payload_len: 0,
+            payload_crc32c: 0,
+        };
         writer.append(hdr, &payload)?;
 
-        let _ = publish::append_manifest_and_publish_with_checkpoint(&mut self.store, self.segment_start, Some((checkpoint_offset, payload.len() as u32)))?;
+        let _ = publish::append_manifest_and_publish_with_checkpoint(
+            &mut self.store,
+            self.segment_start,
+            Some((checkpoint_offset, payload.len() as u32)),
+        )?;
         self.store.sync()?;
         Ok(())
     }

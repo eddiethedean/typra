@@ -1746,3 +1746,132 @@
             "expected Io from exhausted write budget, got {err:?}"
         );
     }
+
+    /// Autocommit schema registration uses `commit_write_txn_v6` directly (no `txn_staging`).
+    #[test]
+    fn register_collection_autocommit_propagates_store_write_failure_when_budget_exhausted() {
+        use std::cell::Cell;
+        use std::io;
+        use std::path::PathBuf;
+        use std::rc::Rc;
+
+        use crate::config::OpenOptions;
+        use crate::schema::{FieldDef, FieldPath};
+        use crate::storage::{Store, VecStore};
+
+        struct CountWrites {
+            n: Rc<Cell<usize>>,
+            inner: VecStore,
+        }
+
+        impl Store for CountWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                self.n.set(self.n.get() + 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        struct BudgetWrites {
+            remaining: Cell<usize>,
+            inner: VecStore,
+        }
+
+        impl Store for BudgetWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                let r = self.remaining.get();
+                if r == 0 {
+                    return Err(DbError::Io(io::Error::other(
+                        "write budget exhausted (autocommit register)",
+                    )));
+                }
+                self.remaining.set(r - 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        let write_count = Rc::new(Cell::new(0));
+        let store = CountWrites {
+            n: write_count.clone(),
+            inner: VecStore::new(),
+        };
+        {
+            let _db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                store,
+                OpenOptions::default(),
+            )
+            .unwrap();
+        }
+        let w_open = write_count.get();
+        assert!(w_open > 0, "expected bootstrap open to perform writes");
+
+        let store2 = BudgetWrites {
+            remaining: Cell::new(w_open),
+            inner: VecStore::new(),
+        };
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            store2,
+            OpenOptions::default(),
+        )
+        .unwrap();
+
+        let fields = vec![FieldDef::new(
+            FieldPath(vec![Cow::Borrowed("id")]),
+            Type::String,
+        )];
+        let err = db.register_collection("c", fields, "id").unwrap_err();
+        assert!(
+            matches!(err, DbError::Io(_)),
+            "expected Io from exhausted write budget, got {err:?}"
+        );
+    }
+
+    /// Exercise `best_effort_fsync_parent_dir` early returns (Unix only).
+    #[cfg(unix)]
+    #[test]
+    fn best_effort_fsync_parent_dir_returns_when_no_parent() {
+        use crate::db::fs_ops::StdFsOps;
+        super::best_effort_fsync_parent_dir(&StdFsOps, std::path::Path::new(""));
+    }
+
+    /// Parent exists as a path segment but `open_dir` fails (e.g. missing directory).
+    #[cfg(unix)]
+    #[test]
+    fn best_effort_fsync_parent_dir_returns_when_open_dir_fails() {
+        use crate::db::fs_ops::StdFsOps;
+        let dest = std::path::Path::new("/nonexistent/typra_cov_parent/fsync_test");
+        super::best_effort_fsync_parent_dir(&StdFsOps, dest);
+    }

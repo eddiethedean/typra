@@ -4,8 +4,8 @@ use crate::error::{DbError, QueryError};
 use crate::query::{OrderBy, OrderDirection};
 use crate::schema::FieldPath;
 
-use super::{SqlColumns, SqlPredicate, SqlSelect, SqlValue};
 use super::lexer::{ident_eq, Tok};
+use super::{SqlColumns, SqlPredicate, SqlSelect, SqlValue};
 
 fn err(msg: impl Into<String>) -> DbError {
     DbError::Query(QueryError {
@@ -227,4 +227,3 @@ impl P {
         })
     }
 }
-

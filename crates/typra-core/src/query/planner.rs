@@ -129,7 +129,9 @@ pub fn execute_query(
                     if let Some(pks) = indexes.non_unique_lookup(collection_id, &index_name, &key) {
                         for pk in pks {
                             push_row(&mut out, pk);
-                            if limit.map(|n| out.len() >= n).unwrap_or(false) { break; }
+                            if limit.map(|n| out.len() >= n).unwrap_or(false) {
+                                break;
+                            }
                         }
                     }
                 }
@@ -447,8 +449,9 @@ pub fn execute_query_iter_with_spill_path<'a>(
     let spill_store = crate::storage::FileStore::new(spill_file);
     let spill = crate::spill::TempSpillFile::new(spill_store)?;
 
-    let sort_source =
-        Box::new(ExternalSortSource::new(spill, latest, base, col.id.0, order_by)?);
+    let sort_source = Box::new(ExternalSortSource::new(
+        spill, latest, base, col.id.0, order_by,
+    )?);
 
     let mut source: Box<dyn RowSource + 'a> = sort_source;
     if let Some(n) = q.limit {
@@ -668,7 +671,8 @@ impl<'a> ExternalSortSource<'a> {
             runs_meta.push(RunMeta {
                 offset: off,
                 payload_len: payload.len() as u64,
-            }); }
+            });
+        }
 
         // Load run buffers and seed heap.
         let mut runs: Vec<RunReader> = Vec::new();

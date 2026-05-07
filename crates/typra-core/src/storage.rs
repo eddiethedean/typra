@@ -99,7 +99,8 @@ impl Drop for WriterLockGuard {
             st.refs = st.refs.saturating_sub(1);
             if st.refs == 0 {
                 g.remove(&self.lock_path);
-            } }
+            }
+        }
     }
 }
 

@@ -45,4 +45,3 @@ pub(crate) fn build_non_pk_values_in_schema_order(
     }
     Ok(non_pk)
 }
-

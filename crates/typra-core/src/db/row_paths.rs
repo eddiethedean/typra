@@ -43,7 +43,9 @@ pub(crate) fn validate_unknown_fields_for_multiseg_schema(
 
     for p in leaf_paths {
         if !allowed.contains(&p) {
-            return Err(DbError::Schema(SchemaError::RowUnknownField { name: p.join(".") }));
+            return Err(DbError::Schema(SchemaError::RowUnknownField {
+                name: p.join("."),
+            }));
         }
     }
     Ok(())
@@ -52,4 +54,3 @@ pub(crate) fn validate_unknown_fields_for_multiseg_schema(
 fn field_path_to_vec(fp: &FieldPath) -> Vec<String> {
     fp.0.iter().map(|s| s.as_ref().to_string()).collect()
 }
-

@@ -79,7 +79,11 @@ fn insert_value_at_path(
         if !matches!(cur, RowValue::Object(_)) {
             *cur = RowValue::Object(BTreeMap::new());
         }
-        if let RowValue::Object(map) = cur { cur = map.entry(key).or_insert_with(|| RowValue::Object(BTreeMap::new())); }
+        if let RowValue::Object(map) = cur {
+            cur = map
+                .entry(key)
+                .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+        }
     }
     let leaf_key = path.0.last().unwrap().as_ref().to_string();
     match cur {

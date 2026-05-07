@@ -100,10 +100,7 @@ fn vecstore_export_and_open_snapshot_path_roundtrips() {
         .get(cid2, &ScalarValue::String("v".to_string()))
         .unwrap()
         .unwrap();
-    assert_eq!(
-        got.get("k"),
-        Some(&RowValue::String("v".to_string()))
-    );
+    assert_eq!(got.get("k"), Some(&RowValue::String("v".to_string())));
 }
 
 /// Exercise [`Database::export_snapshot_to_path`] with a multi-component destination path so the
@@ -129,4 +126,3 @@ fn export_snapshot_to_nested_file_path() {
     db.export_snapshot_to_path(&snapshot).unwrap();
     assert!(snapshot.is_file());
 }
-

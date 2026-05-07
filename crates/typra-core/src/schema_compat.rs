@@ -109,4 +109,3 @@ fn type_is_compatible(old: &Type, new: &Type) -> bool {
         _ => old == new,
     }
 }
-

@@ -121,4 +121,3 @@ pub(crate) fn lex(input: &str) -> Result<Vec<Tok>, DbError> {
 pub(crate) fn ident_eq(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
 }
-

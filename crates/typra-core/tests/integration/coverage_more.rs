@@ -235,15 +235,13 @@ fn validation_primitive_mismatch_uint_float_bytes_and_object_missing_required() 
         constraints: vec![],
     }];
     let row_missing = BTreeMap::new();
-    assert!(
-        validate_value(
-            &mut p,
-            &Type::Object(obj_fields.clone()),
-            &[],
-            &RowValue::Object(row_missing),
-        )
-        .is_err()
-    );
+    assert!(validate_value(
+        &mut p,
+        &Type::Object(obj_fields.clone()),
+        &[],
+        &RowValue::Object(row_missing),
+    )
+    .is_err());
 
     assert!(validate_value(
         &mut p,

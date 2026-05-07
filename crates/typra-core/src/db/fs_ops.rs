@@ -115,4 +115,3 @@ mod std_fs_ops_tests {
         StdFsOps.remove_file(&h).unwrap();
     }
 }
-
