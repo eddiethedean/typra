@@ -714,6 +714,84 @@ fn sorted_query_spill_store_open_hook_propagates_errors() {
 }
 
 #[test]
+fn sorted_query_spill_temp_spill_file_new_surfaces_store_len_error_via_override_hook() {
+    super::test_set_sorted_query_spill_store_override_hook(Some(Box::new(|_path| {
+        Ok(super::SortedQuerySpillStore::FailLen)
+    })));
+
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let indexes = IndexState::default();
+    let latest = LatestMap::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let spill_path = dir.path().join("spill.typra");
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&spill_path)
+        .unwrap();
+
+    let err = match super::execute_query_iter_with_spill_path(
+        &cat,
+        &indexes,
+        &latest,
+        &q,
+        Some(&spill_path),
+    ) {
+        Ok(_) => panic!("expected Err"),
+        Err(e) => e,
+    };
+    super::test_set_sorted_query_spill_store_override_hook(None);
+
+    match err {
+        DbError::Io(_) => {}
+        other => panic!("expected Io, got {other:?}"),
+    }
+}
+
+#[test]
+fn sorted_query_spill_store_override_fail_len_covers_store_trait_methods() {
+    use crate::storage::Store;
+
+    let mut s = super::SortedQuerySpillStore::FailLen;
+
+    // len
+    assert!(s.len().is_err());
+
+    // read
+    let mut buf = [0u8; 8];
+    assert!(s.read_exact_at(0, &mut buf).is_err());
+
+    // write
+    assert!(s.write_all_at(0, b"hi").is_err());
+
+    // sync/truncate are ok for the synthetic store
+    s.sync().unwrap();
+    s.truncate(0).unwrap();
+}
+
+#[test]
 fn sorted_query_spill_file_store_write_budget_propagates_during_external_sort() {
     use std::cell::Cell;
     use std::rc::Rc;

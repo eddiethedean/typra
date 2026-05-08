@@ -237,3 +237,37 @@
         assert_eq!(reason, Some("torn_tail"));
         assert!(safe_end < store.len().unwrap());
     }
+
+    #[test]
+    fn truncate_end_v6_temp_checkpoint_manifest_advance_safe_prefix_when_not_in_txn() {
+        // Cover the `SegmentType::Manifest|Checkpoint|Temp` branch updating `safe_prefix_end` when
+        // `txn_base.is_none()`.
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let _ = w
+            .append(
+                SegmentHeader {
+                    segment_type: SegmentType::Temp,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                b"a",
+            )
+            .unwrap();
+        let _ = w
+            .append(
+                SegmentHeader {
+                    segment_type: SegmentType::Manifest,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                b"b",
+            )
+            .unwrap();
+
+        // Add trailing garbage to force "torn_tail" return and ensure safe_end points at the Temp end.
+        store.write_all_at(store.len().unwrap(), &[0xAA]).unwrap();
+        let (safe_end, reason) = truncate_end_for_recovery(&mut store, 0, FORMAT_MINOR_V6).unwrap();
+        assert_eq!(reason, Some("torn_tail"));
+        assert!(safe_end < store.len().unwrap());
+    }

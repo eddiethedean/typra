@@ -93,4 +93,12 @@ mod tests {
         assert_eq!(b.get("c"), Some(&RowValue::Int64(1)));
         assert_eq!(b.get("d"), Some(&RowValue::Int64(2)));
     }
+
+    #[test]
+    fn merge_two_segments_inserts_leaf_value() {
+        let mut m = BTreeMap::new();
+        merge_non_pk_into_full_map(&mut m, &["a".into(), "b".into()], &RowValue::Int64(7));
+        let a = m.get("a").unwrap().as_object_map().unwrap();
+        assert_eq!(a.get("b"), Some(&RowValue::Int64(7)));
+    }
 }

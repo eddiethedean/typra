@@ -372,6 +372,10 @@ thread_local! {
     static QUERY_SORT_SPILL_STORE_OPEN_HOOK: RefCell<
         Option<Box<dyn FnMut(&std::path::Path) -> Result<FileStore, DbError>>>,
     > = RefCell::new(None);
+
+    static QUERY_SORT_SPILL_STORE_OVERRIDE_HOOK: RefCell<
+        Option<Box<dyn FnMut(&std::path::Path) -> Result<SortedQuerySpillStore, DbError>>>,
+    > = RefCell::new(None);
 }
 
 /// Covers sorted-query spill `FileStore` construction error paths during unit tests only.
@@ -384,15 +388,87 @@ pub(crate) fn test_set_sorted_query_spill_store_open_hook(
     });
 }
 
-fn open_sorted_query_spill_store(path: &std::path::Path) -> Result<FileStore, DbError> {
+/// Test-only: override the underlying spill store implementation.
+#[cfg(test)]
+pub(crate) fn test_set_sorted_query_spill_store_override_hook(
+    hook: Option<Box<dyn FnMut(&std::path::Path) -> Result<SortedQuerySpillStore, DbError>>>,
+) {
+    QUERY_SORT_SPILL_STORE_OVERRIDE_HOOK.with(|c| {
+        *c.borrow_mut() = hook;
+    });
+}
+
+pub(crate) enum SortedQuerySpillStore {
+    File(FileStore),
+    #[cfg(test)]
+    FailLen,
+}
+
+impl Store for SortedQuerySpillStore {
+    fn len(&self) -> Result<u64, DbError> {
+        match self {
+            Self::File(f) => f.len(),
+            #[cfg(test)]
+            Self::FailLen => Err(DbError::Io(std::io::Error::other(
+                "sorted query spill store synthetic len() failure (test override)",
+            ))),
+        }
+    }
+
+    fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+        match self {
+            Self::File(f) => f.read_exact_at(offset, buf),
+            #[cfg(test)]
+            Self::FailLen => Err(DbError::Io(std::io::Error::other(
+                "sorted query spill store synthetic read failure (test override)",
+            ))),
+        }
+    }
+
+    fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+        match self {
+            Self::File(f) => f.write_all_at(offset, buf),
+            #[cfg(test)]
+            Self::FailLen => Err(DbError::Io(std::io::Error::other(
+                "sorted query spill store synthetic write failure (test override)",
+            ))),
+        }
+    }
+
+    fn sync(&mut self) -> Result<(), DbError> {
+        match self {
+            Self::File(f) => f.sync(),
+            #[cfg(test)]
+            Self::FailLen => Ok(()),
+        }
+    }
+
+    fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+        match self {
+            Self::File(f) => f.truncate(len),
+            #[cfg(test)]
+            Self::FailLen => Ok(()),
+        }
+    }
+}
+
+fn open_sorted_query_spill_store(path: &std::path::Path) -> Result<SortedQuerySpillStore, DbError> {
     #[cfg(test)]
     {
+        let overridden = QUERY_SORT_SPILL_STORE_OVERRIDE_HOOK.with(|c| {
+            let mut bm = c.borrow_mut();
+            bm.as_mut().map(|hook| hook(path))
+        });
+        if let Some(r) = overridden {
+            return r;
+        }
+
         let hooked = QUERY_SORT_SPILL_STORE_OPEN_HOOK.with(|c| {
             let mut bm = c.borrow_mut();
             bm.as_mut().map(|hook| hook(path))
         });
         if let Some(r) = hooked {
-            return r;
+            return r.map(SortedQuerySpillStore::File);
         }
     }
     let spill_file = std::fs::OpenOptions::new()
@@ -401,7 +477,7 @@ fn open_sorted_query_spill_store(path: &std::path::Path) -> Result<FileStore, Db
         .create(false)
         .open(path)
         .map_err(DbError::Io)?;
-    Ok(FileStore::new(spill_file))
+    Ok(SortedQuerySpillStore::File(FileStore::new(spill_file)))
 }
 
 /// Like [`execute_query_iter`], but when `q.order_by` is set this will attempt a bounded-memory

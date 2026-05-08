@@ -119,6 +119,28 @@
     }
 
     #[test]
+    fn insert_value_at_path_overwrites_non_object_mid_parent_for_deep_paths() {
+        // Ensure the `!matches!(cur, RowValue::Object(_))` overwrite branch is exercised
+        // for a mid-parent (not just the top-level entry).
+        let mut root = BTreeMap::new();
+        root.insert(
+            "a".to_string(),
+            RowValue::Object(BTreeMap::from([("b".to_string(), RowValue::Int64(1))])),
+        );
+        let path = FieldPath(vec![
+            Cow::Borrowed("a"),
+            Cow::Borrowed("b"),
+            Cow::Borrowed("c"),
+            Cow::Borrowed("d"),
+        ]);
+        insert_value_at_path(&mut root, &path, RowValue::Int64(9)).unwrap();
+        let RowValue::Object(am) = root.get("a").unwrap() else { panic!() };
+        let RowValue::Object(bm) = am.get("b").unwrap() else { panic!() };
+        let RowValue::Object(cm) = bm.get("c").unwrap() else { panic!() };
+        assert_eq!(cm.get("d"), Some(&RowValue::Int64(9)));
+    }
+
+    #[test]
     fn decode_record_payload_v3_rejects_delete_with_nonzero_field_count() {
         let pk_ty = Type::String;
         let fields = vec![FieldDef::new(

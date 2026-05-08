@@ -225,6 +225,11 @@ pub fn decode_index_payload(bytes: &[u8]) -> Result<Vec<IndexEntry>, DbError> {
     Ok(v)
 }
 
+#[cfg(test)]
+mod tests {
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/src_index_tests.rs"));
+}
+
 fn encode_string(out: &mut Vec<u8>, s: &str) {
     let b = s.as_bytes();
     out.extend_from_slice(&(b.len() as u32).to_le_bytes());

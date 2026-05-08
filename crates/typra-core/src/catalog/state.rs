@@ -74,6 +74,15 @@ impl Catalog {
         v
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_insert_collection_info(&mut self, info: CollectionInfo) {
+        // Test-only escape hatch for constructing deliberately inconsistent catalog states to
+        // exercise downstream error handling (checkpoint/replay hardening).
+        self.by_name.insert(info.name.clone(), info.id);
+        self.by_id.insert(info.id.0, info);
+        self.next_id = self.next_id.max(self.by_id.len() as u32 + 1);
+    }
+
     /// `true` if `name` is a single-segment path on a top-level field.
     pub fn has_top_level_field(fields: &[FieldDef], name: &str) -> bool {
         fields

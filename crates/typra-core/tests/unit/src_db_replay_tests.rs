@@ -293,6 +293,57 @@
     }
 
     #[test]
+    fn apply_record_segment_errors_on_unknown_collection() {
+        let catalog = Catalog::default();
+        let mut latest = super::LatestMap::new();
+        let payload = encode_record_payload_v2(
+            99,
+            1,
+            &ScalarValue::String("k".into()),
+            &Type::String,
+            &[],
+        )
+        .unwrap();
+        let err = super::apply_record_segment(&payload, &catalog, &mut latest).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(SchemaError::UnknownCollection { id: 99 })
+        ));
+    }
+
+    #[test]
+    fn apply_record_segment_errors_when_primary_field_missing_in_fields() {
+        // Test-only: inject inconsistent catalog state.
+        let mut catalog = Catalog::default();
+        catalog.test_insert_collection_info(crate::catalog::CollectionInfo {
+            id: crate::schema::CollectionId(1),
+            name: "t".into(),
+            current_version: crate::schema::SchemaVersion(1),
+            fields: vec![FieldDef::new(
+                FieldPath::new([Cow::Borrowed("year")]).unwrap(),
+                Type::Int64,
+            )],
+            indexes: vec![],
+            primary_field: Some("id".into()),
+        });
+
+        let mut latest = super::LatestMap::new();
+        let payload = encode_record_payload_v2(
+            1,
+            1,
+            &ScalarValue::String("k".into()),
+            &Type::String,
+            &[],
+        )
+        .unwrap();
+        let err = super::apply_record_segment(&payload, &catalog, &mut latest).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(SchemaError::PrimaryFieldNotFound { .. })
+        ));
+    }
+
+    #[test]
     fn v6_load_catalog_latest_and_indexes_errors_match_replay_errors() {
         // Nested begin.
         let mut store = VecStore::new();
