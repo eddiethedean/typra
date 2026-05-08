@@ -16,6 +16,11 @@ use crate::schema::{FieldDef, FieldPath, Type};
 
 pub const RECORD_PAYLOAD_VERSION_V3: u16 = 3;
 
+#[inline]
+fn empty_object_row_value() -> RowValue {
+    RowValue::Object(BTreeMap::new())
+}
+
 fn encode_field_path(out: &mut Vec<u8>, fp: &FieldPath) -> Result<(), DbError> {
     // Keep encoding simple/stable: u8 segments, then for each segment u16 len + utf8 bytes.
     // FieldPath segments are validated at schema registration time; still guard here.
@@ -69,9 +74,7 @@ fn insert_value_at_path(
     }
 
     // Walk/create nested objects.
-    let mut cur = root
-        .entry(head)
-        .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+    let mut cur = root.entry(head).or_insert_with(empty_object_row_value);
     for seg in path.0.iter().skip(1).take(path.0.len() - 2) {
         let key = seg.as_ref().to_string();
         // If a parent is not an object, overwrite with an object to preserve the invariant that
@@ -80,9 +83,7 @@ fn insert_value_at_path(
             *cur = RowValue::Object(BTreeMap::new());
         }
         if let RowValue::Object(map) = cur {
-            cur = map
-                .entry(key)
-                .or_insert_with(|| RowValue::Object(BTreeMap::new()));
+            cur = map.entry(key).or_insert_with(empty_object_row_value);
         }
     }
     let leaf_key = path.0.last().unwrap().as_ref().to_string();

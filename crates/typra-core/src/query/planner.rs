@@ -1,3 +1,5 @@
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::hash_map::Iter as HashMapIter;
 use std::collections::BTreeMap;
 
@@ -7,6 +9,7 @@ use crate::error::{DbError, SchemaError};
 use crate::index::IndexState;
 use crate::record::RowValue;
 use crate::schema::{CollectionId, IndexKind};
+use crate::storage::{FileStore, Store};
 use crate::ScalarValue;
 
 use super::ast::{OrderBy, OrderDirection};
@@ -364,6 +367,43 @@ pub fn execute_query_iter<'a>(
     })
 }
 
+#[cfg(test)]
+thread_local! {
+    static QUERY_SORT_SPILL_STORE_OPEN_HOOK: RefCell<
+        Option<Box<dyn FnMut(&std::path::Path) -> Result<FileStore, DbError>>>,
+    > = RefCell::new(None);
+}
+
+/// Covers sorted-query spill `FileStore` construction error paths during unit tests only.
+#[cfg(test)]
+pub(crate) fn test_set_sorted_query_spill_store_open_hook(
+    hook: Option<Box<dyn FnMut(&std::path::Path) -> Result<FileStore, DbError>>>,
+) {
+    QUERY_SORT_SPILL_STORE_OPEN_HOOK.with(|c| {
+        *c.borrow_mut() = hook;
+    });
+}
+
+fn open_sorted_query_spill_store(path: &std::path::Path) -> Result<FileStore, DbError> {
+    #[cfg(test)]
+    {
+        let hooked = QUERY_SORT_SPILL_STORE_OPEN_HOOK.with(|c| {
+            let mut bm = c.borrow_mut();
+            bm.as_mut().map(|hook| hook(path))
+        });
+        if let Some(r) = hooked {
+            return r;
+        }
+    }
+    let spill_file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(false)
+        .open(path)
+        .map_err(DbError::Io)?;
+    Ok(FileStore::new(spill_file))
+}
+
 /// Like [`execute_query_iter`], but when `q.order_by` is set this will attempt a bounded-memory
 /// external sort by spilling ephemeral `Temp` segments to the underlying DB file.
 ///
@@ -440,15 +480,8 @@ pub fn execute_query_iter_with_spill_path<'a>(
     };
 
     // Build a sorted key source (potentially spilling to Temp segments).
-    let spill_file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(false)
-        .open(path)
-        .map_err(DbError::Io)?;
-    let spill_store = crate::storage::FileStore::new(spill_file);
+    let spill_store = open_sorted_query_spill_store(path)?;
     let spill = crate::spill::TempSpillFile::new(spill_store)?;
-
     let sort_source = Box::new(ExternalSortSource::new(
         spill, latest, base, col.id.0, order_by,
     )?);
@@ -552,8 +585,8 @@ fn cmp_sort_item(a: &SortItem, b: &SortItem, dir: OrderDirection) -> std::cmp::O
 
 // Simple external sort: sort fixed-size runs, spill each run as one Temp segment,
 // then k-way merge those runs.
-struct ExternalSortSource<'a> {
-    _spill: crate::spill::TempSpillFile<crate::storage::FileStore>,
+struct ExternalSortSource<'a, S: Store = FileStore> {
+    _spill: crate::spill::TempSpillFile<S>,
     collection_id: u32,
     dir: OrderDirection,
     heap: std::collections::BinaryHeap<HeapItem>,
@@ -633,9 +666,29 @@ impl Ord for HeapItem {
     }
 }
 
-impl<'a> ExternalSortSource<'a> {
+impl<'a, S: Store> ExternalSortSource<'a, S> {
+    fn flush_sorted_run(
+        spill: &mut crate::spill::TempSpillFile<S>,
+        runs_meta: &mut Vec<RunMeta>,
+        run: &mut Vec<SortItem>,
+        dir: OrderDirection,
+    ) -> Result<(), DbError> {
+        if run.is_empty() {
+            return Ok(());
+        }
+        run.sort_by(|a, b| cmp_sort_item(a, b, dir));
+        let payload = encode_run(run, dir);
+        let off = spill.append_temp_segment(&payload)?;
+        runs_meta.push(RunMeta {
+            offset: off,
+            payload_len: payload.len() as u64,
+        });
+        run.clear();
+        Ok(())
+    }
+
     fn new(
-        mut spill: crate::spill::TempSpillFile<crate::storage::FileStore>,
+        mut spill: crate::spill::TempSpillFile<S>,
         latest: &'a crate::db::LatestMap,
         mut input: Box<dyn RowSource + 'a>,
         collection_id: u32,
@@ -653,26 +706,11 @@ impl<'a> ExternalSortSource<'a> {
                 run.push(item);
             }
             if run.len() >= RUN_KEYS {
-                run.sort_by(|a, b| cmp_sort_item(a, b, dir));
-                let payload = encode_run(&run, dir);
-                let off = spill.append_temp_segment(&payload)?;
-                runs_meta.push(RunMeta {
-                    offset: off,
-                    payload_len: payload.len() as u64,
-                });
-                run.clear();
+                Self::flush_sorted_run(&mut spill, &mut runs_meta, &mut run, dir)?;
             }
         }
 
-        if !run.is_empty() {
-            run.sort_by(|a, b| cmp_sort_item(a, b, dir));
-            let payload = encode_run(&run, dir);
-            let off = spill.append_temp_segment(&payload)?;
-            runs_meta.push(RunMeta {
-                offset: off,
-                payload_len: payload.len() as u64,
-            });
-        }
+        Self::flush_sorted_run(&mut spill, &mut runs_meta, &mut run, dir)?;
 
         // Load run buffers and seed heap.
         let mut runs: Vec<RunReader> = Vec::new();
@@ -715,7 +753,7 @@ fn encode_run(run: &[SortItem], _dir: OrderDirection) -> Vec<u8> {
     out
 }
 
-impl RowSource for ExternalSortSource<'_> {
+impl<'a, S: Store> RowSource for ExternalSortSource<'a, S> {
     fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
         let top = self.heap.pop()?;
         let run_idx = top.run_idx;

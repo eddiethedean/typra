@@ -159,6 +159,107 @@ pub fn validate_value(
     }
 }
 
+fn must_int64(path: &[String], v: &RowValue, requirement: &'static str) -> Result<i64, DbError> {
+    let RowValue::Int64(n) = v else {
+        return Err(err(path, requirement));
+    };
+    Ok(*n)
+}
+
+fn must_uint64(path: &[String], v: &RowValue, requirement: &'static str) -> Result<u64, DbError> {
+    let RowValue::Uint64(n) = v else {
+        return Err(err(path, requirement));
+    };
+    Ok(*n)
+}
+
+fn must_f64(path: &[String], v: &RowValue, requirement: &'static str) -> Result<f64, DbError> {
+    let RowValue::Float64(n) = v else {
+        return Err(err(path, requirement));
+    };
+    Ok(*n)
+}
+
+fn constrain_min_i64(path: &[String], n: i64, min: i64) -> Result<(), DbError> {
+    if n < min {
+        Err(err(path, format!("value {n} is below minimum {min}")))
+    } else {
+        Ok(())
+    }
+}
+
+fn constrain_max_i64(path: &[String], n: i64, max: i64) -> Result<(), DbError> {
+    if n > max {
+        Err(err(path, format!("value {n} is above maximum {max}")))
+    } else {
+        Ok(())
+    }
+}
+
+fn constrain_min_u64(path: &[String], n: u64, min: u64) -> Result<(), DbError> {
+    if n < min {
+        Err(err(path, format!("value {n} is below minimum {min}")))
+    } else {
+        Ok(())
+    }
+}
+
+fn constrain_max_u64(path: &[String], n: u64, max: u64) -> Result<(), DbError> {
+    if n > max {
+        Err(err(path, format!("value {n} is above maximum {max}")))
+    } else {
+        Ok(())
+    }
+}
+
+fn constrain_min_f64(path: &[String], n: f64, min: f64) -> Result<(), DbError> {
+    if n < min {
+        Err(err(path, format!("value {n} is below minimum {min}")))
+    } else {
+        Ok(())
+    }
+}
+
+fn constrain_max_f64(path: &[String], n: f64, max: f64) -> Result<(), DbError> {
+    if n > max {
+        Err(err(path, format!("value {n} is above maximum {max}")))
+    } else {
+        Ok(())
+    }
+}
+
+fn constrain_min_byte_len(
+    path: &[String],
+    len: usize,
+    min: u64,
+    kind: &str,
+) -> Result<(), DbError> {
+    if (len as u64) < min {
+        Err(err(
+            path,
+            format!("{kind} length {len} is below minimum {min}"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn constrain_max_byte_len(
+    path: &[String],
+    len: usize,
+    max: u64,
+    kind: &str,
+) -> Result<(), DbError> {
+    if (len as u64) > max {
+        Err(err(
+            path,
+            format!("{kind} length {len} is above maximum {max}"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn apply_constraints(
     path: &[String],
     _ty: &Type,
@@ -168,105 +269,39 @@ fn apply_constraints(
     for c in constraints {
         match c {
             Constraint::MinI64(min) => {
-                let RowValue::Int64(n) = v else {
-                    return Err(err(path, "MinI64 constraint requires int64"));
-                };
-                if *n < *min {
-                    return Err(err(path, format!("value {n} is below minimum {min}")));
-                }
+                let n = must_int64(path, v, "MinI64 constraint requires int64")?;
+                constrain_min_i64(path, n, *min)?;
             }
             Constraint::MaxI64(max) => {
-                let RowValue::Int64(n) = v else {
-                    return Err(err(path, "MaxI64 constraint requires int64"));
-                };
-                if *n > *max {
-                    return Err(err(path, format!("value {n} is above maximum {max}")));
-                }
+                let n = must_int64(path, v, "MaxI64 constraint requires int64")?;
+                constrain_max_i64(path, n, *max)?;
             }
             Constraint::MinU64(min) => {
-                let RowValue::Uint64(n) = v else {
-                    return Err(err(path, "MinU64 constraint requires uint64"));
-                };
-                if *n < *min {
-                    return Err(err(path, format!("value {n} is below minimum {min}")));
-                }
+                let n = must_uint64(path, v, "MinU64 constraint requires uint64")?;
+                constrain_min_u64(path, n, *min)?;
             }
             Constraint::MaxU64(max) => {
-                let RowValue::Uint64(n) = v else {
-                    return Err(err(path, "MaxU64 constraint requires uint64"));
-                };
-                if *n > *max {
-                    return Err(err(path, format!("value {n} is above maximum {max}")));
-                }
+                let n = must_uint64(path, v, "MaxU64 constraint requires uint64")?;
+                constrain_max_u64(path, n, *max)?;
             }
             Constraint::MinF64(min) => {
-                let RowValue::Float64(n) = v else {
-                    return Err(err(path, "MinF64 constraint requires float64"));
-                };
-                if *n < *min {
-                    return Err(err(path, format!("value {n} is below minimum {min}")));
-                }
+                let n = must_f64(path, v, "MinF64 constraint requires float64")?;
+                constrain_min_f64(path, n, *min)?;
             }
             Constraint::MaxF64(max) => {
-                let RowValue::Float64(n) = v else {
-                    return Err(err(path, "MaxF64 constraint requires float64"));
-                };
-                if *n > *max {
-                    return Err(err(path, format!("value {n} is above maximum {max}")));
-                }
+                let n = must_f64(path, v, "MaxF64 constraint requires float64")?;
+                constrain_max_f64(path, n, *max)?;
             }
             Constraint::MinLength(min) => match v {
-                RowValue::String(s) => {
-                    if (s.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("string length {} is below minimum {}", s.len(), min),
-                        ));
-                    }
-                }
-                RowValue::Bytes(b) => {
-                    if (b.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("bytes length {} is below minimum {}", b.len(), min),
-                        ));
-                    }
-                }
-                RowValue::List(items) => {
-                    if (items.len() as u64) < *min {
-                        return Err(err(
-                            path,
-                            format!("list length {} is below minimum {}", items.len(), min),
-                        ));
-                    }
-                }
+                RowValue::String(s) => constrain_min_byte_len(path, s.len(), *min, "string")?,
+                RowValue::Bytes(b) => constrain_min_byte_len(path, b.len(), *min, "bytes")?,
+                RowValue::List(items) => constrain_min_byte_len(path, items.len(), *min, "list")?,
                 _ => return Err(err(path, "MinLength applies to string, bytes, or list")),
             },
             Constraint::MaxLength(max) => match v {
-                RowValue::String(s) => {
-                    if (s.len() as u64) > *max {
-                        return Err(err(
-                            path,
-                            format!("string length {} is above maximum {}", s.len(), max),
-                        ));
-                    }
-                }
-                RowValue::Bytes(b) => {
-                    if (b.len() as u64) > *max {
-                        return Err(err(
-                            path,
-                            format!("bytes length {} is above maximum {}", b.len(), max),
-                        ));
-                    }
-                }
-                RowValue::List(items) => {
-                    if (items.len() as u64) > *max {
-                        return Err(err(
-                            path,
-                            format!("list length {} is above maximum {}", items.len(), max),
-                        ));
-                    }
-                }
+                RowValue::String(s) => constrain_max_byte_len(path, s.len(), *max, "string")?,
+                RowValue::Bytes(b) => constrain_max_byte_len(path, b.len(), *max, "bytes")?,
+                RowValue::List(items) => constrain_max_byte_len(path, items.len(), *max, "list")?,
                 _ => return Err(err(path, "MaxLength applies to string, bytes, or list")),
             },
             Constraint::Regex(pattern) => {
@@ -364,4 +399,65 @@ pub fn validate_top_level_row(
         validate_value(&mut path, &def.ty, &def.constraints, v)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod constraint_helper_cover_tests {
+    use super::*;
+    use crate::error::DbError;
+
+    #[test]
+    fn constrain_helpers_accept_in_range_values() {
+        let path = vec!["z".into()];
+        constrain_min_i64(&path, 5, 1).unwrap();
+        constrain_max_i64(&path, 1, 10).unwrap();
+        constrain_min_u64(&path, 5, 1).unwrap();
+        constrain_max_u64(&path, 1, 10).unwrap();
+        constrain_min_f64(&path, 5.0, 1.0).unwrap();
+        constrain_max_f64(&path, 1.0, 10.0).unwrap();
+        constrain_min_byte_len(&path, "abcde".len(), 1, "string").unwrap();
+        constrain_max_byte_len(&path, "ab".len(), 10, "string").unwrap();
+        constrain_min_byte_len(&path, vec![1u8, 2, 3].len(), 2, "bytes").unwrap();
+        constrain_max_byte_len(&path, vec![1u8].len(), 4, "bytes").unwrap();
+    }
+
+    #[test]
+    fn constrain_max_numeric_helpers_surface_above_max_messages() {
+        let path = vec!["x".into()];
+
+        let e = constrain_max_i64(&path, 3, 1).unwrap_err();
+        assert!(matches!(
+            &e,
+            DbError::Validation(v) if v.path == path && v.message.contains("above maximum"),
+        ));
+
+        let e = constrain_max_u64(&path, 5, 1).unwrap_err();
+        assert!(matches!(
+            &e,
+            DbError::Validation(v) if v.message.contains("above maximum"),
+        ));
+
+        let e = constrain_max_f64(&path, 3.5, 1.25).unwrap_err();
+        assert!(matches!(
+            &e,
+            DbError::Validation(v) if v.message.contains("above maximum"),
+        ));
+    }
+
+    #[test]
+    fn constrain_max_byte_len_string_and_bytes_surface_above_max() {
+        let path = vec!["f".into()];
+
+        let e = constrain_max_byte_len(&path, "ab".len(), 1, "string").unwrap_err();
+        assert!(matches!(
+            &e,
+            DbError::Validation(v) if v.message.contains("above maximum"),
+        ));
+
+        let e = constrain_max_byte_len(&path, vec![1u8, 2].len(), 1, "bytes").unwrap_err();
+        assert!(matches!(
+            &e,
+            DbError::Validation(v) if v.message.contains("above maximum"),
+        ));
+    }
 }

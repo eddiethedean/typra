@@ -1520,6 +1520,333 @@
     }
 
     #[test]
+    fn checkpoint_in_memory_surfaces_latest_encoding_errors() {
+        use crate::config::OpenOptions;
+        use crate::record::RowValue;
+        use crate::storage::VecStore;
+        use crate::ScalarValue;
+        use std::path::PathBuf;
+
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            VecStore::new(),
+            OpenOptions::default(),
+        )
+        .unwrap();
+
+        let fields = vec![
+            path_field("id"),
+            FieldDef {
+                path: crate::schema::FieldPath(vec![Cow::Borrowed("year")]),
+                ty: Type::Int64,
+                constraints: vec![],
+            },
+        ];
+        let (cid, _) = db.register_collection("books", fields, "id").unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), RowValue::String("k".into())),
+                ("year".into(), RowValue::Int64(2020)),
+            ]),
+        )
+        .unwrap();
+
+        db.test_write_latest_cell_unchecked(
+            cid,
+            &ScalarValue::String("k".into()),
+            "year",
+            RowValue::String("nope".into()),
+        );
+
+        let err = db.checkpoint().unwrap_err();
+        assert!(matches!(err, DbError::Format(_)));
+    }
+
+    #[test]
+    fn insert_replace_surfaces_poison_misalignment_as_record_payload_encode_error() {
+        use crate::config::OpenOptions;
+        use crate::record::RowValue;
+        use crate::storage::VecStore;
+        use crate::ScalarValue;
+        use std::path::PathBuf;
+
+        fn poison_year_int_as_string(
+            _: CollectionId,
+            row: &mut BTreeMap<String, RowValue>,
+        ) {
+            row.insert("year".into(), RowValue::String("nope".into()));
+        }
+
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            VecStore::new(),
+            OpenOptions::default(),
+        )
+        .unwrap();
+
+        let fields = vec![
+            path_field("id"),
+            FieldDef {
+                path: crate::schema::FieldPath(vec![Cow::Borrowed("year")]),
+                ty: Type::Int64,
+                constraints: vec![],
+            },
+        ];
+        let (cid, _) = db.register_collection("books", fields, "id").unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), RowValue::String("k".into())),
+                ("year".into(), RowValue::Int64(2020)),
+            ]),
+        )
+        .unwrap();
+
+        db.test_arm_replace_encode_poison_once(poison_year_int_as_string);
+
+        let err = db
+            .insert(
+                cid,
+                BTreeMap::from([
+                    ("id".into(), RowValue::String("k".into())),
+                    ("year".into(), RowValue::Int64(2021)),
+                ]),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(err, DbError::Format(FormatError::RecordPayloadTypeMismatch)),
+            "expected replace encode `?`, got {err:?}"
+        );
+
+        // Poison is one-shot (`take`): a second replace should observe no hook and succeed.
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), RowValue::String("k".into())),
+                ("year".into(), RowValue::Int64(2022)),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            ScalarValue::Int64(2022),
+            db.get(cid, &ScalarValue::String("k".into()))
+                .unwrap()
+                .expect("latest row missing")
+                .get("year")
+                .cloned()
+                .expect("missing year column")
+                .into_scalar()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn delete_surfaces_poison_scalar_mismatch_as_record_payload_encode_error() {
+        use crate::config::OpenOptions;
+        use crate::record::RowValue;
+        use crate::storage::VecStore;
+        use crate::ScalarValue;
+        use std::path::PathBuf;
+
+        fn poison_pk_int_as_string(pk: ScalarValue) -> ScalarValue {
+            match pk {
+                ScalarValue::Int64(_) => ScalarValue::String("bogus".into()),
+                other => other,
+            }
+        }
+
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            VecStore::new(),
+            OpenOptions::default(),
+        )
+        .unwrap();
+
+        let fields = vec![
+            FieldDef::new(crate::schema::FieldPath(vec![Cow::Borrowed("id")]), Type::Int64),
+        ];
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+
+        db.insert(
+            cid,
+            BTreeMap::from([("id".into(), RowValue::Int64(42))]),
+        )
+        .unwrap();
+
+        db.test_arm_delete_encode_poison_once(poison_pk_int_as_string);
+
+        let err = db.delete(cid, &ScalarValue::Int64(42)).unwrap_err();
+        assert!(
+            matches!(err, DbError::Format(FormatError::RecordPayloadTypeMismatch)),
+            "expected delete Opcode encode `?`, got {err:?}"
+        );
+
+        db.delete(cid, &ScalarValue::Int64(42)).unwrap();
+        assert!(db.get(cid, &ScalarValue::Int64(42)).unwrap().is_none());
+    }
+
+    #[test]
+    fn checkpoint_propagates_io_when_checkpoint_write_budget_is_exhausted() {
+        use std::cell::Cell;
+        use std::io;
+        use std::path::PathBuf;
+        use std::rc::Rc;
+
+        use crate::config::OpenOptions;
+        use crate::record::RowValue;
+        use crate::storage::{Store, VecStore};
+
+        struct CountWrites {
+            n: Rc<Cell<usize>>,
+            inner: VecStore,
+        }
+
+        impl Store for CountWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                self.n.set(self.n.get() + 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        struct BudgetWrites {
+            remaining: Cell<usize>,
+            inner: VecStore,
+        }
+
+        impl Store for BudgetWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                let r = self.remaining.get();
+                if r == 0 {
+                    return Err(DbError::Io(io::Error::other(
+                        "write budget exhausted at checkpoint",
+                    )));
+                }
+                self.remaining.set(r - 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        let fields = vec![
+            path_field("id"),
+            FieldDef {
+                path: crate::schema::FieldPath(vec![Cow::Borrowed("year")]),
+                ty: Type::Int64,
+                constraints: vec![],
+            },
+        ];
+
+        let row = BTreeMap::from([
+            ("id".into(), RowValue::String("pk".into())),
+            ("year".into(), RowValue::Int64(1)),
+        ]);
+
+        let wc_prep = Rc::new(Cell::new(0usize));
+        {
+            let mut db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                CountWrites {
+                    n: wc_prep.clone(),
+                    inner: VecStore::new(),
+                },
+                OpenOptions::default(),
+            )
+            .unwrap();
+            let (cid, _) = db.register_collection("t", fields.clone(), "id").unwrap();
+            db.insert(cid, row.clone()).unwrap();
+        }
+        let w_prep = wc_prep.get();
+        assert!(w_prep > 0);
+
+        let wc_full = Rc::new(Cell::new(0usize));
+        {
+            let mut db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                CountWrites {
+                    n: wc_full.clone(),
+                    inner: VecStore::new(),
+                },
+                OpenOptions::default(),
+            )
+            .unwrap();
+            let (cid, _) = db.register_collection("t", fields.clone(), "id").unwrap();
+            db.insert(cid, row.clone()).unwrap();
+            db.checkpoint().unwrap();
+        }
+        let w_full = wc_full.get();
+        assert!(
+            w_full > w_prep,
+            "expected checkpoint() to append more writes beyond register/insert baseline"
+        );
+
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            BudgetWrites {
+                remaining: Cell::new(w_prep),
+                inner: VecStore::new(),
+            },
+            OpenOptions::default(),
+        )
+        .unwrap();
+        let (cid, _) = db.register_collection("t", fields.clone(), "id").unwrap();
+        db.insert(cid, row.clone()).unwrap();
+        let err = db.checkpoint().unwrap_err();
+        assert!(
+            matches!(err, DbError::Io(_)),
+            "expected Io from exhausted write budget during checkpoint, got {err:?}"
+        );
+
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            BudgetWrites {
+                remaining: Cell::new(w_full.saturating_sub(1)),
+                inner: VecStore::new(),
+            },
+            OpenOptions::default(),
+        )
+        .unwrap();
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+        db.insert(cid, row).unwrap();
+        let err_late = db.checkpoint().unwrap_err();
+        assert!(
+            matches!(err_late, DbError::Io(_)),
+            "expected Io from exhausted write budget on late checkpoint/manifest flush, got {err_late:?}"
+        );
+    }
+
+    #[test]
     fn corrupt_checkpoint_falls_back_in_auto_truncate_but_errors_in_strict() {
         use crate::config::{OpenOptions, RecoveryMode};
         use crate::segments::header::SEGMENT_HEADER_LEN;
@@ -1856,6 +2183,342 @@
         assert!(
             matches!(err, DbError::Io(_)),
             "expected Io from exhausted write budget, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn register_schema_version_safe_autocommit_propagates_write_failure_when_budget_exhausted() {
+        use std::cell::Cell;
+        use std::io;
+        use std::path::PathBuf;
+        use std::rc::Rc;
+
+        use crate::config::OpenOptions;
+        use crate::schema::{FieldDef, FieldPath};
+        use crate::storage::{Store, VecStore};
+
+        struct CountWrites {
+            n: Rc<Cell<usize>>,
+            inner: VecStore,
+        }
+
+        impl Store for CountWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                self.n.set(self.n.get() + 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        struct BudgetWrites {
+            remaining: Cell<usize>,
+            inner: VecStore,
+        }
+
+        impl Store for BudgetWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                let r = self.remaining.get();
+                if r == 0 {
+                    return Err(DbError::Io(io::Error::other(
+                        "write budget exhausted (schema version autocommit)",
+                    )));
+                }
+                self.remaining.set(r - 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        let wc_open_only = Rc::new(Cell::new(0usize));
+        {
+            let _db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                CountWrites {
+                    n: wc_open_only.clone(),
+                    inner: VecStore::new(),
+                },
+                OpenOptions::default(),
+            )
+            .unwrap();
+        }
+        let w_open = wc_open_only.get();
+
+        let fields_base = vec![FieldDef::new(
+            FieldPath(vec![Cow::Borrowed("id")]),
+            Type::String,
+        )];
+
+        let wc_open_reg = Rc::new(Cell::new(0usize));
+        {
+            let mut db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                CountWrites {
+                    n: wc_open_reg.clone(),
+                    inner: VecStore::new(),
+                },
+                OpenOptions::default(),
+            )
+            .unwrap();
+            db.register_collection("c", fields_base.clone(), "id").unwrap();
+        }
+        let w_reg = wc_open_reg.get().saturating_sub(w_open);
+        assert!(w_reg > 0, "expected register_collection writes > 0");
+
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            BudgetWrites {
+                remaining: Cell::new(w_open + w_reg),
+                inner: VecStore::new(),
+            },
+            OpenOptions::default(),
+        )
+        .unwrap();
+
+        db.register_collection("c", fields_base, "id").unwrap();
+        let cid = db.catalog().collections()[0].id;
+
+        let mut next_fields = db.catalog().get(cid).unwrap().fields.clone();
+        next_fields.push(FieldDef::new(
+            FieldPath(vec![Cow::Borrowed("tag")]),
+            Type::Optional(Box::new(Type::String)),
+        ));
+        let err = db
+            .register_schema_version_with_indexes(cid, next_fields, vec![])
+            .unwrap_err();
+        assert!(
+            matches!(err, DbError::Io(_)),
+            "expected Io from exhausted write budget, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn register_schema_version_force_autocommit_propagates_write_failure_when_budget_exhausted() {
+        use std::cell::Cell;
+        use std::io;
+        use std::path::PathBuf;
+        use std::rc::Rc;
+
+        use crate::config::OpenOptions;
+        use crate::schema::{FieldDef, FieldPath};
+        use crate::storage::{Store, VecStore};
+
+        struct CountWrites {
+            n: Rc<Cell<usize>>,
+            inner: VecStore,
+        }
+
+        impl Store for CountWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                self.n.set(self.n.get() + 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        struct BudgetWrites {
+            remaining: Cell<usize>,
+            inner: VecStore,
+        }
+
+        impl Store for BudgetWrites {
+            fn len(&self) -> Result<u64, DbError> {
+                self.inner.len()
+            }
+
+            fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+                self.inner.read_exact_at(offset, buf)
+            }
+
+            fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+                let r = self.remaining.get();
+                if r == 0 {
+                    return Err(DbError::Io(io::Error::other(
+                        "write budget exhausted (schema version force autocommit)",
+                    )));
+                }
+                self.remaining.set(r - 1);
+                self.inner.write_all_at(offset, buf)
+            }
+
+            fn sync(&mut self) -> Result<(), DbError> {
+                self.inner.sync()
+            }
+
+            fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+                self.inner.truncate(len)
+            }
+        }
+
+        let wc_open_only = Rc::new(Cell::new(0usize));
+        {
+            let _db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                CountWrites {
+                    n: wc_open_only.clone(),
+                    inner: VecStore::new(),
+                },
+                OpenOptions::default(),
+            )
+            .unwrap();
+        }
+        let w_open = wc_open_only.get();
+
+        let fields_base = vec![
+            FieldDef::new(FieldPath(vec![Cow::Borrowed("id")]), Type::Int64),
+            FieldDef::new(FieldPath(vec![Cow::Borrowed("x")]), Type::Int64),
+        ];
+
+        let wc_open_reg = Rc::new(Cell::new(0usize));
+        {
+            let mut db = Database::open_with_store(
+                PathBuf::from(":memory:"),
+                CountWrites {
+                    n: wc_open_reg.clone(),
+                    inner: VecStore::new(),
+                },
+                OpenOptions::default(),
+            )
+            .unwrap();
+            db.register_collection_with_indexes("t", fields_base.clone(), vec![], "id")
+                .unwrap();
+        }
+        let w_reg = wc_open_reg.get().saturating_sub(w_open);
+        assert!(w_reg > 0);
+
+        let mut db = Database::open_with_store(
+            PathBuf::from(":memory:"),
+            BudgetWrites {
+                remaining: Cell::new(w_open + w_reg),
+                inner: VecStore::new(),
+            },
+            OpenOptions::default(),
+        )
+        .unwrap();
+
+        let (cid, _) = db
+            .register_collection_with_indexes("t", fields_base, vec![], "id")
+            .unwrap();
+        let err = db
+            .register_schema_version_with_indexes_force(
+                cid,
+                vec![
+                    FieldDef::new(FieldPath(vec![Cow::Borrowed("id")]), Type::Int64),
+                    FieldDef::new(FieldPath(vec![Cow::Borrowed("x")]), Type::Int64),
+                    FieldDef::new(
+                        FieldPath(vec![Cow::Borrowed("extra")]),
+                        Type::Optional(Box::new(Type::String)),
+                    ),
+                ],
+                vec![],
+            )
+            .unwrap_err();
+        assert!(
+            matches!(err, DbError::Io(_)),
+            "expected Io from exhausted write budget, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn unique_index_replace_same_pk_same_secondary_value_skips_conflict_arms_in_insert() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                        Type::Int64,
+                    ),
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("code")]),
+                        Type::Int64,
+                    ),
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("note")]),
+                        Type::Optional(Box::new(Type::String)),
+                    ),
+                ],
+                vec![crate::schema::IndexDef {
+                    name: "code_uidx".into(),
+                    path: crate::schema::FieldPath(vec![Cow::Borrowed("code")]),
+                    kind: crate::schema::IndexKind::Unique,
+                }],
+                "id",
+            )
+            .unwrap();
+
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), crate::RowValue::Int64(1)),
+                ("code".into(), crate::RowValue::Int64(42)),
+                ("note".into(), crate::RowValue::None),
+            ]),
+        )
+        .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), crate::RowValue::Int64(1)),
+                ("code".into(), crate::RowValue::Int64(42)),
+                ("note".into(), crate::RowValue::String("seen".into())),
+            ]),
+        )
+        .unwrap();
+
+        let row = db
+            .get(cid, &crate::ScalarValue::Int64(1))
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.get("code"), Some(&crate::RowValue::Int64(42)));
+        assert_eq!(
+            row.get("note"),
+            Some(&crate::RowValue::String("seen".into()))
         );
     }
 

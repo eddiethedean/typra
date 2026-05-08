@@ -163,7 +163,21 @@ pub(crate) fn open_with_store<S: Store>(
         replay::replay_tail_into(&mut store, replay_from, format_minor, &mut catalog, &mut latest, &mut indexes)?;
     }
     #[cfg(feature = "tracing")] tracing::info!(path = %path.display(), format_minor = format_minor, "open_with_store_ok");
-    Ok(Database { path, store, catalog, segment_start, format_minor, latest, indexes, txn_seq: 0, txn_staging: None })
+    Ok(Database {
+        path,
+        store,
+        catalog,
+        segment_start,
+        format_minor,
+        latest,
+        indexes,
+        txn_seq: 0,
+        txn_staging: None,
+        #[cfg(test)]
+        test_poison_planned_replace_row: None,
+        #[cfg(test)]
+        test_poison_delete_encode_scalar: None,
+    })
 }
 
 #[cfg(test)]

@@ -221,6 +221,14 @@ pub struct Database<S: Store = FileStore> {
     txn_seq: u64,
     /// When set, [`insert`] / [`register_collection`] append to this batch instead of autocommit.
     txn_staging: Option<TxnStaging>,
+    /// Covers replace-path record encoding error branches in tests (misaligned validated row maps).
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub(crate) test_poison_planned_replace_row: Option<fn(CollectionId, &mut BTreeMap<String, RowValue>)>,
+    /// Covers delete Opcode payload encoding `?` by supplying a bogus scalar unrelated to validated `pk`.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub(crate) test_poison_delete_encode_scalar: Option<fn(ScalarValue) -> ScalarValue>,
 }
 
 impl<S: Store> Database<S> {
@@ -269,6 +277,26 @@ impl<S: Store> Database<S> {
     fn next_txn_id(&mut self) -> u64 {
         self.txn_seq = self.txn_seq.saturating_add(1);
         self.txn_seq
+    }
+
+    #[inline]
+    fn commit_write_batch(
+        &mut self,
+        txn_id: u64,
+        body: &[(crate::segments::header::SegmentType, &[u8])],
+    ) -> Result<(), DbError> {
+        write::commit_write_txn_v6(
+            &mut self.store,
+            self.segment_start,
+            &mut self.format_minor,
+            txn_id,
+            body,
+        )
+    }
+
+    #[inline]
+    fn apply_catalog_record(&mut self, wire: CatalogRecordWire) -> Result<(), DbError> {
+        self.catalog.apply_record(wire)
     }
 
     /// Run `f` inside a multi-write transaction: durable segments are written on success.
@@ -331,13 +359,7 @@ impl<S: Store> Database<S> {
         }
         let batch: Vec<(crate::segments::header::SegmentType, &[u8])> =
             st.pending.iter().map(|(t, b)| (*t, b.as_slice())).collect();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            st.txn_id,
-            &batch,
-        )?;
+        self.commit_write_batch(st.txn_id, &batch)?;
         self.catalog = st.shadow_catalog;
         self.latest = st.shadow_latest;
         self.indexes = st.shadow_indexes;
@@ -520,17 +542,14 @@ impl<S: Store> Database<S> {
         };
         let payload = encode_catalog_payload(&wire);
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
+        self.commit_write_batch(
             tid,
             &[(
                 crate::segments::header::SegmentType::Schema,
                 payload.as_slice(),
             )],
         )?;
-        self.catalog.apply_record(wire)?;
+        self.apply_catalog_record(wire)?;
         Ok((CollectionId(id), SchemaVersion(1)))
     }
 
@@ -589,17 +608,14 @@ impl<S: Store> Database<S> {
             return Ok(SchemaVersion(next_v));
         }
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
+        self.commit_write_batch(
             tid,
             &[(
                 crate::segments::header::SegmentType::Schema,
                 payload.as_slice(),
             )],
         )?;
-        self.catalog.apply_record(wire)?;
+        self.apply_catalog_record(wire)?;
         Ok(SchemaVersion(next_v))
     }
 
@@ -784,17 +800,14 @@ impl<S: Store> Database<S> {
             return Ok(SchemaVersion(next_v));
         }
         let tid = self.next_txn_id();
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
+        self.commit_write_batch(
             tid,
             &[(
                 crate::segments::header::SegmentType::Schema,
                 payload.as_slice(),
             )],
         )?;
-        self.catalog.apply_record(wire)?;
+        self.apply_catalog_record(wire)?;
         Ok(SchemaVersion(next_v))
     }
 
@@ -810,11 +823,17 @@ impl<S: Store> Database<S> {
         write::ensure_header_v0_5(&mut self.store, &mut self.format_minor)?;
         let (mut payload, full, mut index_entries, pk_scalar) =
             plan_insert_row(self.catalog_for_read(), collection_id, row)?;
+        #[cfg(test)]
+        let mut full = full;
         let existing = self
             .latest_for_read()
             .get(&(collection_id.0, full.0.clone()))
             .cloned();
         if existing.is_some() {
+            #[cfg(test)]
+            if let Some(poison) = self.test_poison_planned_replace_row.take() {
+                poison(collection_id, &mut full.1);
+            }
             // Re-encode with explicit replace opcode.
             let col = self
                 .catalog_for_read()
@@ -850,7 +869,7 @@ impl<S: Store> Database<S> {
                 let v = row_value_at_path_segments(&full.1, &def.path.0).unwrap_or(RowValue::None);
                 non_pk.push(((*def).clone(), v));
             }
-            payload = if has_multi_segment_schema {
+            payload = (if has_multi_segment_schema {
                 encode_record_payload_v3_op(
                     collection_id.0,
                     col.current_version.0,
@@ -858,7 +877,7 @@ impl<S: Store> Database<S> {
                     &pk_scalar,
                     &pk_def.ty,
                     &non_pk,
-                )?
+                )
             } else {
                 encode_record_payload_v2_op(
                     collection_id.0,
@@ -867,8 +886,8 @@ impl<S: Store> Database<S> {
                     &pk_scalar,
                     &pk_def.ty,
                     &non_pk,
-                )?
-            };
+                )
+            })?;
             // Prepend index deletes for any existing row.
             if let Some(ref old_row) = existing {
                 let mut deletes = index_deletes_for_existing_row(
@@ -882,17 +901,22 @@ impl<S: Store> Database<S> {
             }
         }
         for e in &index_entries {
-            if e.kind == crate::schema::IndexKind::Unique {
-                if let Some(existing) = self.indexes_for_read().unique_lookup(
-                    e.collection_id,
-                    &e.index_name,
-                    &e.index_key,
-                ) {
-                    if e.op == IndexOp::Insert && existing != e.pk_key.as_slice() {
-                        return Err(DbError::Schema(SchemaError::UniqueIndexViolation));
-                    }
-                }
+            if e.kind != crate::schema::IndexKind::Unique {
+                continue;
             }
+            let Some(existing) =
+                self.indexes_for_read()
+                    .unique_lookup(e.collection_id, &e.index_name, &e.index_key)
+            else {
+                continue;
+            };
+            if e.op != IndexOp::Insert {
+                continue;
+            }
+            if existing == e.pk_key.as_slice() {
+                continue;
+            }
+            return Err(DbError::Schema(SchemaError::UniqueIndexViolation));
         }
         if let Some(st) = &mut self.txn_staging {
             if !index_entries.is_empty() {
@@ -925,13 +949,7 @@ impl<S: Store> Database<S> {
             crate::segments::header::SegmentType::Record,
             payload.as_slice(),
         ));
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            tid,
-            &batch,
-        )?;
+        self.commit_write_batch(tid, &batch)?;
         self.latest.insert((collection_id.0, full.0), full.1);
         for e in index_entries {
             self.indexes.apply(e)?;
@@ -972,28 +990,42 @@ impl<S: Store> Database<S> {
         let Some(old_row) = existing else {
             return Ok(());
         };
-        let mut index_entries =
-            index_deletes_for_existing_row(collection_id, pk, &col.indexes, &old_row);
+        let indexes = col.indexes.clone();
+        let schema_ver = col.current_version.0;
+        let pk_ty = pk_def.ty.clone();
         let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
-        let record_payload = if has_multi_segment_schema {
+
+        let mut index_entries =
+            index_deletes_for_existing_row(collection_id, pk, &indexes, &old_row);
+        #[cfg(not(test))]
+        let pk_for_record = pk.clone();
+        #[cfg(test)]
+        let pk_for_record = {
+            let mut p = pk.clone();
+            if let Some(poison) = self.test_poison_delete_encode_scalar.take() {
+                p = poison(p);
+            }
+            p
+        };
+        let record_payload = (if has_multi_segment_schema {
             encode_record_payload_v3_op(
                 collection_id.0,
-                col.current_version.0,
+                schema_ver,
                 OP_DELETE,
-                pk,
-                &pk_def.ty,
+                &pk_for_record,
+                &pk_ty,
                 &[],
-            )?
+            )
         } else {
             encode_record_payload_v2_op(
                 collection_id.0,
-                col.current_version.0,
+                schema_ver,
                 OP_DELETE,
-                pk,
-                &pk_def.ty,
+                &pk_for_record,
+                &pk_ty,
                 &[],
-            )?
-        };
+            )
+        })?;
 
         if let Some(st) = &mut self.txn_staging {
             if !index_entries.is_empty() {
@@ -1026,13 +1058,7 @@ impl<S: Store> Database<S> {
             crate::segments::header::SegmentType::Record,
             record_payload.as_slice(),
         ));
-        write::commit_write_txn_v6(
-            &mut self.store,
-            self.segment_start,
-            &mut self.format_minor,
-            tid,
-            &batch,
-        )?;
+        self.commit_write_batch(tid, &batch)?;
         self.latest.remove(&(collection_id.0, pk_key));
         for e in index_entries {
             self.indexes.apply(e)?;
@@ -1073,6 +1099,86 @@ impl<S: Store> Database<S> {
         }
         let key = (collection_id.0, pk.canonical_key_bytes());
         Ok(self.latest_for_read().get(&key).cloned())
+    }
+
+    /// Write a durable checkpoint segment and publish it via the superblock.
+    ///
+    /// The checkpoint stores the logical state (catalog + latest rows + index state) so open can
+    /// avoid scanning/replaying the full log. Works with any [`Store`] (file-backed [`FileStore`] or
+    /// [`VecStore`] snapshots).
+    pub fn checkpoint(&mut self) -> Result<(), DbError> {
+        if self.txn_staging.is_some() {
+            return Err(DbError::Transaction(TransactionError::NestedTransaction));
+        }
+
+        write::ensure_header_v0_6(&mut self.store, &mut self.format_minor)?;
+
+        let mut cp = checkpoint::checkpoint_from_state(
+            self.catalog_for_read(),
+            self.latest_for_read(),
+            self.indexes_for_read(),
+        )?;
+
+        let file_len = self.store.len()?;
+        let mut writer = SegmentWriter::new(&mut self.store, file_len.max(self.segment_start));
+        let checkpoint_offset = writer.offset();
+
+        let payload_len = checkpoint::encode_checkpoint_payload_v0(&cp).len() as u64;
+        let replay_from = checkpoint_offset + SEGMENT_HEADER_LEN as u64 + payload_len;
+        cp.replay_from_offset = replay_from;
+        let payload = checkpoint::encode_checkpoint_payload_v0(&cp);
+
+        let hdr = SegmentHeader {
+            segment_type: SegmentType::Checkpoint,
+            payload_len: 0,
+            payload_crc32c: 0,
+        };
+        writer.append(hdr, &payload)?;
+
+        publish::append_manifest_and_publish_with_checkpoint(
+            &mut self.store,
+            self.segment_start,
+            Some((checkpoint_offset, payload.len() as u32)),
+        )?;
+        self.store.sync()?;
+        Ok(())
+    }
+
+    /// Test hook: mutate the planned row once on the replace path immediately before Opcode re-encoding.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub(crate) fn test_arm_replace_encode_poison_once(
+        &mut self,
+        poison: fn(CollectionId, &mut BTreeMap<String, RowValue>),
+    ) {
+        self.test_poison_planned_replace_row = Some(poison);
+    }
+
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub(crate) fn test_arm_delete_encode_poison_once(
+        &mut self,
+        poison: fn(ScalarValue) -> ScalarValue,
+    ) {
+        self.test_poison_delete_encode_scalar = Some(poison);
+    }
+
+    /// Test helper: overwrite one cell in [`Self::latest`] without validation.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub(crate) fn test_write_latest_cell_unchecked(
+        &mut self,
+        collection_id: CollectionId,
+        pk: &ScalarValue,
+        field: &str,
+        value: RowValue,
+    ) {
+        let pk_key = pk.canonical_key_bytes();
+        let row = self
+            .latest
+            .get_mut(&(collection_id.0, pk_key))
+            .expect("test_write_latest_cell_unchecked: unknown row key");
+        row.insert(field.to_string(), value);
     }
 }
 
@@ -1176,48 +1282,6 @@ impl Database<FileStore> {
         // 3) Refresh in-memory state by reopening.
         let reopened = Database::open_with_options(live_path, OpenOptions::default())?;
         *self = reopened;
-        Ok(())
-    }
-
-    /// Write a durable checkpoint and publish it via the superblock.
-    ///
-    /// The checkpoint stores the logical state (catalog + latest rows + index state) so open can
-    /// avoid scanning/replaying the full log.
-    pub fn checkpoint(&mut self) -> Result<(), DbError> {
-        if self.txn_staging.is_some() {
-            return Err(DbError::Transaction(TransactionError::NestedTransaction));
-        }
-
-        write::ensure_header_v0_6(&mut self.store, &mut self.format_minor)?;
-
-        let mut cp = checkpoint::checkpoint_from_state(
-            self.catalog_for_read(),
-            self.latest_for_read(),
-            self.indexes_for_read(),
-        )?;
-
-        let file_len = self.store.len()?;
-        let mut writer = SegmentWriter::new(&mut self.store, file_len.max(self.segment_start));
-        let checkpoint_offset = writer.offset();
-
-        let payload_len = checkpoint::encode_checkpoint_payload_v0(&cp).len() as u64;
-        let replay_from = checkpoint_offset + SEGMENT_HEADER_LEN as u64 + payload_len;
-        cp.replay_from_offset = replay_from;
-        let payload = checkpoint::encode_checkpoint_payload_v0(&cp);
-
-        let hdr = SegmentHeader {
-            segment_type: SegmentType::Checkpoint,
-            payload_len: 0,
-            payload_crc32c: 0,
-        };
-        writer.append(hdr, &payload)?;
-
-        let _ = publish::append_manifest_and_publish_with_checkpoint(
-            &mut self.store,
-            self.segment_start,
-            Some((checkpoint_offset, payload.len() as u32)),
-        )?;
-        self.store.sync()?;
         Ok(())
     }
 

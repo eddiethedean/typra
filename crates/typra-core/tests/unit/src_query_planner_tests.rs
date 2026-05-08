@@ -645,6 +645,727 @@ fn execute_query_iter_with_spill_path_collection_scan_orders() {
 }
 
 #[test]
+fn sorted_query_spill_store_open_hook_propagates_errors() {
+    use std::io;
+
+    struct ClearHookGuard;
+    impl Drop for ClearHookGuard {
+        fn drop(&mut self) {
+            super::test_set_sorted_query_spill_store_open_hook(None);
+        }
+    }
+    let _clear = ClearHookGuard;
+
+    let dir = tempfile::tempdir().unwrap();
+    let spill_path = dir.path().join("hook_spill.typra");
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&spill_path)
+        .unwrap();
+
+    super::test_set_sorted_query_spill_store_open_hook(Some(Box::new(|_| {
+        Err(DbError::Io(io::Error::other(
+            "sorted spill store open hook deliberate failure",
+        )))
+    })));
+
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"a".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(1)),
+            ("x".to_string(), RowValue::Int64(1)),
+        ]),
+    );
+
+    let idx = IndexState::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    let result = super::execute_query_iter_with_spill_path(&cat, &idx, &latest, &q, Some(&spill_path));
+    match result {
+        Ok(_) => panic!("expected spill open hook Io error"),
+        Err(err) => assert!(
+            matches!(err, DbError::Io(_)),
+            "expected hook Io from sorted spill setup, got {err:?}"
+        ),
+    }
+}
+
+#[test]
+fn sorted_query_spill_file_store_write_budget_propagates_during_external_sort() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    struct ClearHookGuard;
+    impl Drop for ClearHookGuard {
+        fn drop(&mut self) {
+            super::test_set_sorted_query_spill_store_open_hook(None);
+        }
+    }
+    let _clear = ClearHookGuard;
+
+    let dir = tempfile::tempdir().unwrap();
+    let spill_path = dir.path().join("budget_spill.typra");
+
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&spill_path)
+        .unwrap();
+
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"a".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(2)),
+            ("x".to_string(), RowValue::Int64(2)),
+        ]),
+    );
+    latest.insert(
+        (1, b"b".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(1)),
+            ("x".to_string(), RowValue::Int64(1)),
+        ]),
+    );
+
+    let idx = IndexState::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    let calibration_counter = Rc::new(Cell::new(0usize));
+    let cc = calibration_counter.clone();
+    super::test_set_sorted_query_spill_store_open_hook(Some(Box::new(move |path| {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(path)
+            .map_err(DbError::Io)?;
+        Ok(crate::storage::FileStore::new_for_test(
+            file,
+            Some(cc.clone()),
+            None,
+        ))
+    })));
+
+    super::execute_query_iter_with_spill_path(&cat, &idx, &latest, &q, Some(&spill_path)).unwrap();
+
+    let w = calibration_counter.get();
+    assert!(
+        w > 0,
+        "calibration expects non-zero FileStore writes during sorted spill setup"
+    );
+
+    super::test_set_sorted_query_spill_store_open_hook(None);
+
+    std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(&spill_path)
+        .unwrap();
+
+    let budget_remaining = Rc::new(Cell::new(w.saturating_sub(1)));
+    let br = budget_remaining.clone();
+    super::test_set_sorted_query_spill_store_open_hook(Some(Box::new(move |path| {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            .open(path)
+            .map_err(DbError::Io)?;
+        Ok(crate::storage::FileStore::new_for_test(file, None, Some(br.clone())))
+    })));
+
+    let budget_result =
+        super::execute_query_iter_with_spill_path(&cat, &idx, &latest, &q, Some(&spill_path));
+    match budget_result {
+        Ok(_) => panic!("expected Io once FileStore write budget is exhausted mid external sort"),
+        Err(err) => assert!(
+            matches!(err, DbError::Io(_)),
+            "expected budget Io propagation, got {err:?}"
+        ),
+    }
+}
+
+#[test]
+fn sorted_query_spill_file_path_handles_empty_sorted_run_when_snapshot_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let spill_path = dir.path().join("empty_sorted_run.typra");
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&spill_path)
+        .unwrap();
+
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let idx = IndexState::default();
+    let latest_empty = LatestMap::default();
+
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    let mut spill_it = super::execute_query_iter_with_spill_path(
+        &cat,
+        &idx,
+        &latest_empty,
+        &q,
+        Some(&spill_path),
+    )
+    .unwrap();
+    assert!(
+        spill_it.next().is_none(),
+        "empty snapshot should spill-sort without accumulating sort batches"
+    );
+}
+
+#[test]
+fn index_unique_source_returns_none_when_pk_row_missing() {
+    let latest = LatestMap::default();
+    let mut src = super::IndexUniqueSource {
+        latest: &latest,
+        collection_id: 1,
+        pk: Some(b"k".to_vec()),
+        residual: None,
+        done: false,
+    };
+    assert!(src.next_key().is_none());
+}
+
+#[test]
+fn execute_query_iter_order_by_propagates_unknown_collection_error() {
+    let catalog = Catalog::default();
+    let indexes = IndexState::default();
+    let latest = LatestMap::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    assert!(super::execute_query_iter(&catalog, &indexes, &latest, &q).is_err());
+}
+
+#[test]
+fn execute_query_unique_index_lookup_with_missing_pk_does_not_push_row() {
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![IndexDef {
+            name: "x_u".to_string(),
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            kind: IndexKind::Unique,
+        }],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let latest = LatestMap::default(); // pk row intentionally missing
+    let mut idx = IndexState::default();
+    idx.apply(crate::index::IndexEntry {
+        collection_id: 1,
+        index_name: "x_u".to_string(),
+        kind: IndexKind::Unique,
+        op: crate::index::IndexOp::Insert,
+        index_key: ScalarValue::Int64(7).canonical_key_bytes(),
+        pk_key: b"pk_missing".to_vec(),
+    })
+    .unwrap();
+
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: Some(Predicate::Eq {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            value: ScalarValue::Int64(7),
+        }),
+        limit: None,
+        order_by: None,
+    };
+
+    let out = super::execute_query(&cat, &idx, &latest, &q).unwrap();
+    assert!(out.is_empty());
+}
+
+#[test]
+fn sorted_query_spill_path_some_propagates_unknown_collection_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let spill_path = dir.path().join("spill.typra");
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&spill_path)
+        .unwrap();
+
+    let catalog = Catalog::default(); // collection missing
+    let indexes = IndexState::default();
+    let latest = LatestMap::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    assert!(
+        super::execute_query_iter_with_spill_path(&catalog, &indexes, &latest, &q, Some(&spill_path))
+            .is_err()
+    );
+}
+
+#[test]
+fn sorted_query_spill_open_missing_file_maps_to_io_error() {
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let indexes = IndexState::default();
+    let latest = LatestMap::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("does_not_exist.typra");
+    let err = match super::execute_query_iter_with_spill_path(
+        &cat,
+        &indexes,
+        &latest,
+        &q,
+        Some(&missing),
+    )
+    {
+        Ok(_) => panic!("expected Err"),
+        Err(e) => e,
+    };
+
+    match err {
+        DbError::Io(_) => {}
+        other => panic!("expected Io, got {other:?}"),
+    }
+}
+
+#[test]
+fn sorted_query_spill_db_path_none_propagates_execute_query_error() {
+    let catalog = Catalog::default();
+    let indexes = IndexState::default();
+    let latest = LatestMap::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    assert!(super::execute_query_iter_with_spill_path(&catalog, &indexes, &latest, &q, None).is_err());
+}
+
+#[test]
+fn sort_item_for_returns_none_when_row_is_missing() {
+    let latest = LatestMap::default();
+    let key: super::RowKey = (CollectionId(1), b"k".to_vec());
+    let order_by = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("x")]),
+        direction: OrderDirection::Asc,
+    };
+    assert!(super::sort_item_for(&latest, &key, &order_by).is_none());
+}
+
+#[test]
+fn scalar_sort_key_bytes_bool_covers_true_and_false_branches() {
+    let t = super::scalar_sort_key_bytes(&ScalarValue::Bool(true));
+    let f = super::scalar_sort_key_bytes(&ScalarValue::Bool(false));
+    assert_eq!(t, vec![0, 1]);
+    assert_eq!(f, vec![0, 0]);
+}
+
+#[test]
+fn run_reader_next_item_returns_none_when_key_slice_truncated() {
+    let mut buf = vec![0u8]; // none_flag
+    buf.extend_from_slice(&(5u32).to_le_bytes()); // key_len=5, but only 2 bytes follow
+    buf.extend_from_slice(b"ab");
+    let mut rr = super::RunReader::new(buf);
+    assert!(rr.next_item().is_none());
+}
+
+#[test]
+fn run_reader_next_item_returns_none_when_pk_len_truncated() {
+    let mut buf = vec![0u8]; // none_flag
+    buf.extend_from_slice(&(2u32).to_le_bytes()); // key_len=2
+    buf.extend_from_slice(b"ab"); // key bytes ok; missing pk_len u32
+    let mut rr = super::RunReader::new(buf);
+    assert!(rr.next_item().is_none());
+}
+
+#[test]
+fn run_reader_next_item_returns_none_when_pk_slice_truncated() {
+    let mut buf = vec![0u8]; // none_flag
+    buf.extend_from_slice(&(1u32).to_le_bytes()); // key_len=1
+    buf.extend_from_slice(b"a"); // key ok
+    buf.extend_from_slice(&(3u32).to_le_bytes()); // pk_len=3, but only 1 byte follow
+    buf.extend_from_slice(b"b");
+    let mut rr = super::RunReader::new(buf);
+    assert!(rr.next_item().is_none());
+}
+
+#[test]
+fn external_sort_source_new_propagates_input_key_error() {
+    #[derive(Default)]
+    struct ErrSource {
+        returned: bool,
+    }
+    impl super::RowSource for ErrSource {
+        fn next_key(&mut self) -> Option<Result<super::RowKey, DbError>> {
+            if self.returned {
+                None
+            } else {
+                self.returned = true;
+                Some(Err(DbError::Io(std::io::Error::other("boom"))))
+            }
+        }
+    }
+
+    let spill = crate::spill::TempSpillFile::new(crate::storage::VecStore::new()).unwrap();
+    let latest = LatestMap::default();
+    let order_by = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("x")]),
+        direction: OrderDirection::Asc,
+    };
+    let err = match super::ExternalSortSource::new(
+        spill,
+        &latest,
+        Box::new(ErrSource::default()),
+        1,
+        order_by,
+    )
+    {
+        Ok(_) => panic!("expected Err"),
+        Err(e) => e,
+    };
+    match err {
+        DbError::Io(_) => {}
+        other => panic!("expected Io, got {other:?}"),
+    }
+}
+
+#[test]
+fn external_sort_source_new_surfaces_flush_error_on_run_limit() {
+    use crate::storage::{Store, VecStore};
+
+    #[derive(Default)]
+    struct KeySource {
+        i: usize,
+    }
+    impl super::RowSource for KeySource {
+        fn next_key(&mut self) -> Option<Result<super::RowKey, DbError>> {
+            const RUN_KEYS: usize = 2048;
+            if self.i >= RUN_KEYS {
+                return None;
+            }
+            let pk = self.i.to_le_bytes().to_vec();
+            self.i += 1;
+            Some(Ok((CollectionId(1), pk)))
+        }
+    }
+
+    #[derive(Default)]
+    struct FailWriteStore {
+        inner: VecStore,
+    }
+    impl Store for FailWriteStore {
+        fn len(&self) -> Result<u64, DbError> {
+            self.inner.len()
+        }
+        fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+            self.inner.read_exact_at(offset, buf)
+        }
+        fn write_all_at(&mut self, _offset: u64, _buf: &[u8]) -> Result<(), DbError> {
+            Err(DbError::Io(std::io::Error::other("write failed")))
+        }
+        fn sync(&mut self) -> Result<(), DbError> {
+            self.inner.sync()
+        }
+        fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+            self.inner.truncate(len)
+        }
+    }
+
+    let mut latest = LatestMap::default();
+    for i in 0..2048usize {
+        let pk = i.to_le_bytes().to_vec();
+        latest.insert(
+            (1, pk),
+            BTreeMap::from([("x".to_string(), RowValue::Int64(i as i64))]),
+        );
+    }
+
+    let spill = crate::spill::TempSpillFile::new(FailWriteStore::default()).unwrap();
+    let order_by = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("x")]),
+        direction: OrderDirection::Asc,
+    };
+
+    assert!(
+        super::ExternalSortSource::new(spill, &latest, Box::new(KeySource::default()), 1, order_by)
+            .is_err()
+    );
+}
+
+#[test]
+fn external_sort_source_new_skips_sort_item_when_row_missing() {
+    use crate::storage::VecStore;
+
+    #[derive(Default)]
+    struct OneKey {
+        done: bool,
+    }
+    impl super::RowSource for OneKey {
+        fn next_key(&mut self) -> Option<Result<super::RowKey, DbError>> {
+            if self.done {
+                None
+            } else {
+                self.done = true;
+                Some(Ok((CollectionId(1), b"missing".to_vec())))
+            }
+        }
+    }
+
+    let spill = crate::spill::TempSpillFile::new(VecStore::new()).unwrap();
+    let latest = LatestMap::default(); // row missing => sort_item_for returns None
+    let order_by = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("x")]),
+        direction: OrderDirection::Asc,
+    };
+
+    let mut src =
+        super::ExternalSortSource::new(spill, &latest, Box::new(OneKey::default()), 1, order_by)
+            .unwrap();
+    assert!(src.next_key().is_none());
+}
+
+#[test]
+fn external_sort_source_new_tolerates_corrupt_run_payload_by_skipping_seed_item() {
+    use crate::storage::{Store, VecStore};
+
+    #[derive(Default)]
+    struct OneKey {
+        done: bool,
+    }
+    impl super::RowSource for OneKey {
+        fn next_key(&mut self) -> Option<Result<super::RowKey, DbError>> {
+            if self.done {
+                None
+            } else {
+                self.done = true;
+                Some(Ok((CollectionId(1), b"k".to_vec())))
+            }
+        }
+    }
+
+    #[derive(Default)]
+    struct CorruptReadStore {
+        inner: VecStore,
+    }
+    impl Store for CorruptReadStore {
+        fn len(&self) -> Result<u64, DbError> {
+            self.inner.len()
+        }
+        fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+            self.inner.read_exact_at(offset, buf)?;
+            // Corrupt the encoded key_len so RunReader::next_item() returns None.
+            if buf.len() >= 5 {
+                buf[1..5].copy_from_slice(&u32::MAX.to_le_bytes());
+            }
+            Ok(())
+        }
+        fn write_all_at(&mut self, offset: u64, data: &[u8]) -> Result<(), DbError> {
+            self.inner.write_all_at(offset, data)
+        }
+        fn sync(&mut self) -> Result<(), DbError> {
+            self.inner.sync()
+        }
+        fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+            self.inner.truncate(len)
+        }
+    }
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"k".to_vec()),
+        BTreeMap::from([("x".to_string(), RowValue::Int64(1))]),
+    );
+
+    let spill = crate::spill::TempSpillFile::new(CorruptReadStore::default()).unwrap();
+    let order_by = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("x")]),
+        direction: OrderDirection::Asc,
+    };
+
+    let mut src =
+        super::ExternalSortSource::new(spill, &latest, Box::new(OneKey::default()), 1, order_by)
+            .unwrap();
+    assert!(src.next_key().is_none());
+}
+
+#[test]
+fn external_sort_source_new_surfaces_read_temp_payload_error() {
+    use crate::storage::{Store, VecStore};
+
+    #[derive(Default)]
+    struct SingleKeySource {
+        done: bool,
+    }
+    impl super::RowSource for SingleKeySource {
+        fn next_key(&mut self) -> Option<Result<super::RowKey, DbError>> {
+            if self.done {
+                None
+            } else {
+                self.done = true;
+                Some(Ok((CollectionId(1), b"k".to_vec())))
+            }
+        }
+    }
+
+    #[derive(Default)]
+    struct FailReadStore {
+        inner: VecStore,
+    }
+    impl Store for FailReadStore {
+        fn len(&self) -> Result<u64, DbError> {
+            self.inner.len()
+        }
+        fn read_exact_at(&mut self, _offset: u64, _buf: &mut [u8]) -> Result<(), DbError> {
+            Err(DbError::Io(std::io::Error::other("read failed")))
+        }
+        fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+            self.inner.write_all_at(offset, buf)
+        }
+        fn sync(&mut self) -> Result<(), DbError> {
+            self.inner.sync()
+        }
+        fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+            self.inner.truncate(len)
+        }
+    }
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"k".to_vec()),
+        BTreeMap::from([("x".to_string(), RowValue::Int64(1))]),
+    );
+
+    let spill = crate::spill::TempSpillFile::new(FailReadStore::default()).unwrap();
+    let order_by = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("x")]),
+        direction: OrderDirection::Asc,
+    };
+
+    let err = match super::ExternalSortSource::new(
+        spill,
+        &latest,
+        Box::new(SingleKeySource::default()),
+        1,
+        order_by,
+    )
+    {
+        Ok(_) => panic!("expected Err"),
+        Err(e) => e,
+    };
+    match err {
+        DbError::Io(_) => {}
+        other => panic!("expected Io, got {other:?}"),
+    }
+}
+
+#[test]
 fn remove_used_predicate_and_and_cases() {
     let used = Predicate::Eq {
         path: FieldPath(vec![Cow::Borrowed("x")]),
@@ -863,6 +1584,135 @@ fn external_sort_flushes_residual_run_without_full_batches() {
     let mut src = super::ExternalSortSource::new(spill, &latest, input, 1, ob).unwrap();
     for _ in 0..5 {
         assert!(src.next_key().unwrap().is_ok());
+    }
+}
+
+#[test]
+fn external_sort_propagates_spill_segment_write_budget_exhaustion() {
+    use std::cell::Cell;
+    use std::io;
+    use std::rc::Rc;
+
+    struct CountWrites {
+        n: Rc<Cell<usize>>,
+        inner: crate::storage::VecStore,
+    }
+
+    impl crate::storage::Store for CountWrites {
+        fn len(&self) -> Result<u64, DbError> {
+            self.inner.len()
+        }
+
+        fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+            self.inner.read_exact_at(offset, buf)
+        }
+
+        fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+            self.n.set(self.n.get().saturating_add(1));
+            self.inner.write_all_at(offset, buf)
+        }
+
+        fn sync(&mut self) -> Result<(), DbError> {
+            self.inner.sync()
+        }
+
+        fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+            self.inner.truncate(len)
+        }
+    }
+
+    struct BudgetWrites {
+        remaining: Cell<usize>,
+        inner: crate::storage::VecStore,
+    }
+
+    impl crate::storage::Store for BudgetWrites {
+        fn len(&self) -> Result<u64, DbError> {
+            self.inner.len()
+        }
+
+        fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
+            self.inner.read_exact_at(offset, buf)
+        }
+
+        fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+            let r = self.remaining.get();
+            if r == 0 {
+                return Err(DbError::Io(io::Error::other(
+                    "spill append write budget exhausted",
+                )));
+            }
+            self.remaining.set(r.saturating_sub(1));
+            self.inner.write_all_at(offset, buf)
+        }
+
+        fn sync(&mut self) -> Result<(), DbError> {
+            self.inner.sync()
+        }
+
+        fn truncate(&mut self, len: u64) -> Result<(), DbError> {
+            self.inner.truncate(len)
+        }
+    }
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"k".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(1)),
+            ("x".to_string(), RowValue::Int64(7)),
+        ]),
+    );
+
+    let order_by = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("x")]),
+        direction: OrderDirection::Asc,
+    };
+
+    let wc = Rc::new(Cell::new(0usize));
+    {
+        let spill = crate::spill::TempSpillFile::new(CountWrites {
+            n: wc.clone(),
+            inner: crate::storage::VecStore::new(),
+        })
+        .unwrap();
+        let scan: Box<dyn RowSource> = Box::new(super::ScanSource {
+            it: latest.iter(),
+            collection_id: 1,
+            predicate: None,
+        });
+        let _sorted = super::ExternalSortSource::new(
+            spill,
+            &latest,
+            scan,
+            1,
+            order_by.clone(),
+        )
+        .unwrap();
+    }
+
+    let w = wc.get();
+    assert!(
+        w > 0,
+        "expected spilled temp segments to involve at least one store write_all_at batch"
+    );
+
+    let spill_b = crate::spill::TempSpillFile::new(BudgetWrites {
+        remaining: Cell::new(w.saturating_sub(1)),
+        inner: crate::storage::VecStore::new(),
+    })
+    .unwrap();
+    let scan_b: Box<dyn RowSource> = Box::new(super::ScanSource {
+        it: latest.iter(),
+        collection_id: 1,
+        predicate: None,
+    });
+    match super::ExternalSortSource::new(spill_b, &latest, scan_b, 1, order_by) {
+        Ok(_) => panic!("expected ExternalSortSource::new to fail when spill append budget exhausted"),
+        Err(err) => assert!(
+            matches!(err, DbError::Io(_)),
+            "expected Io propagating append_temp_segment/store budget exhaustion, got {err:?}"
+        ),
     }
 }
 

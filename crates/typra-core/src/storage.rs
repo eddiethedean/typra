@@ -2,6 +2,8 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+#[cfg(test)]
+use std::{cell::Cell, rc::Rc};
 
 use crate::config::OpenMode;
 use crate::error::DbError;
@@ -72,6 +74,12 @@ pub struct FileStore {
     inner: crate::pager::PagedStore<RawFileStore>,
     _writer_lock: Option<WriterLockGuard>,
     _reader_lock: Option<File>,
+    /// Counts [`Store::write_all_at`] invocations (test builds only).
+    #[cfg(test)]
+    test_write_counter: Option<Rc<Cell<usize>>>,
+    /// When set, the Nth [`Store::write_all_at`] call fails with synthetic [`DbError::Io`].
+    #[cfg(test)]
+    test_write_budget_remaining: Option<Rc<Cell<usize>>>,
 }
 
 #[derive(Debug)]
@@ -97,9 +105,9 @@ impl Drop for WriterLockGuard {
         let mut g = writer_locks().lock().unwrap_or_else(|e| e.into_inner());
         if let Some(st) = g.get_mut(&self.lock_path) {
             st.refs = st.refs.saturating_sub(1);
-            if st.refs == 0 {
-                g.remove(&self.lock_path);
-            }
+        }
+        if g.get(&self.lock_path).is_some_and(|s| s.refs == 0) {
+            g.remove(&self.lock_path);
         }
     }
 }
@@ -121,6 +129,28 @@ impl FileStore {
             ),
             _writer_lock: None,
             _reader_lock: None,
+            #[cfg(test)]
+            test_write_counter: None,
+            #[cfg(test)]
+            test_write_budget_remaining: None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        file: File,
+        write_counter: Option<Rc<Cell<usize>>>,
+        write_budget_remaining: Option<Rc<Cell<usize>>>,
+    ) -> Self {
+        Self {
+            inner: crate::pager::PagedStore::new(
+                RawFileStore::new(file),
+                crate::pager::DEFAULT_PAGE_SIZE,
+            ),
+            _writer_lock: None,
+            _reader_lock: None,
+            test_write_counter: write_counter,
+            test_write_budget_remaining: write_budget_remaining,
         }
     }
 
@@ -235,6 +265,10 @@ impl FileStore {
             ),
             _writer_lock: writer_lock,
             _reader_lock: reader_lock,
+            #[cfg(test)]
+            test_write_counter: None,
+            #[cfg(test)]
+            test_write_budget_remaining: None,
         })
     }
 }
@@ -249,6 +283,21 @@ impl Store for FileStore {
     }
 
     fn write_all_at(&mut self, offset: u64, buf: &[u8]) -> Result<(), DbError> {
+        #[cfg(test)]
+        {
+            if let Some(c) = &self.test_write_counter {
+                c.set(c.get().saturating_add(1));
+            }
+            if let Some(budget) = &self.test_write_budget_remaining {
+                let r = budget.get();
+                if r == 0 {
+                    return Err(DbError::Io(std::io::Error::other(
+                        "FileStore write budget exhausted (test instrumentation)",
+                    )));
+                }
+                budget.set(r - 1);
+            }
+        }
         self.inner.write_all_at(offset, buf)
     }
 
