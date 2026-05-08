@@ -587,6 +587,64 @@ fn execute_query_iter_with_spill_path_index_lookup_unique_and_nonunique() {
 }
 
 #[test]
+fn execute_query_iter_with_spill_path_collection_scan_orders() {
+    let dir = tempfile::tempdir().unwrap();
+    let spill_path = dir.path().join("spill.typra");
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&spill_path)
+        .unwrap();
+
+    let mut cat = Catalog::default();
+    cat.apply_record(CatalogRecordWire::CreateCollection {
+        collection_id: 1,
+        name: "t".to_string(),
+        schema_version: 1,
+        fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+        indexes: vec![],
+        primary_field: Some("id".to_string()),
+    })
+    .unwrap();
+
+    let mut latest = LatestMap::default();
+    latest.insert(
+        (1, b"a".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(2)),
+            ("x".to_string(), RowValue::Int64(2)),
+        ]),
+    );
+    latest.insert(
+        (1, b"b".to_vec()),
+        BTreeMap::from([
+            ("id".to_string(), RowValue::Int64(1)),
+            ("x".to_string(), RowValue::Int64(1)),
+        ]),
+    );
+
+    let idx = IndexState::default();
+    let q = Query {
+        collection: CollectionId(1),
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("x")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+
+    let mut it =
+        super::execute_query_iter_with_spill_path(&cat, &idx, &latest, &q, Some(&spill_path))
+            .unwrap();
+    assert!(it.next().is_some());
+    assert!(it.next().is_some());
+    assert!(it.next().is_none());
+}
+
+#[test]
 fn remove_used_predicate_and_and_cases() {
     let used = Predicate::Eq {
         path: FieldPath(vec![Cow::Borrowed("x")]),
@@ -768,6 +826,44 @@ fn external_sort_source_spills_multiple_runs_and_merges() {
         }
     }
     assert!(seen > 0);
+}
+
+#[test]
+fn external_sort_flushes_residual_run_without_full_batches() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("spill.typra");
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path)
+        .unwrap();
+    let store = crate::storage::FileStore::new(file);
+    let spill = crate::spill::TempSpillFile::new(store).unwrap();
+
+    let mut latest = LatestMap::default();
+    let mut keys = Vec::new();
+    // Few enough keys never to exceed `RUN_KEYS`, so sorting flushes exactly one residual run.
+    for i in 0..100u32 {
+        let pk = i.to_le_bytes().to_vec();
+        keys.push(pk.clone());
+        let mut row = BTreeMap::new();
+        row.insert("v".to_string(), RowValue::Int64(i as i64));
+        latest.insert((1, pk), row);
+    }
+    let input: Box<dyn RowSource> = Box::new(KeyIter {
+        cid: CollectionId(1),
+        keys: keys.into_iter(),
+    });
+    let ob = OrderBy {
+        path: FieldPath(vec![Cow::Borrowed("v")]),
+        direction: OrderDirection::Asc,
+    };
+    let mut src = super::ExternalSortSource::new(spill, &latest, input, 1, ob).unwrap();
+    for _ in 0..5 {
+        assert!(src.next_key().unwrap().is_ok());
+    }
 }
 
 #[test]

@@ -1859,6 +1859,188 @@
         );
     }
 
+    #[test]
+    fn register_schema_version_safe_autocommit_persists_outside_transaction() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let (cid, _) = db
+            .register_collection(
+                "t",
+                vec![FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                    Type::String,
+                )],
+                "id",
+            )
+            .unwrap();
+        let mut next_fields = db.catalog().get(cid).unwrap().fields.clone();
+        next_fields.push(FieldDef::new(
+            crate::schema::FieldPath(vec![Cow::Borrowed("tag")]),
+            Type::Optional(Box::new(Type::String)),
+        ));
+        db.register_schema_version_with_indexes(cid, next_fields, vec![])
+            .unwrap();
+        assert_eq!(db.catalog().get(cid).unwrap().current_version.0, 2);
+    }
+
+    #[test]
+    fn register_schema_version_force_autocommit_persists_outside_transaction() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let (cid, _) = db
+            .register_collection(
+                "t",
+                vec![
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                        Type::Int64,
+                    ),
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("x")]),
+                        Type::Int64,
+                    ),
+                ],
+                "id",
+            )
+            .unwrap();
+        db.register_schema_version_with_indexes_force(
+            cid,
+            vec![
+                FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                    Type::Int64,
+                ),
+                FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("x")]),
+                    Type::Int64,
+                ),
+                FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("extra")]),
+                    Type::Optional(Box::new(Type::String)),
+                ),
+            ],
+            vec![],
+        )
+        .unwrap();
+        assert!(
+            db.catalog().get(cid).unwrap().fields.iter().any(|f| {
+                f.path.0.len() == 1 && f.path.0[0].as_ref() == "extra"
+            })
+        );
+    }
+
+    #[test]
+    fn insert_replace_same_pk_legacy_v2_autocommit() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let (cid, _) = db
+            .register_collection(
+                "t",
+                vec![
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                        Type::Int64,
+                    ),
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("y")]),
+                        Type::Int64,
+                    ),
+                ],
+                "id",
+            )
+            .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), crate::RowValue::Int64(1)),
+                ("y".into(), crate::RowValue::Int64(10)),
+            ]),
+        )
+        .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), crate::RowValue::Int64(1)),
+                ("y".into(), crate::RowValue::Int64(11)),
+            ]),
+        )
+        .unwrap();
+        let row = db
+            .get(cid, &crate::ScalarValue::Int64(1))
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.get("y"), Some(&crate::RowValue::Int64(11)));
+    }
+
+    #[test]
+    fn unique_index_second_insert_conflict_errors() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let (cid, _) = db
+            .register_collection_with_indexes(
+                "t",
+                vec![
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                        Type::Int64,
+                    ),
+                    FieldDef::new(
+                        crate::schema::FieldPath(vec![Cow::Borrowed("code")]),
+                        Type::Int64,
+                    ),
+                ],
+                vec![crate::schema::IndexDef {
+                    name: "code_uidx".into(),
+                    path: crate::schema::FieldPath(vec![Cow::Borrowed("code")]),
+                    kind: crate::schema::IndexKind::Unique,
+                }],
+                "id",
+            )
+            .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), crate::RowValue::Int64(1)),
+                ("code".into(), crate::RowValue::Int64(99)),
+            ]),
+        )
+        .unwrap();
+        let e = db
+            .insert(
+                cid,
+                BTreeMap::from([
+                    ("id".into(), crate::RowValue::Int64(2)),
+                    ("code".into(), crate::RowValue::Int64(99)),
+                ]),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::UniqueIndexViolation)
+        ));
+    }
+
+    #[test]
+    fn delete_existing_legacy_v2_autocommit_removes_latest() {
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let (cid, _) = db
+            .register_collection(
+                "t",
+                vec![FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                    Type::Int64,
+                )],
+                "id",
+            )
+            .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([("id".into(), crate::RowValue::Int64(1))]),
+        )
+        .unwrap();
+        db.delete(cid, &crate::ScalarValue::Int64(1)).unwrap();
+        assert!(db
+            .get(cid, &crate::ScalarValue::Int64(1))
+            .unwrap()
+            .is_none());
+    }
+
     /// Exercise `best_effort_fsync_parent_dir` early returns (Unix only).
     #[cfg(unix)]
     #[test]
