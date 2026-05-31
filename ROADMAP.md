@@ -4,7 +4,8 @@ This document is the **project roadmap** for Typra: a typed, embedded, single-fi
 
 - **Current release**: `1.0.0` (see [`CHANGELOG.md`](CHANGELOG.md))
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0**.
-- **Next milestone**: `1.1.0` — planner/operator growth + query hardening (see roadmap by release). **`1.0.0`** is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Next milestone**: `1.1.0` — planner/operator growth + query hardening + SQL foundation (see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track)). **`1.0.0`** is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Post-1.0 track**: phased **ISO/IEC 9075** SQL (**`1.1`–`1.8`**) then **full SQLAlchemy** (**`1.9+`**) — see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track) and [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track).
 - **Roadmap style**: release-based milestones (SemVer). Patch versions are bugfix-only; minor versions (`1.x`) may add features without breaking stable APIs.
 
 ## Guiding principles (from the specs)
@@ -24,6 +25,8 @@ In addition, Typra should support **multiple storage/compute modes** (SQLite-lik
 - **Future hybrid + streaming mode**: keep a normal file-backed database, but use a **buffer pool** plus **streaming/bounded-memory operators** so queries (notably joins and groupby/aggregations) can run when data exceeds RAM.
 
 Quick links:
+- **Post-1.0 SQL (ISO/IEC 9075)**: see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track)
+- **Post-1.0 SQLAlchemy**: see [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track)
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
 - **User migration**: see [`docs/guides/python.md`](docs/guides/python.md) (schema migrations section) and [`docs/reference/cli.md`](docs/reference/cli.md).
@@ -38,6 +41,7 @@ Primary design references:
 - [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md) (record payload v2, 0.6.0+)
 - [`docs/guides/python.md`](docs/guides/python.md) (Python API: registration, **indexes**, **queries**, subset rows)
 - [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
+- **Planned (1.1+):** [`docs/specs/sql_iso9075_mapping.md`](docs/specs/sql_iso9075_mapping.md) · [`docs/reference/sql_dialect.md`](docs/reference/sql_dialect.md) · [`docs/guides/sqlalchemy.md`](docs/guides/sqlalchemy.md) (**1.9+**)
 
 ## Near-term focus
 
@@ -55,6 +59,23 @@ flowchart LR
   v060 --> v070 --> v080 --> v090 --> v100 --> v110 --> v120
 ```
 
+**Post-1.0 focus (1.x):** engine hardening (**1.1**), phased **ISO/IEC 9075** SQL (**1.1–1.8**), then **full SQLAlchemy** (**1.9+**). Details in [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track) and [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track).
+
+```mermaid
+flowchart LR
+  v100del["1.0.0 stable ✓"]
+  v111["1.1 hardening + SQL base"]
+  v112["1.2 DML + write DB-API"]
+  v113["1.3 joins + subqueries"]
+  v114["1.4 GROUP BY + agg"]
+  v115["1.5 DDL + info schema"]
+  v116["1.6 CTEs + windows"]
+  v117["1.7 DB-API complete"]
+  v118["1.8 SQL compliance"]
+  v119["1.9 full SQLAlchemy"]
+  v100del --> v111 --> v112 --> v113 --> v114 --> v115 --> v116 --> v117 --> v118 --> v119
+```
+
 ## Status snapshot (current: 1.0.x)
 
 **Implemented today:**
@@ -63,7 +84,7 @@ flowchart LR
 - **Python**: primary **`typra.models`** API plus **`fields_json`**; full **`Database`** surface including migrations, compaction, snapshots; **`typra.dbapi`** (PEP 249 read-only `SELECT` subset). See [`python/typra/README.md`](python/typra/README.md) and [`docs/reference/python_api.md`](docs/reference/python_api.md).
 - **CI / coverage**: multi-OS Rust and Python CI; **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES`); **`make check-full`** includes **`scripts/verify-doc-examples.sh`**.
 
-**Not yet:** full SQL / SQLAlchemy—see [Roadmap by release](#roadmap-by-release).
+**Not yet:** full **ISO/IEC 9075** SQL or **SQLAlchemy** integration — today only a minimal read-only `SELECT` subset ships via **`typra.dbapi`**; phased delivery is in [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track) (**1.1–1.8**) and [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track) (**1.9+**).
 
 **Earlier releases** (details in [`CHANGELOG.md`](CHANGELOG.md)):
 - **`0.8.0`**: **TxnBegin** / **TxnCommit** / **TxnAbort** segments, format minor **6**, **`Database::transaction`** + staged read-your-writes, **`OpenOptions` / `RecoveryMode`**, **`Store::truncate`**, Python **`with db.transaction():`**; autocommit **insert** / **register** use single txn batch + one **sync**.
@@ -399,7 +420,7 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 
 ### 1.0.0 — Stable public API + format guarantees
 
-**Status:** **Delivered** (see [`CHANGELOG.md`](CHANGELOG.md) **1.0.0**). Next work targets **1.1.0** (planner/operator growth + query hardening).
+**Status:** **Delivered** (see [`CHANGELOG.md`](CHANGELOG.md) **1.0.0**). Next work targets **1.1.0** — see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track).
 
 **Goal:** “Safe to ship in production apps”: semver + **file-format compatibility policy**, security posture, and **operational** docs.
 
@@ -455,21 +476,315 @@ These items were high-leverage for real applications shipping Typra as an embedd
 
 **Python — remaining work**
 - Stable **`typra`** API + **`typra.pyi`** / typing story; compatibility policy vs **on-disk** minors.
-- **DB-API 2.0** module: **documented + tested** for the subset of operations Typra supports (parameters, transactions, errors)—**not** “full SQL.”
-- SQLAlchemy path: **evaluate** official dialect/shim **only if** query + txn surfaces justify it.
+- **DB-API 2.0** module: **documented + tested** for the subset of operations Typra supports (parameters, transactions, errors)—expanded to full parity in **1.7**; **SQLAlchemy** in **1.9** (see [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track)).
 
 **Definition of done**
 - End-to-end **documented** journey: register → insert → **index/query** → **txn batch** → reopen → **migrate** → **compact** → recover from controlled corruption tests.
 - Doc set: Getting Started, Schema, Queries, Transactions, Operations, Failure modes.
 
 **Non-goals (unchanged for 1.0 unless explicitly revisited)**  
-Same as the **Non-goals** section at the end of this file: still **no** distributed replica, **no** full SQL server, **no** FTS/vector/DuckDB-style analytics as **shipping** commitments.
+Same as the **Non-goals (through 1.0)** section below: still **no** distributed replica, **no** network SQL server, **no** FTS/vector/DuckDB-style analytics as **shipping** commitments in 1.0. Full **ISO/IEC 9075** query support is a **1.x goal** (phased), not a 1.0 deliverable.
 
-## Cross-cutting initiatives (land throughout 0.2–1.0)
+---
+
+## Post-1.0: ISO/IEC 9075 SQL track
+
+This section defines the **post-1.0 roadmap** for bringing Typra from today’s minimal read-only `SELECT` subset to **full standard SQL query support** aligned with **[ISO/IEC 9075](https://www.iso.org/standard/76583.html)** (SQL), delivered incrementally across **`1.1`–`1.8`**. **Full SQLAlchemy** is a **separate follow-on phase** starting at **`1.9.0`** — see [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track).
+
+### Scope and philosophy
+
+Typra remains **schema-first**: registered **collections** are the storage unit; SQL is a **compatibility and interop layer** that maps onto the typed catalog, validation engine, and query planner — not a replacement for **`typra.models`** or the Rust typed query APIs.
+
+**Baseline today (1.0.x):** `typra-core::sql` parses a tiny **`SELECT`** subset (`FROM` one collection, `WHERE` with `=` / ranges / `AND` / `OR`, `ORDER BY`, `LIMIT`, `?` params only) for Python **`typra.dbapi`**. The typed **`Query`** / **`Predicate`** AST remains the **execution source of truth**.
+
+**Target (1.x end state):** support the **query and data-manipulation** features of ISO/IEC 9075 **Part 2 (SQL/Foundation)** and **Part 11 (SQL/Schemata)** that apply to an embedded, single-writer engine — with an explicit **feature compliance matrix** and conformance tests. Typra-specific types (nested objects, typed lists, catalog constraints) are expressible in SQL via a documented **dialect mapping**.
+
+**Still out of scope for the 1.x SQL track** (unchanged product boundaries):
+
+- Network **SQL server** mode or wire protocols (PostgreSQL/MySQL compatibility)
+- Distributed operation, replication, or multi-master writes
+- **Part 4** persistent stored modules / procedural SQL beyond simple scripting hooks
+- Full OLAP / DuckDB-style analytics as a primary goal (though `GROUP BY` / window functions land for standard SQL completeness)
+- Full-text search, vector search, graph query (ISO/IEC 9075-16)
+
+### ISO/IEC 9075 mapping (what “full SQL” means here)
+
+| Standard part | Typra relevance | 1.x delivery |
+|---------------|-----------------|--------------|
+| **9075-1** Framework | Terminology, conformance framework | Compliance matrix + docs (**1.8**) |
+| **9075-2** Foundation | `SELECT`, expressions, predicates, joins, grouping, set ops, cursors | **1.1–1.6** (phased) |
+| **9075-3** CLI | PEP 249 DB-API alignment | **1.2** (writes), **1.7** (full parity for supported surface) |
+| **9075-11** Schemata | Information schema, metadata views | **1.5** |
+| **9075-14** XML | — | **Not planned** for 1.x |
+| **9075-15** MD arrays | — | **Not planned** for 1.x |
+
+**Collection ↔ table mapping:** in SQL text, a **collection name** appears where ISO SQL expects a **table name** (`FROM books` ≡ collection `books`). Nested fields use **dot path** or bracket notation in expressions (dialect documented in **`docs/reference/sql_dialect.md`** — to be added in **1.1**).
+
+### Architecture direction
+
+- **Parser:** replace the ad-hoc lexer/parser in `typra-core/src/sql/` with a **standard-aligned AST** (9075-2 query expressions, value expressions, predicates). Keep fuzz targets; expand to full statement kinds.
+- **Semantic analysis:** resolve collection/field names against the **catalog**, enforce types and nullability, validate index use.
+- **Lowering:** SQL AST → existing **`Query`** / operator pipeline (extend AST and planner per phase rather than a parallel execution engine).
+- **Errors:** SQLSTATE-style codes (9075-2 diagnostics) mapped to **`DbError::Query`** / Python **`TypraQueryError`** with stable `sqlstate` fields where applicable.
+
+Design anchor (to be authored): **`docs/specs/sql_iso9075_mapping.md`** (**1.1**).
+
+### 1.1.0 — Query engine hardening + SQL foundation
+
+**Status:** **Planned** (next milestone).
+
+**Goal:** finish deferred **1.0 hardening** and lay the **ISO-aligned SQL front-end** so later phases add grammar without rewrites.
+
+**Rust (core + public API) — non-SQL hardening (carried from 1.0 deferrals)**
+- **Projection-aware decode**: skip unused field paths at the record layer for subset queries.
+- **ORDER BY spill isolation**: bounded-memory sort paths tested independently of scan materialization.
+- **Planner/operator growth**: expand join/agg spill operators beyond 0.13 foundations; memory budgets for large queries.
+- **`DbModel` derive**: nested **`FieldPath`** and constraint attributes on **`#[db(...)]`**.
+- Optional **`cargo-deny`**, expanded **property tests** (index/txn/checkpoint invariants).
+
+**Rust — SQL foundation (9075-2 baseline)**
+- **Standard-aligned AST** and recursive-descent or table-driven parser replacing the minimal `SqlSelect` struct.
+- **Extended single-collection `SELECT`**:
+  - literal and typed constants; **`NULL`** / **`IS NULL`** / **`IS NOT NULL`**
+  - **`NOT`**, **`IN`**, **`BETWEEN`**, **`LIKE`** (with `ESCAPE`)
+  - **`DISTINCT`**, **`OFFSET`**, **`FETCH FIRST`** / **`LIMIT`** (both spellings)
+  - **`AS`** column aliases; **`SELECT`** expressions (not only bare paths)
+  - named (`:name`) and positional (`?`, `$1`) parameters
+- **`EXPLAIN`** for SQL text (maps to existing planner explain).
+- Fuzz + grammar tests for the new parser; no execution regressions on the typed API.
+
+**Python**
+- **`typra.dbapi`**: richer read-only **`SELECT`** matching **1.1** grammar; stable error mapping with SQLSTATE codes (subset).
+- **`typra.models`**: unchanged primary path; document when to prefer models vs SQL.
+
+**Definition of done**
+- Hardening items above have integration tests and docs.
+- **`docs/reference/sql_dialect.md`**: documents 1.1-supported grammar vs ISO 9075-2 feature IDs.
+- **`make check-full`** green; SQL parser fuzz targets updated.
+
+### 1.2.0 — SQL DML + write-capable DB-API
+
+**Goal:** ISO 9075-2 **data change** statements over collections, still validated against the catalog.
+
+**Rust**
+- **`INSERT INTO … VALUES …`** and **`INSERT … SELECT …`** (single collection).
+- **`UPDATE … SET … WHERE …`** with validation on written fields.
+- **`DELETE FROM … WHERE …`** (maps to logical delete + index maintenance).
+- **`RETURNING`** clause (common SQL extension; maps to subset projection).
+- Transaction control statements: **`BEGIN`**, **`COMMIT`**, **`ROLLBACK`** (syntax sugar over **`Database::transaction`**).
+- Lower DML to existing txn + segment append paths (no second write pipeline).
+
+**Python**
+- **`typra.dbapi`**: **`INSERT` / `UPDATE` / `DELETE`** + transactional **`commit` / `rollback`** for the supported surface.
+- Parameter binding rules documented and tested.
+
+**Definition of done**
+- DML respects validation, unique indexes, and txn atomicity (crash tests).
+- Cross-platform DB-API write tests; SQLSTATE on constraint violations.
+
+### 1.3.0 — Joins, subqueries, and set operations
+
+**Goal:** multi-collection **9075-2 `<query expression>`** features needed for relational-style queries.
+
+**Rust**
+- **`INNER` / `LEFT` / `CROSS` JOIN** (collections as tables); join conditions on indexable scalar paths.
+- **Subqueries**: scalar, **`IN`**, **`EXISTS`**, derived tables in **`FROM`**.
+- **Set operators**: **`UNION`**, **`UNION ALL`**, **`INTERSECT`**, **`EXCEPT`** (with **`ALL`** variants where required by standard).
+- Planner uses spill-capable join operators (extend 0.13 foundation); correctness tests under forced spilling.
+
+**Python**
+- DB-API reads/writes for multi-collection SQL; document join limitations (nested path join keys, etc.).
+
+**Definition of done**
+- Join/subquery/set-op semantics covered by ISO-style conformance tests (positive + rejected-invalid cases).
+- **`EXPLAIN`** shows join order and spill hints.
+
+### 1.4.0 — Aggregation and grouping
+
+**Goal:** **9075-2 `<aggregated query specification>`** — `GROUP BY`, `HAVING`, aggregate functions.
+
+**Rust**
+- **`GROUP BY`** (including grouped nested paths where types permit).
+- **`HAVING`** filters on aggregates.
+- Aggregate library: **`COUNT`**, **`SUM`**, **`AVG`**, **`MIN`**, **`MAX`**, **`COUNT(*)`**; typed null handling per standard.
+- Spill-capable hash aggregation (extend 0.12+ agg scaffolding); external sort for **`ORDER BY`** on aggregates.
+
+**Python**
+- DB-API + SQL text for aggregation queries; document numeric type promotion rules.
+
+**Definition of done**
+- Forced-spill tests for large group-by; results match typed-API reference implementations.
+
+### 1.5.0 — DDL and information schema
+
+**Goal:** **9075-11**-aligned catalog introspection and safe schema change via SQL.
+
+**Rust**
+- **DDL subset** mapped to Typra catalog operations:
+  - **`CREATE COLLECTION`** (or **`CREATE TABLE`** as synonym) with column/type/constraint definitions
+  - **`CREATE INDEX`** / **`DROP INDEX`**
+  - **`ALTER COLLECTION … ADD COLUMN`** (safe evolution only; reject breaking changes unless forced)
+- **Information schema views** (read-only): collections, columns/fields, indexes, constraints — queryable via SQL.
+- **`typra-cli`**: optional `typra sql` REPL for local inspection (embedded, not a server).
+
+**Python**
+- SQL DDL via DB-API where appropriate; information schema accessible through **`cursor.execute`**.
+
+**Definition of done**
+- DDL routes through existing **`register_collection` / `register_schema_version`** / migration classification (no shadow catalog).
+- Information schema columns documented vs ISO 9075-11 view definitions.
+
+### 1.6.0 — Advanced query features
+
+**Goal:** remaining high-value **9075-2** query features for application SQL portability.
+
+**Rust**
+- **Common table expressions (`WITH` … `AS` …)** — non-recursive first; recursive CTEs evaluated separately if needed.
+- **Window functions**: **`OVER`**, **`PARTITION BY`**, **`ORDER BY`**, frame clauses; standard function set (`ROW_NUMBER`, `RANK`, etc.).
+- **Conditional expressions**: **`CASE`**, **`COALESCE`**, **`NULLIF`**.
+- **Casts** and typed literals aligned with Typra **`Type`** (including nested types where expressible).
+
+**Python**
+- Full read/write SQL surface through **1.6** grammar in DB-API.
+
+**Definition of done**
+- Window/CTE queries covered by conformance suite; bounded-memory execution where spill applies.
+
+### 1.7.0 — DB-API completeness (SQLAlchemy prerequisite)
+
+**Goal:** complete **PEP 249** coverage for the **1.6** SQL surface so ORM/dialect layers can rely on a stable, fully featured DB-API — **without** shipping SQLAlchemy yet.
+
+**Python**
+- **PEP 249** completeness for supported operations: **`executemany`**, **`rowcount`**, **`lastrowid`** (PK semantics), connection context managers, **`description`** for expressions, **`callproc`** stub or explicit unsupported error.
+- Stable **`typra.dbapi`** error mapping (SQLSTATE codes where applicable).
+- **`typra.pyi`** stable for the DB-API module.
+
+**Rust**
+- Optional **`Database::execute_sql(&str, params)`** for applications that want SQL without Python (thin wrapper over the same pipeline).
+
+**Definition of done**
+- DB-API integration test suite covers all supported statement kinds from **1.2–1.6**.
+- Documented gap list vs PEP 249 optional features (e.g. scrollable cursors deferred to **1.8**).
+- No SQLAlchemy package in this release — dialect work starts in **1.9**.
+
+### 1.8.0 — SQL compliance hardening
+
+**Goal:** close gaps toward **documented full ISO/IEC 9075 query support** for embedded use.
+
+**Rust + Python**
+- **Conformance harness**: feature-ID checklist derived from 9075-2/11; CI job reporting supported / partial / N/A.
+- **SQL standard modes**: e.g. **`STRICT_ISO`** vs **`TYPRA`** dialect flags (nested types, collection naming).
+- **Remaining 9075-2 gaps**: cursors, dynamic SQL hooks, optional **`PREPARE` / `EXECUTE`**, scrollable cursors if justified.
+- **Performance gates**: Criterion benches for representative SQL workloads (join + group-by + window).
+- **Docs**: single **“SQL support matrix”** replacing scattered “minimal subset” notes across README/guides.
+
+**Definition of done**
+- Public matrix with ISO feature IDs; no silent deviations from documented semantics.
+- Security review of SQL injection surface (parameter rules, identifier quoting).
+- **SQL track complete** — SQLAlchemy phase (**1.9**) may begin.
+
+### Cross-cutting (SQL track, 1.1–1.8)
+
+- **Testing:** grammar/conformance tests per phase; fuzz all statement kinds; property tests for SQL → typed-AST → result equivalence on single-collection subsets.
+- **Docs:** keep **`docs/reference/sql_dialect.md`** and **`docs/specs/sql_iso9075_mapping.md`** aligned with each release.
+- **Non-breaking policy:** typed **`typra.models`** and Rust query builder APIs remain supported; SQL additions are additive minors.
+- **Primary API:** **`typra.models`** stays recommended for application code; SQL is for interop, ad-hoc tooling, and (from **1.9**) ORM integration.
+
+---
+
+## Post-1.0: SQLAlchemy track
+
+This section defines **full SQLAlchemy support** as a dedicated post-SQL phase. It **depends on** the ISO SQL track through **1.7** (complete DB-API) and benefits from **1.8** (compliance matrix + information schema stability).
+
+### Scope and philosophy
+
+**SQLAlchemy is an optional Python integration layer** — not a replacement for **`typra.models`**. Applications that already use SQLAlchemy (Flask/FastAPI stacks, Alembic migrations, existing ORM models) should be able to point at a `.typra` file with minimal friction. Teams starting fresh should still prefer **`typra.models`** for schema-first ergonomics and nested-type fidelity.
+
+**Baseline today (1.0.x):** [`docs/guides/python.md`](docs/guides/python.md) documents SQLAlchemy as **planned**; only read-only **`typra.dbapi`** exists.
+
+**Target (1.9+ end state):** a supported **`typra`** SQLAlchemy dialect + companion docs/examples covering **Core** and **ORM** (SQLAlchemy **2.0** style), schema reflection, and Alembic-compatible migrations for safe catalog changes.
+
+**Prerequisites (from SQL track):**
+- **1.5** information schema (reflection)
+- **1.6** full query surface (CTEs, windows, expressions)
+- **1.7** complete write-capable DB-API
+- **1.8** stable SQL dialect semantics and support matrix
+
+**Still out of scope for SQLAlchemy track:**
+- Network server / connection pooling across processes (embedded **`StaticPool`** / **`NullPool`** only)
+- Full parity with PostgreSQL/MySQL-specific SQLAlchemy types and compilers
+- Automatic **`typra.models` ↔ SQLAlchemy ORM** bidirectional codegen (manual coexistence documented instead)
+
+### Architecture direction
+
+- **Dialect package:** ship as **`typra[sqlalchemy]`** optional extra (or separate **`typra-sqlalchemy`** PyPI package if dependency isolation is cleaner — decide in **1.9** planning).
+- **Stack:** dialect → **`typra.dbapi`** → Rust engine (no second Python→Rust bridge).
+- **URL scheme:** `typra:///path/to/app.typra` (and `:memory:` variant); document SQLAlchemy **`create_engine`** kwargs (`isolation_level`, snapshot paths).
+- **Type compiler:** map Typra catalog types to SQLAlchemy **`TypeEngine`** instances; nested **`Object`** / **`List`** via JSON/structured types or custom **`TypeDecorator`** (document trade-offs).
+- **Reflection:** implement **`Inspector`** against information schema from **1.5**.
+- **Migrations:** Alembic **`env.py`** recipes using Typra-safe DDL subset; integrate with existing **`plan` / `apply`** migration classification where possible.
+
+Design anchor (to be authored): **`docs/guides/sqlalchemy.md`** + **`docs/specs/sqlalchemy_dialect.md`** (**1.9**).
+
+### 1.9.0 — Full SQLAlchemy support
+
+**Status:** **Planned** (after **1.8** SQL compliance).
+
+**Goal:** production-usable SQLAlchemy **Core + ORM** against Typra for the supported SQL/DB-API surface.
+
+**Python — dialect (`typra.sqlalchemy` or companion package)**
+- **`TypraDialect`**: identifier preparer, DDL compiler for **1.5** subset, type compiler for catalog primitives + nested types.
+- **`create_engine("typra:///…")`**: default **`StaticPool`**; file locking semantics documented; in-memory URL support.
+- **Core**: `Table` reflection, `select()` / `insert()` / `update()` / `delete()`, transactions (`connection.begin()`), **`sessionmaker`** optional in examples.
+- **ORM (2.0 style)**: declarative mapping, column properties, basic relationships (**many-to-one** / **one-to-many** on scalar FK paths; document limits for nested documents).
+- **Schema creation**: `metadata.create_all()` mapped to **`CREATE COLLECTION`** / indexes where DDL supports it.
+- **Errors**: SQLAlchemy **`StatementError`** / **`IntegrityError`** mapped from **`TypraValidationError`** and unique-index violations.
+
+**Python — Alembic**
+- Document **`alembic init`** + revision workflow for safe schema bumps (`ADD COLUMN`, index changes).
+- Example revisions using **`op.execute`** for Typra DDL and **`plan` / `apply`** for data backfills when needed.
+
+**Testing**
+- Integration tests: SQLAlchemy Core CRUD, ORM roundtrip, reflection, join queries, aggregates (reuse **1.3–1.4** SQL).
+- CI job with pinned SQLAlchemy **2.0.x** (and optionally latest minor on a non-blocking matrix leg).
+- Verified doc example: minimal Flask/FastAPI-style app using SQLAlchemy + Typra file.
+
+**Docs**
+- **[`docs/guides/sqlalchemy.md`](docs/guides/sqlalchemy.md)**: when to use SQLAlchemy vs **`typra.models`**, URL reference, type mapping table, Alembic guide.
+- Update README / Python guide “SQLAlchemy **planned**” → “**supported** (1.9+)” when shipped.
+
+**Definition of done**
+- All integration tests green on Linux/macOS/Windows.
+- Documented limitations (nested ORM modeling, relationship constraints, unsupported SQLAlchemy features).
+- **`pip install "typra[sqlalchemy]>=1.9"`** (or equivalent) installs dialect + pinned SQLAlchemy lower bound.
+
+### 1.10.0+ — SQLAlchemy ecosystem polish
+
+**Goal:** deepen ecosystem fit after the **1.9** dialect ships.
+
+- **SQLModel** / **FastAPI** example apps and optional compatibility notes.
+- **`pytest`-sqlalchemy** fixtures for Typra file backends in tests.
+- **Async SQLAlchemy** (`create_async_engine`) — only if Python async **`Database`** lands; otherwise document sync-only limitation.
+- **Hybrid apps**: guide for using **`typra.models`** and SQLAlchemy ORM side-by-side on one file (collection naming, txn boundaries).
+- **Dialect conformance checklist**: SQLAlchemy’s dialect compliance tests where applicable; public “supported / partial / N/A” matrix for ORM features.
+
+**Definition of done**
+- Ecosystem docs and at least one real-world-style sample app in **`examples/`**.
+- No regressions on **1.9** dialect test suite.
+
+### Cross-cutting (SQLAlchemy track)
+
+- **Testing:** dialect unit tests + ORM integration tests; reflection parity with information schema; Alembic upgrade/downgrade smoke tests.
+- **Versioning:** SQLAlchemy pinned with lower bound in extras; upper bound relaxed as dialect matures.
+- **Primary API unchanged:** **`typra.models`** remains the recommended native path; SQLAlchemy is for interop and existing stacks.
+
+## Cross-cutting initiatives (land throughout 0.2–1.x)
 
 - **Testing**
   - File-format roundtrips; corruption detection; **crash recovery simulations** (still weak until **0.8** transactional replay semantics land).
   - Invariant testing: **unique indexes** and **index vs scan** consistency have **started** in `typra-core` / Python tests—**expand** for txn boundaries, compaction, and multi-version schemas (**0.8+**).
+  - **SQL conformance (1.1–1.8):** grammar tests, ISO feature-ID matrix, fuzz all SQL statement parsers, SQL ↔ typed-AST equivalence checks on overlapping subsets.
+  - **SQLAlchemy (1.9+):** dialect + ORM integration tests, reflection parity, Alembic smoke tests — see [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track).
 - **Security**
   - Threat model document (local attacker, malicious/corrupt file, untrusted input).
   - Fuzz the file-format decode surface (header/segments/**record**/**catalog**/**index** decode) and treat crashes/panics as bugs — **`fuzz/`** harness + CI workflow shipped in **0.13.0**; expand targets over time.
@@ -500,18 +815,23 @@ Same as the **Non-goals** section at the end of this file: still **no** distribu
     - TypeScript: npm package with prebuilt binaries per platform + types
     - .NET: NuGet package with native binaries + idiomatic API
     - Java: Maven/Gradle artifact with JNI/JNA layer + idiomatic API
-  - Non-goal for early releases: full SQL compatibility; the SDKs should primarily expose the model-first API and (optionally) DB-API/SQLAlchemy-style shims where appropriate.
+  - Non-goal for early releases: **network SQL server**; the SDKs should primarily expose the model-first API. **SQLAlchemy** lands in **1.9** — see [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track).
 
-## Non-goals (for 1.0 unless explicitly revisited)
+## Non-goals (through 1.0; revised for 1.x SQL track)
 
-From the architecture spec’s v1 non-goals:
+From the architecture spec’s v1 non-goals (still apply through **1.0**):
+
 - Distributed operation or replication
-- Full SQL compatibility / network server mode
+- Network **SQL server** mode (embedded / in-process only — even when full 9075 query text is supported)
 - Full-text search, vector search
-- DuckDB-style analytics focus
+- DuckDB-style analytics as a **primary** product goal
 - Cross-process high-write concurrency
 
-## Open questions (to resolve before 1.0)
+**Added in 1.x (still out of scope):** wire-protocol compatibility with PostgreSQL/MySQL; ISO 9075 **Part 4** stored procedures; ISO 9075-14 XML; ISO 9075-15 multidimensional arrays; ISO 9075-16 property graph queries.
+
+**In scope for 1.x:** embedded **ISO/IEC 9075-2** query and DML text (**1.1–1.8**), **9075-11** information schema subset, PEP 249 DB-API (**1.7**), and **full SQLAlchemy** (**1.9+**) — see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track) and [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track).
+
+## Open questions (to resolve before / during 1.x)
 
 - **Record encoding**: v1 is implemented (see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md)); confirm **long-term evolution** (new payload versions, replace/delete, MVCC).
 - **Optionality semantics**: required vs nullable vs defaulted (keep v1 simple as per spec).
@@ -519,8 +839,16 @@ From the architecture spec’s v1 non-goals:
 - **Index physical layout**: **0.7.0** uses **append-only index segments** (replay into `IndexState`); compaction / full rebuild / embedded-in-record strategies remain open for **0.9+** compaction work.
 - **Encryption / secrets**: whether to support optional at-rest encryption (and key management) for on-disk databases.
 - **Transactional log design** (**0.8**): how **BEGIN/COMMIT/ROLLBACK** (or equivalent) map to segment payloads; how **record** + **index** appends share an **atomic** boundary at replay; whether **partial segments** are truncated or rejected on open.
-- **Deferred hardening (1.1+)**: optional **`cargo-deny`**, expanded **property tests** beyond current `property_invariants.rs`, ORDER BY spill isolation, projection-aware decode, **`DbModel` derive** nested paths/constraints, Python async — see **1.1.0** below.
+- **Deferred hardening (1.1)**: optional **`cargo-deny`**, expanded **property tests** beyond current `property_invariants.rs`, ORDER BY spill isolation, projection-aware decode, **`DbModel` derive** nested paths/constraints, Python async — see **1.1.0** in [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track).
 - **Async policy**: documented in [`docs/reference/async_policy.md`](docs/reference/async_policy.md) — sync `Database` is the 1.0 contract; Rust `async` feature is optional/experimental.
+- **SQL dialect (1.1)**: `CREATE TABLE` vs `CREATE COLLECTION`; nested field path syntax in SQL (`a.b` vs JSON operators); identifier quoting and case-folding rules.
+- **ISO conformance level (1.8)**: target **Core** vs **Enhanced** conformance subset; which optional 9075-2 features are permanently N/A for nested typed documents.
+- **SQL write path (1.2)**: whether **`REPLACE`** / upsert syntax is exposed or only standard **`INSERT`/`UPDATE`**.
+- **SQLAlchemy packaging (1.9)**: `typra[sqlalchemy]` extra vs separate **`typra-sqlalchemy`** PyPI package.
+- **SQLAlchemy URL (1.9)**: `typra:///` scheme, in-memory URLs, and **`create_engine`** pool/isolation kwargs.
+- **SQLAlchemy types (1.9)**: how nested **`Object`** / **`List`** catalog types map to SQLAlchemy columns (JSON vs custom types vs flattened paths).
+- **SQLAlchemy ORM (1.9)**: relationship support limits for nested documents; coexistence with **`typra.models`** on one database file.
+- **Alembic (1.9)**: auto-generate revisions from ORM metadata vs hand-written DDL; integration with Typra **`plan` / `apply`** for data migrations.
 
 ## In-memory, hybrid, and streaming execution (refined plan)
 
