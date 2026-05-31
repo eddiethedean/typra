@@ -8,9 +8,11 @@ mod helpers;
 mod open;
 mod recover;
 mod replay;
-mod row_materialize;
+pub(crate) mod row_materialize;
+pub(crate) use row_materialize::{build_non_pk_values_in_schema_order, row_value_at_path};
 mod row_merge;
-mod row_paths;
+pub(crate) mod row_paths;
+pub(crate) use row_paths::validate_unknown_fields_for_multiseg_schema;
 mod write;
 
 use std::collections::{BTreeMap, HashMap};
@@ -97,7 +99,7 @@ fn plan_insert_row(
     if !has_multi_segment_schema {
         validation::validate_top_level_row(&col.fields, pk_name, &row)?;
     } else {
-        row_paths::validate_unknown_fields_for_multiseg_schema(&col.fields, pk_name, &row)?;
+        validation::validate_multiseg_row(&col.fields, pk_name, &row)?;
     }
 
     // `pk_cell` is already present (validated above), so remove must succeed.
@@ -224,7 +226,9 @@ pub struct Database<S: Store = FileStore> {
     /// Covers replace-path record encoding error branches in tests (misaligned validated row maps).
     #[cfg(test)]
     #[doc(hidden)]
-    pub(crate) test_poison_planned_replace_row: Option<fn(CollectionId, &mut BTreeMap<String, RowValue>)>,
+    #[allow(clippy::type_complexity)]
+    pub(crate) test_poison_planned_replace_row:
+        Option<fn(CollectionId, &mut BTreeMap<String, RowValue>)>,
     /// Covers delete Opcode payload encoding `?` by supplying a bogus scalar unrelated to validated `pk`.
     #[cfg(test)]
     #[doc(hidden)]
@@ -233,34 +237,33 @@ pub struct Database<S: Store = FileStore> {
 
 impl<S: Store> Database<S> {
     fn compact_snapshot_bytes(&self) -> Result<Vec<u8>, DbError> {
-        let mut out =
-            Database::<VecStore>::open_in_memory().expect("in-memory database open must not fail");
+        let mut out = Database::<VecStore>::open_in_memory()?;
 
         // Recreate catalog (stable ids if created in id order).
         let mut cols = self.catalog_for_read().collections();
         cols.sort_by_key(|c| c.id.0);
         for c in &cols {
             let pk = c.primary_field.as_deref().unwrap();
-            let (new_id, _v1) = out
-                .register_collection_with_indexes(&c.name, c.fields.clone(), c.indexes.clone(), pk)
-                .expect("compaction catalog rebuild must succeed");
+            let (new_id, _v1) = out.register_collection_with_indexes(
+                &c.name,
+                c.fields.clone(),
+                c.indexes.clone(),
+                pk,
+            )?;
             // Bump schema version counter to match current_version (repeat identical schema).
             for _ in 2..=c.current_version.0 {
-                let _ = out
-                    .register_schema_version_with_indexes_force(
-                        new_id,
-                        c.fields.clone(),
-                        c.indexes.clone(),
-                    )
-                    .expect("schema version bump must succeed");
+                let _ = out.register_schema_version_with_indexes_force(
+                    new_id,
+                    c.fields.clone(),
+                    c.indexes.clone(),
+                )?;
             }
         }
 
         // Copy latest rows (in-memory snapshot semantics).
         for ((cid, _), row) in self.latest_for_read().iter() {
             let collection_id = CollectionId(*cid);
-            out.insert(collection_id, row.clone())
-                .expect("snapshot row insert must succeed");
+            out.insert(collection_id, row.clone())?;
         }
 
         Ok(out.into_snapshot_bytes())
@@ -309,8 +312,7 @@ impl<S: Store> Database<S> {
         self.begin_transaction()?;
         match f(self) {
             Ok(v) => {
-                self.commit_transaction()
-                    .expect("commit must succeed after successful transaction body");
+                self.commit_transaction()?;
                 Ok(v)
             }
             Err(e) => {
@@ -578,7 +580,7 @@ impl<S: Store> Database<S> {
         match classify_schema_update(&current.fields, &current.indexes, &fields, &indexes).unwrap()
         {
             SchemaChange::Safe => {}
-            SchemaChange::NeedsMigration { reason } => {
+            SchemaChange::NeedsMigration { reason, .. } => {
                 return Err(DbError::Schema(SchemaError::MigrationRequired {
                     message: reason,
                 }));
@@ -637,13 +639,15 @@ impl<S: Store> Database<S> {
         match &change {
             SchemaChange::Safe => {}
             SchemaChange::Breaking { .. } => {}
-            SchemaChange::NeedsMigration { reason } => {
-                if reason.contains("new required field") {
-                    // Best-effort extract.
+            SchemaChange::NeedsMigration {
+                reason,
+                backfill_top_level_field,
+            } => {
+                if let Some(field) = backfill_top_level_field {
                     steps.push(MigrationStep::BackfillTopLevelField {
-                        field: reason.to_string(),
+                        field: field.clone(),
                     });
-                } else {
+                } else if reason.contains("unique index") {
                     steps.push(MigrationStep::RebuildIndexes);
                 }
             }

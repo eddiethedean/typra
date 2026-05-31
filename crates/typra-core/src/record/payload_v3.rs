@@ -77,10 +77,8 @@ fn insert_value_at_path(
     let mut cur = root.entry(head).or_insert_with(empty_object_row_value);
     for seg in path.0.iter().skip(1).take(path.0.len() - 2) {
         let key = seg.as_ref().to_string();
-        // If a parent is not an object, overwrite with an object to preserve the invariant that
-        // schema paths describe object nesting.
         if !matches!(cur, RowValue::Object(_)) {
-            *cur = RowValue::Object(BTreeMap::new());
+            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
         }
         if let RowValue::Object(map) = cur {
             cur = map.entry(key).or_insert_with(empty_object_row_value);

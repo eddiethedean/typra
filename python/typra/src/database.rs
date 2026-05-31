@@ -18,7 +18,7 @@ use crate::row_values;
 fn schema_change_to_str(change: &typra_core::schema::SchemaChange) -> (&'static str, Option<&str>) {
     match change {
         typra_core::schema::SchemaChange::Safe => ("safe", None),
-        typra_core::schema::SchemaChange::NeedsMigration { reason } => {
+        typra_core::schema::SchemaChange::NeedsMigration { reason, .. } => {
             ("needs_migration", Some(reason.as_str()))
         }
         typra_core::schema::SchemaChange::Breaking { reason } => {

@@ -87,7 +87,7 @@
             DbError::Format(FormatError::RecordPayloadTypeMismatch)
         ));
 
-        // For len>=3, we overwrite non-object parents to preserve schema nesting invariants.
+        // For len>=3, non-object mid-parents are rejected (corrupt nesting).
         let mut root2 = BTreeMap::new();
         root2.insert("a".to_string(), RowValue::Int64(1));
         let path2 = FieldPath(vec![
@@ -95,8 +95,11 @@
             Cow::Borrowed("b"),
             Cow::Borrowed("c"),
         ]);
-        insert_value_at_path(&mut root2, &path2, RowValue::Int64(9)).unwrap();
-        assert!(matches!(root2.get("a"), Some(RowValue::Object(_))));
+        let err2 = insert_value_at_path(&mut root2, &path2, RowValue::Int64(9)).unwrap_err();
+        assert!(matches!(
+            err2,
+            DbError::Format(FormatError::RecordPayloadTypeMismatch)
+        ));
     }
 
     #[test]
@@ -119,9 +122,7 @@
     }
 
     #[test]
-    fn insert_value_at_path_overwrites_non_object_mid_parent_for_deep_paths() {
-        // Ensure the `!matches!(cur, RowValue::Object(_))` overwrite branch is exercised
-        // for a mid-parent (not just the top-level entry).
+    fn insert_value_at_path_rejects_non_object_mid_parent_for_deep_paths() {
         let mut root = BTreeMap::new();
         root.insert(
             "a".to_string(),
@@ -133,11 +134,11 @@
             Cow::Borrowed("c"),
             Cow::Borrowed("d"),
         ]);
-        insert_value_at_path(&mut root, &path, RowValue::Int64(9)).unwrap();
-        let RowValue::Object(am) = root.get("a").unwrap() else { panic!() };
-        let RowValue::Object(bm) = am.get("b").unwrap() else { panic!() };
-        let RowValue::Object(cm) = bm.get("c").unwrap() else { panic!() };
-        assert_eq!(cm.get("d"), Some(&RowValue::Int64(9)));
+        let err = insert_value_at_path(&mut root, &path, RowValue::Int64(9)).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Format(FormatError::RecordPayloadTypeMismatch)
+        ));
     }
 
     #[test]

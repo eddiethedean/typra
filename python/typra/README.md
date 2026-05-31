@@ -7,7 +7,7 @@ Official **CPython** bindings for **Typra** (PyO3 native extension): a typed, em
 
 ## Status
 
-You get a durable **schema catalog**, **validation**, nested **row values** (record **v2** on insert; **v1** segments still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes.
+You get a durable **schema catalog**, **validation**, nested **row values** (record **v3** for multi-segment paths; **v2**/**v1** still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes.
 
 **Queries and secondary indexes:** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection(\"name\").where(\"field\", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#realistic-workflow-indexed-queries-on-disk). Typra also ships a **read-only DB-API 2.0 adapter** (`typra.dbapi`) with a minimal `SELECT` subset—see the [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#db-api-20-pep-249-and-sqlalchemy).
 
@@ -105,10 +105,18 @@ See **[`docs/guides/python.md`](https://github.com/eddiethedean/typra/blob/main/
 | `typra.__version__` | Package version (matches the Rust workspace release). |
 | `Database.open(path: str)` | Create or open a database file. Raises `OSError` if the path cannot be opened (e.g. missing parent directory, path is a directory). |
 | `db.path() -> str` | Path used to open the database. |
-| `db.register_collection(name, fields_json, primary_field, indexes_json=None) -> tuple[int, int]` | Register a **new** collection (schema version **1**). Optional **`indexes_json`**: JSON array of `{"name", "path", "kind"}` objects (`"unique"` or `"index"` / `"non_unique"`). Returns **`(collection_id, schema_version)`**. Names are trimmed; duplicates or bad JSON raise `ValueError`. |
+| `db.register_collection(name, fields_json, primary_field, indexes_json=None) -> tuple[int, int]` | Register a **new** collection (schema version **1**). Optional **`indexes_json`**. |
+| `db.register_schema_version(name, fields_json, indexes_json=None, *, force=False) -> int` | Bump schema version (migration-aware; use **`plan_schema_version`** first). |
+| `db.plan_schema_version(name, fields_json, indexes_json=None) -> dict` | Plan migration steps before registering a new schema version. |
+| `db.backfill_top_level_field(name, field, value) -> None` | Backfill a missing top-level field for all rows. |
+| `db.delete(collection_name, pk) -> None` | Delete a row by primary key. |
+| `db.compact()` / `db.compact_to(path)` | Rewrite the database to drop dead log segments. |
+| `db.export_snapshot(path)` / `Database.open_snapshot(path)` | Backup/restore via snapshot files. |
 | `db.collection(name) -> Collection` | Query handle: **`where`**, **`and_where`**, **`limit`**, **`explain`**, **`all`** / **`all(fields=[...])`**. |
 | `db.insert(collection_name, row: dict) -> None` | Insert or replace the latest row (required fields + optional keys per schema). |
 | `db.get(collection_name, pk) -> dict \| None` | Latest row or missing. |
+| `with db.transaction():` | Multi-write transaction (read-your-writes). |
+| `typra.models` | **Primary API**: class-defined schemas (dataclass/Pydantic). |
 | `Database.open_in_memory()` / `Database.open_snapshot_bytes(data)` / `db.snapshot_bytes()` | In-memory DB and byte snapshots. |
 | `db.collection_names() -> list[str]` | All registered names, **sorted** alphabetically. |
 

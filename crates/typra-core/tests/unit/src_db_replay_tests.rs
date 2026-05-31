@@ -119,6 +119,57 @@
     }
 
     #[test]
+    fn v6_replay_accepts_legacy_unframed_segments_after_header_upgrade() {
+        let mut store = VecStore::new();
+        seed_store_v0_5(&mut store);
+
+        let fields = vec![
+            FieldDef::new(FieldPath::new([Cow::Borrowed("id")]).unwrap(), Type::String),
+            FieldDef::new(FieldPath::new([Cow::Borrowed("year")]).unwrap(), Type::Int64),
+        ];
+        let wire = CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "books".into(),
+            schema_version: 1,
+            fields: fields.clone(),
+            indexes: vec![],
+            primary_field: Some("id".into()),
+        };
+        append_segment(&mut store, SegmentType::Schema, &encode_catalog_payload(&wire));
+
+        let payload = encode_record_payload_v2(
+            1,
+            1,
+            &ScalarValue::String("k".into()),
+            &Type::String,
+            &[(fields[1].clone(), RowValue::Int64(2020))],
+        )
+        .unwrap();
+        append_segment(&mut store, SegmentType::Record, &payload);
+
+        // Simulate lazy header upgrade to format minor 6 without rewriting the log.
+        let h = FileHeader::new_v0_8();
+        store.write_all_at(0, &h.encode()).unwrap();
+
+        let (catalog, latest, _indexes) = load_catalog_latest_and_indexes(
+            &mut store,
+            segment_start(),
+            crate::file_format::FORMAT_MINOR_V6,
+        )
+        .unwrap();
+        assert!(catalog.get(crate::schema::CollectionId(1)).is_some());
+        assert_eq!(latest.len(), 1);
+        assert_eq!(
+            latest
+                .values()
+                .next()
+                .and_then(|r| r.get("year"))
+                .cloned(),
+            Some(RowValue::Int64(2020))
+        );
+    }
+
+    #[test]
     fn v6_replay_tail_errors_for_txn_framing_issues() {
         let mut store = VecStore::new();
         seed_store_v0_8(&mut store);
@@ -156,7 +207,7 @@
             .unwrap_err();
         assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
 
-        // Unframed data segment.
+        // Unframed data segment on a native v6 file (no txn markers yet) fails at decode.
         let mut store4 = VecStore::new();
         seed_store_v0_8(&mut store4);
         append_segment(&mut store4, SegmentType::Schema, &[0u8; 0]);
@@ -165,7 +216,7 @@
         let mut idx4 = IndexState::default();
         let err = replay_tail_into(&mut store4, segment_start(), crate::file_format::FORMAT_MINOR_V6, &mut cat4, &mut latest4, &mut idx4)
             .unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        assert!(matches!(err, DbError::Format(_)));
 
         // Unframed index.
         let mut store4b = VecStore::new();
@@ -180,7 +231,7 @@
             &mut IndexState::default(),
         )
         .unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        assert!(matches!(err, DbError::Format(_)));
 
         // Unframed record.
         let mut store4c = VecStore::new();
@@ -195,7 +246,7 @@
             &mut IndexState::default(),
         )
         .unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        assert!(matches!(err, DbError::Format(_)));
 
         // Unclosed transaction.
         let mut store5 = VecStore::new();
@@ -383,7 +434,7 @@
         .unwrap_err();
         assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
 
-        // Unframed data segment.
+        // Unframed data segment on a native v6 file (no txn markers yet) fails at decode.
         let mut store2 = VecStore::new();
         seed_store_v0_8(&mut store2);
         append_segment(&mut store2, SegmentType::Schema, &[]);
@@ -393,7 +444,7 @@
             crate::file_format::FORMAT_MINOR_V6,
         )
         .unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        assert!(matches!(err, DbError::Format(_)));
 
         // Unframed index.
         let mut store2b = VecStore::new();
@@ -405,7 +456,7 @@
             crate::file_format::FORMAT_MINOR_V6,
         )
         .unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        assert!(matches!(err, DbError::Format(_)));
 
         // Unframed record.
         let mut store2c = VecStore::new();
@@ -417,7 +468,7 @@
             crate::file_format::FORMAT_MINOR_V6,
         )
         .unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        assert!(matches!(err, DbError::Format(_)));
 
         // Unclosed transaction.
         let mut store3 = VecStore::new();

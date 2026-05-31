@@ -401,6 +401,41 @@ pub fn validate_top_level_row(
     Ok(())
 }
 
+/// Validate a row against a multi-segment schema (types, constraints, and unknown paths).
+pub fn validate_multiseg_row(
+    fields: &[FieldDef],
+    pk_name: &str,
+    row: &std::collections::BTreeMap<String, RowValue>,
+) -> Result<(), DbError> {
+    crate::db::validate_unknown_fields_for_multiseg_schema(fields, pk_name, row)?;
+    for def in fields {
+        if def.path.0.len() == 1 && def.path.0[0] == pk_name {
+            continue;
+        }
+        let mut path: Vec<String> = def.path.0.iter().map(|s| s.as_ref().to_string()).collect();
+        let absent_ok = allows_absent_root(&def.ty);
+        let v = match crate::db::row_value_at_path(row, &def.path.0) {
+            Some(x) => x,
+            None if absent_ok => RowValue::None,
+            None => {
+                return Err(DbError::Schema(
+                    crate::error::SchemaError::RowMissingField {
+                        name: path.join("."),
+                    },
+                ));
+            }
+        };
+        if matches!(v, RowValue::None) && !absent_ok {
+            return Err(DbError::Validation(ValidationError {
+                path: path.clone(),
+                message: "unexpected null for required field".into(),
+            }));
+        }
+        validate_value(&mut path, &def.ty, &def.constraints, &v)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod constraint_helper_cover_tests {
     use super::*;

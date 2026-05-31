@@ -114,12 +114,17 @@ fn plan_schema_version_reports_backfill_when_adding_required_field() {
         .unwrap();
     assert!(matches!(
         plan.change,
-        SchemaChange::NeedsMigration { ref reason } if reason.contains("new required field")
+        SchemaChange::NeedsMigration {
+            ref reason,
+            backfill_top_level_field: Some(ref field),
+            ..
+        } if reason.contains("new required field") && field == "year"
     ));
     assert!(
-        plan.steps
-            .iter()
-            .any(|s| matches!(s, MigrationStep::BackfillTopLevelField { .. })),
+        plan.steps.iter().any(|s| matches!(
+            s,
+            MigrationStep::BackfillTopLevelField { field } if field == "year"
+        )),
         "{plan:?}"
     );
 }

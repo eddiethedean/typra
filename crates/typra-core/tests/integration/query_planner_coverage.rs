@@ -527,6 +527,74 @@ fn indexed_non_unique_lookup_respects_limit_with_multiple_matching_rows() {
 }
 
 #[test]
+fn indexed_non_unique_limit_applies_after_residual_filter() {
+    let mut db = Database::open_in_memory().unwrap();
+    let fields = vec![
+        path_field("title", Type::String),
+        path_field("tag", Type::String),
+        path_field("year", Type::Int64),
+    ];
+    let indexes = vec![IndexDef {
+        name: "tag_idx".into(),
+        path: FieldPath(vec![Cow::Owned("tag".into())]),
+        kind: IndexKind::NonUnique,
+    }];
+    let (cid, _) = db
+        .register_collection_with_indexes("items", fields, indexes, "title")
+        .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("title".into(), RowValue::String("first".into())),
+            ("tag".into(), RowValue::String("x".into())),
+            ("year".into(), RowValue::Int64(20)),
+        ]),
+    )
+    .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("title".into(), RowValue::String("second".into())),
+            ("tag".into(), RowValue::String("x".into())),
+            ("year".into(), RowValue::Int64(10)),
+        ]),
+    )
+    .unwrap();
+    db.insert(
+        cid,
+        BTreeMap::from([
+            ("title".into(), RowValue::String("third".into())),
+            ("tag".into(), RowValue::String("x".into())),
+            ("year".into(), RowValue::Int64(10)),
+        ]),
+    )
+    .unwrap();
+
+    let pred = Predicate::And(vec![
+        Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("tag".into())]),
+            value: ScalarValue::String("x".into()),
+        },
+        Predicate::Eq {
+            path: FieldPath(vec![Cow::Owned("year".into())]),
+            value: ScalarValue::Int64(10),
+        },
+    ]);
+    let q = Query {
+        collection: cid,
+        predicate: Some(pred),
+        limit: Some(1),
+        order_by: None,
+    };
+    let vec_rows = db.query(&q).unwrap();
+    assert_eq!(vec_rows.len(), 1, "limit must apply after residual filter");
+    assert_eq!(vec_rows[0].get("year"), Some(&RowValue::Int64(10)));
+    let iter_rows: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+    assert_eq!(iter_rows.len(), 1);
+    assert_eq!(iter_rows[0].get("year"), Some(&RowValue::Int64(10)));
+}
+
+#[test]
 fn explain_collection_scan_includes_order_by_without_filter_or_limit() {
     let mut db = Database::open_in_memory().unwrap();
     let fields = vec![

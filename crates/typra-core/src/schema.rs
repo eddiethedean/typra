@@ -185,7 +185,11 @@ pub enum SchemaChange {
     /// Update is safe to apply without rewriting existing data.
     Safe,
     /// Update is supported, but existing data must be rewritten/backfilled first.
-    NeedsMigration { reason: String },
+    NeedsMigration {
+        reason: String,
+        /// Top-level field name to backfill when adding a new required single-segment field.
+        backfill_top_level_field: Option<String>,
+    },
     /// Update is not supported/safe and should be rejected by default.
     Breaking { reason: String },
 }

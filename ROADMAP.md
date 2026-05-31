@@ -26,8 +26,8 @@ In addition, Typra should support **multiple storage/compute modes** (SQLite-lik
 Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
-- **User migration**: migration docs are intentionally omitted for now (package is pre-adoption).
-- **Queries & indexes (Python)**: [`docs/guide_python.md`](docs/guide_python.md) (including [realistic on-disk workflow](docs/guide_python.md#realistic-workflow-indexed-queries-on-disk))
+- **User migration**: see [`docs/guides/python.md`](docs/guides/python.md) (schema migrations section) and [`docs/reference/cli.md`](docs/reference/cli.md).
+- **Queries & indexes (Python)**: [`docs/guides/python.md`](docs/guides/python.md) (including [realistic on-disk workflow](docs/guides/python.md#realistic-workflow-indexed-queries-on-disk))
 
 Primary design references:
 - [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
@@ -36,7 +36,7 @@ Primary design references:
 - [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 - [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md) (record payload v1, 0.5.0+)
 - [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md) (record payload v2, 0.6.0+)
-- [`docs/guide_python.md`](docs/guide_python.md) (Python API: registration, **indexes**, **queries**, subset rows)
+- [`docs/guides/python.md`](docs/guides/python.md) (Python API: registration, **indexes**, **queries**, subset rows)
 - [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
 
 ## Near-term focus
@@ -55,13 +55,13 @@ flowchart LR
   v060 --> v070 --> v080 --> v090 --> v100 --> v110 --> v120
 ```
 
-## Status snapshot (current: 0.13.x)
+## Status snapshot (current: 1.0.x)
 
 **Implemented today:**
-- **Rust**: `Database::open` / **`open_with_options`** (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, schema compatibility classification + migration planning helpers, catalog wire v2 **`primary_field`** on create, **catalog v3** field **constraints** and **v4** **index definitions** on new registrations / schema versions, and **`Catalog::lookup_name`** (name → id); **`insert` / `get` / `delete`** with **record payload v1 + v2** (`SegmentType::Record`); **validation** (`RowValue`, constraints) before write; **secondary indexes** (unique + non-unique), persisted index segments, query AST and execution (**equality**, **`And`**, **`Or`**, **range predicates**, **`order_by`**, **`limit`**, heuristic **`explain`**), **`Database::query_iter`**, **`row_subset_by_field_defs`** for nested path projections; **transactions** (`TxnBegin` / `TxnCommit` / `TxnAbort`), **`Database::transaction`**, **read-your-writes** inside a txn, **`RecoveryMode`** on open; last-write-wins replay (legacy minor ≤5; chronological txn replay for minor **6**); **`snapshot_bytes`**, **`from_snapshot_bytes`**, **`into_snapshot_bytes`**; **compaction** (`compact_to`, `compact_in_place`); `#[derive(DbModel)]`; superblocks, checksummed segments, manifest pointer; format minor **6** for new DBs, with lazy upgrades from older minors (see [`CHANGELOG.md`](CHANGELOG.md)).
+- **Rust**: `Database::open` / **`open_with_options`** (on-disk and in-memory via `VecStore`); persisted **schema catalog** with **`register_collection` / `register_schema_version`**, schema compatibility classification + migration planning helpers, **multi-segment field paths**, **record payload v3**; **`insert` / `get` / `delete`** with **validation**; **secondary indexes** and typed **queries**; **transactions**, **checkpoints**, **compaction**; **`typra-cli`** operational tooling; **`fuzz/`** harness; format minor **6** with legacy segment replay compatibility (see [`CHANGELOG.md`](CHANGELOG.md)).
 - **Rust workspace policy**: root [`Cargo.toml`](Cargo.toml) sets **`unsafe_code = forbid`** via **`[workspace.lints.rust]`** (no `unsafe` in workspace crates).
-- **Python**: `Database.open`, **`register_collection(name, fields_json, primary_field, indexes_json=None)`**, **`register_schema_version`** + migration helpers, **`insert` / `get` / `delete`**, **`with db.transaction():`**, **`db.collection(name).where(...).and_where(...).limit(...).explain()`**, **`all()`** / **`all(fields=[...])`**, **`typra.dbapi`** (PEP 249, read-only minimal `SELECT` subset), **`open_in_memory`**, **`open_snapshot_bytes`**, **`snapshot_bytes`**, **compaction** helpers, **`collection_names()`**; **`fields_json`** descriptors and optional **`constraints`** ([`python/typra/README.md`](python/typra/README.md)).
-- **CI / coverage**: multi-OS Rust and Python CI; **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (currently **97%** lines by default; see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES` and [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); **`scripts/verify-doc-examples.sh`** (also **`make verify-doc-examples`**, part of **`make check-full`** and the **coverage** CI job) asserts stdout from **`cargo run -p typra --example open`** and the embedded Python snippets matches the documented **`text`** output blocks (root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`**, **`python/typra/README.md`**).
+- **Python**: primary **`typra.models`** API plus **`fields_json`**; full **`Database`** surface including migrations, compaction, snapshots; **`typra.dbapi`** (PEP 249 read-only `SELECT` subset). See [`python/typra/README.md`](python/typra/README.md) and [`docs/reference/python_api.md`](docs/reference/python_api.md).
+- **CI / coverage**: multi-OS Rust and Python CI; **`cargo llvm-cov`** with a **minimum line-coverage gate for `typra-core`** (see [`Makefile`](Makefile) `COVERAGE_TYPRA_CORE_LINES`); **`make check-full`** includes **`scripts/verify-doc-examples.sh`**.
 
 **Not yet:** full SQL / SQLAlchemy—see [Roadmap by release](#roadmap-by-release).
 
@@ -245,7 +245,7 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/t
   - **Criterion** bench [`crates/typra-core/benches/query.rs`](crates/typra-core/benches/query.rs) and **`make bench`** (`get` vs indexed equality vs scan).
 - **Python (`typra`)**
   - Optional **`indexes_json`** on **`register_collection`**; **`db.collection(name)`** with **`where`**, **`and_where`**, **`limit`**, **`explain`**, **`all()`**, **`all(fields=[...])`** (catalog-validated path allowlist).
-  - Docs: **[`docs/guide_python.md`](docs/guide_python.md)** (queries, indexes, DB-API/SQLAlchemy **design** note); verified examples in **`scripts/verify-doc-examples.sh`**; integration tests under **`python/typra/tests/`**.
+  - Docs: **[`docs/guides/python.md`](docs/guides/python.md)** (queries, indexes, DB-API/SQLAlchemy **design** note); verified examples in **`scripts/verify-doc-examples.sh`**; integration tests under **`python/typra/tests/`**.
 
 **Deferred / later** (still aligns with [Subset models / projections](#subset-models--projections-ui-ergonomics), **0.8+**, or broader query work)
 
@@ -384,7 +384,7 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
   - Property tests (initial `proptest` invariants) for snapshot roundtrips.
   - Join/aggregation spill foundations with correctness tests under forced spilling.
 - **Docs**
-  - Compatibility matrix: [`docs/compatibility_matrix.md`](docs/compatibility_matrix.md).
+  - Compatibility matrix: [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
 
 - **Rust**
   - Add dedicated **fuzz** targets (header/segments/catalog/record/index payloads).
@@ -399,16 +399,16 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 
 ### 1.0.0 — Stable public API + format guarantees
 
-**Status:** **Planned** after **0.10–0.13** land DB-API + minimal SQL, checkpoints/pager work, bounded-memory operators, and hardening. **Baseline:** **0.8** transactions/recovery and **0.9** migration/compaction story **shipped**; 1.0 is about **policy + hardening + documented guarantees**, not only feature count.
+**Status:** **Delivered** (see [`CHANGELOG.md`](CHANGELOG.md) **1.0.0**). Next work targets **1.1.0** (planner/operator growth + query hardening).
 
 **Goal:** “Safe to ship in production apps”: semver + **file-format compatibility policy**, security posture, and **operational** docs.
 
-**Already in place (seed for 1.0 hardening)**  
-- **`make check-full`**, **`RUSTDOCFLAGS=-D warnings`**, **`verify-doc-examples`**, **`typra-core` line-coverage gate**, **Criterion** `make bench` for **get / indexed eq / scan**.
+**Delivered in 1.0.0**
+- **`make check-full`**, **`verify-doc-examples`**, **`typra-core` line-coverage gate**, operational **`typra-cli`**, **`typra.models`**, multi-segment schema paths + record v3, compatibility/readiness docs.
 
-#### 1.0 “must-have” (high-impact blockers)
+#### 1.0 “must-have” (delivered)
 
-These items are high-leverage for real applications shipping Typra as an embedded DB. They should be completed (or explicitly cut) before the 1.0.0 tag.
+These items were high-leverage for real applications shipping Typra as an embedded DB. **All listed below shipped in 1.0.0** unless noted as deferred to 1.1.0.
 
 - **Operational CLI (`typra` binary)**:
   - `typra inspect <path>`: print header/minor, superblock generations, latest checkpoint offset, catalog summary (collections, schema versions, indexes).

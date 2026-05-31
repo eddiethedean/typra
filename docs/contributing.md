@@ -109,7 +109,7 @@ Rust crates under `crates/` include **`typra`** (application facade), **`typra-c
 make check-full
 ```
 
-That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guide_getting_started.md`**, **`docs/guide_python.md`**, and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and every Python snippet that has a paired **text** output block in those files (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
+That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guides/quickstart.md`**, **`docs/guides/python.md`**, and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and every Python snippet that has a paired **text** output block in those files (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
 
 1. Log in: `cargo login` with an API token from [crates.io account settings](https://crates.io/settings/tokens).
 2. Optionally set `repository = "..."` under `[workspace.package]` in the root `Cargo.toml` (recommended).
@@ -184,6 +184,6 @@ Starting with the `0.3.x` on-disk format work, the database file layout includes
 
 **`0.6.0`** adds **validation**, **`RowValue`**, **record payload v2**, and **catalog payload v3** (constraints). See [`07_record_encoding_v2.md`](07_record_encoding_v2.md).
 
-**`0.7.0`** adds **secondary indexes** (catalog **v4** carries `indexes` on create / new schema version), **`SegmentType::Index`** segments, a minimal **query** planner and **`Database::query_iter`**, and Python **`indexes_json`** + **`collection(...).where` / `all(fields=[...])`**. See [`CHANGELOG.md`](../CHANGELOG.md) and [`docs/guide_python.md`](guide_python.md).
+**`0.7.0`** adds **secondary indexes** (catalog **v4** carries `indexes` on create / new schema version), **`SegmentType::Index`** segments, a minimal **query** planner and **`Database::query_iter`**, and Python **`indexes_json`** + **`collection(...).where` / `all(fields=[...])`**. See [`CHANGELOG.md`](../CHANGELOG.md) and [`docs/guides/python.md`](guides/python.md).
 
 **`0.8.0`** adds **transaction framing** (txn marker segments), multi-write **`Database::transaction`**, and crash-tail recovery options (`OpenOptions` / `RecoveryMode`); Python adds **`with db.transaction():`**.

@@ -103,11 +103,13 @@ fn replay_tail_v6<S: Store>(
     let mut in_txn = false;
     let mut pending_txn_id: Option<u64> = None;
     let mut staged: Vec<StagedSegment> = Vec::new();
+    let mut saw_txn_marker = false;
 
     for meta in &metas {
         match meta.header.segment_type {
             SegmentType::Manifest | SegmentType::Checkpoint | SegmentType::Temp => {}
             SegmentType::TxnBegin => {
+                saw_txn_marker = true;
                 if in_txn {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "nested TxnBegin in replay".into(),
@@ -120,6 +122,7 @@ fn replay_tail_v6<S: Store>(
                 staged.clear();
             }
             SegmentType::TxnCommit => {
+                saw_txn_marker = true;
                 let payload = read_segment_payload(store, meta)?;
                 let id = decode_txn_payload_v0(&payload)?;
                 if !in_txn {
@@ -137,37 +140,48 @@ fn replay_tail_v6<S: Store>(
                 pending_txn_id = None;
             }
             SegmentType::TxnAbort => {
+                saw_txn_marker = true;
                 let _ = decode_txn_payload_v0(&read_segment_payload(store, meta)?)?;
                 staged.clear();
                 in_txn = false;
                 pending_txn_id = None;
             }
             SegmentType::Schema => {
-                if !in_txn {
+                let payload = read_segment_payload(store, meta)?;
+                if in_txn {
+                    staged.push(StagedSegment::Schema(payload));
+                } else if !saw_txn_marker {
+                    // Legacy autocommit segment from a pre-v6 log after header upgrade.
+                    committed.push(StagedSegment::Schema(payload));
+                } else {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "unframed data segment in format minor 6".into(),
                     }));
                 }
-                let payload = read_segment_payload(store, meta)?;
-                staged.push(StagedSegment::Schema(payload));
             }
             SegmentType::Index => {
-                if !in_txn {
+                let payload = read_segment_payload(store, meta)?;
+                if in_txn {
+                    staged.push(StagedSegment::Index(payload));
+                } else if !saw_txn_marker {
+                    committed.push(StagedSegment::Index(payload));
+                } else {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "unframed data segment in format minor 6".into(),
                     }));
                 }
-                let payload = read_segment_payload(store, meta)?;
-                staged.push(StagedSegment::Index(payload));
             }
             SegmentType::Record => {
-                if !in_txn {
+                let payload = read_segment_payload(store, meta)?;
+                if in_txn {
+                    staged.push(StagedSegment::Record(payload));
+                } else if !saw_txn_marker {
+                    committed.push(StagedSegment::Record(payload));
+                } else {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "unframed data segment in format minor 6".into(),
                     }));
                 }
-                let payload = read_segment_payload(store, meta)?;
-                staged.push(StagedSegment::Record(payload));
             }
         }
     }
@@ -249,11 +263,13 @@ fn load_catalog_latest_and_indexes_v6<S: Store>(
     let mut in_txn = false;
     let mut pending_txn_id: Option<u64> = None;
     let mut staged: Vec<StagedSegment> = Vec::new();
+    let mut saw_txn_marker = false;
 
     for meta in &metas {
         match meta.header.segment_type {
             SegmentType::Manifest | SegmentType::Checkpoint | SegmentType::Temp => {}
             SegmentType::TxnBegin => {
+                saw_txn_marker = true;
                 if in_txn {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "nested TxnBegin in replay".into(),
@@ -266,6 +282,7 @@ fn load_catalog_latest_and_indexes_v6<S: Store>(
                 staged.clear();
             }
             SegmentType::TxnCommit => {
+                saw_txn_marker = true;
                 let payload = read_segment_payload(store, meta)?;
                 let id = decode_txn_payload_v0(&payload)?;
                 if !in_txn {
@@ -283,39 +300,48 @@ fn load_catalog_latest_and_indexes_v6<S: Store>(
                 pending_txn_id = None;
             }
             SegmentType::TxnAbort => {
+                saw_txn_marker = true;
                 let _ = decode_txn_payload_v0(&read_segment_payload(store, meta)?)?;
                 staged.clear();
                 in_txn = false;
                 pending_txn_id = None;
             }
             SegmentType::Schema => {
-                // Format minor 6 mandates transactional framing. If we encounter unframed
-                // segments, treat them as invalid.
-                if !in_txn {
+                let payload = read_segment_payload(store, meta)?;
+                if in_txn {
+                    staged.push(StagedSegment::Schema(payload));
+                } else if !saw_txn_marker {
+                    // Legacy autocommit segment from a pre-v6 log after header upgrade.
+                    committed.push(StagedSegment::Schema(payload));
+                } else {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "unframed data segment in format minor 6".into(),
                     }));
                 }
-                let payload = read_segment_payload(store, meta)?;
-                staged.push(StagedSegment::Schema(payload));
             }
             SegmentType::Index => {
-                if !in_txn {
+                let payload = read_segment_payload(store, meta)?;
+                if in_txn {
+                    staged.push(StagedSegment::Index(payload));
+                } else if !saw_txn_marker {
+                    committed.push(StagedSegment::Index(payload));
+                } else {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "unframed data segment in format minor 6".into(),
                     }));
                 }
-                let payload = read_segment_payload(store, meta)?;
-                staged.push(StagedSegment::Index(payload));
             }
             SegmentType::Record => {
-                if !in_txn {
+                let payload = read_segment_payload(store, meta)?;
+                if in_txn {
+                    staged.push(StagedSegment::Record(payload));
+                } else if !saw_txn_marker {
+                    committed.push(StagedSegment::Record(payload));
+                } else {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {
                         message: "unframed data segment in format minor 6".into(),
                     }));
                 }
-                let payload = read_segment_payload(store, meta)?;
-                staged.push(StagedSegment::Record(payload));
             }
         }
     }

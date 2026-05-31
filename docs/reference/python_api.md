@@ -10,6 +10,17 @@ For worked examples and the SQL/DB-API subset, see the [Python guide](../guides/
 pip install "typra>=1.0.0,<2"
 ```
 
+## Primary API: `typra.models`
+
+Recommended for applications: define schemas with dataclasses or Pydantic, then use typed collections.
+
+- **`typra.models.collection(db, ModelClass) -> ModelCollection`**
+- **`typra.models.index(path)`**, **`typra.models.unique(path)`**, **`typra.models.constrained(...)`**
+- **`ModelCollection.insert`**, **`get`**, **`delete`**, query builder via **`ModelCollection.where`**
+- **`typra.models.plan`**, **`typra.models.apply`** for migration workflows
+
+See the [Python guide → Models](../guides/python.md) and the package README on GitHub (`python/typra/README.md`).
+
 ## Core objects
 
 - **`typra.Database`**
@@ -17,12 +28,18 @@ pip install "typra>=1.0.0,<2"
   - `open_in_memory() -> Database`
   - `open_snapshot_bytes(data: bytes) -> Database`
   - `open_snapshot(path: str) -> Database`
+  - `restore_snapshot(path: str) -> None`
   - `path() -> str`
   - `register_collection(name, fields_json, primary_field, indexes_json=None) -> (collection_id, schema_version)`
+  - `register_schema_version(name, fields_json, indexes_json=None, *, force=False) -> schema_version`
+  - `plan_schema_version(name, fields_json, indexes_json=None) -> dict`
+  - `backfill_top_level_field(name, field, value) -> None`
+  - `rebuild_indexes(name) -> None`
   - `insert(collection, row: dict) -> None`
   - `get(collection, pk) -> dict | None`
   - `delete(collection, pk) -> None`
   - `export_snapshot(dest_path: str) -> None`
+  - `compact() -> None`, `compact_to(dest_path: str) -> None`
   - `transaction()` context manager (`with db.transaction(): ...`)
   - `collection_names() -> list[str]`
   - `collection(name) -> Collection` (typed query builder)
@@ -57,4 +74,3 @@ Typra ships a **read-only** DB-API 2.0 adapter for a minimal `SELECT` subset.
 The canonical typing surface for the package lives in:
 
 - `python/typra/typra.pyi` (`https://github.com/eddiethedean/typra/blob/main/python/typra/typra.pyi`)
-

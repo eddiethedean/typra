@@ -57,6 +57,11 @@ pub fn classify_schema_update(
         }
         return Ok(SchemaChange::NeedsMigration {
             reason: format!("new required field {:?} needs backfill", path.0),
+            backfill_top_level_field: if path.0.len() == 1 {
+                Some(path.0[0].to_string())
+            } else {
+                None
+            },
         });
     }
 
@@ -93,6 +98,7 @@ pub fn classify_schema_update(
         if new_idx.kind == IndexKind::Unique {
             return Ok(SchemaChange::NeedsMigration {
                 reason: format!("new unique index {name:?} needs rebuild/validation"),
+                backfill_top_level_field: None,
             });
         }
     }

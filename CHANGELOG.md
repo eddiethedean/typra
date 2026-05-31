@@ -29,7 +29,7 @@ _Nothing yet._
 - **Bounded-memory operators (v0)**:
   - Spillable aggregation foundations (`COUNT` + `SUM(Int64)` over a single `Int64` group-by), with forced-spill tests.
   - Minimal spill-capable hash join foundation (match-count on `Int64` key), with forced-spill tests.
-- **Compatibility matrix**: documented file format + API stability policy in `docs/compatibility_matrix.md`.
+- **Compatibility matrix**: documented file format + API stability policy in `docs/reference/compatibility.md`.
 
 ## [0.12.0] - 2026-04-24
 

@@ -8,9 +8,9 @@ Use this doc when you work **in or under `python/`**. End users installing from 
 
 | Resource | Link |
 |----------|------|
-| **Full Python guide** | [`docs/guide_python.md`](../docs/guide_python.md) |
-| **Getting started** | [`docs/guide_getting_started.md`](../docs/guide_getting_started.md) |
-| **Rust module layout** | [`docs/03_rust_crate_and_module_layout.md`](../docs/03_rust_crate_and_module_layout.md) |
+| **Full Python guide** | [`docs/guides/python.md`](../docs/guides/python.md) |
+| **Getting started** | [`docs/guides/quickstart.md`](../docs/guides/quickstart.md) |
+| **Rust module layout** | [`docs/specs/rust_crate_layout.md`](../docs/specs/rust_crate_layout.md) |
 | **Changelog** | [`CHANGELOG.md`](../CHANGELOG.md) |
 | **Roadmap** | [`ROADMAP.md`](../ROADMAP.md) |
 | **Contributing / publish** | [`docs/contributing.md`](../docs/contributing.md) |
@@ -24,12 +24,17 @@ Use this doc when you work **in or under `python/`**. End users installing from 
 
 The Rust workspace lists **`python/typra`** as a member so **`cargo check -p typra-python`** and release versioning stay aligned with **`crates/`**.
 
-## What the extension exposes (v0.8.x)
+## What the extension exposes (v1.0.x)
 
-- **`typra.Database`**: `open`, `open_in_memory`, `open_snapshot_bytes`, `path`, `register_collection` (optional **`indexes_json`**), `insert`, `get`, `transaction`, `collection`, `collection_names`, `snapshot_bytes`
-- **`typra.__version__`**: matches the workspace / crates release
+Primary API: **`typra.models`** (dataclass/Pydantic-style schemas). Lower-level **`fields_json`** remains supported.
 
-**`register_schema_version`** and **SQL** text are **not** exposed from Python yet; see **[`ROADMAP.md`](../ROADMAP.md)**.
+- **`typra.Database`**: `open`, `open_in_memory`, snapshot import/export, `register_collection`, `register_schema_version`, `plan_schema_version`, `backfill_top_level_field`, `insert`, `get`, `delete`, `transaction`, `collection`, `collection_names`, `compact` / `compact_to`, `rebuild_indexes`
+- **`typra.models`**: class-defined schemas, `collection`, migration helpers
+- **`typra.dbapi`**: read-only PEP 249 adapter (minimal `SELECT` subset)
+- **`Typra*Error`** subclasses for structured error mapping
+- **`typra.__version__`**: matches the workspace / crates release (currently **1.0.0**)
+
+Full API reference: **[`docs/reference/python_api.md`](../docs/reference/python_api.md)** and **[`python/typra/README.md`](typra/README.md)**.
 
 ## Setup and tests
 

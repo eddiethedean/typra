@@ -3,9 +3,12 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
+use crate::db::build_non_pk_values_in_schema_order;
 use crate::error::{DbError, FormatError, SchemaError};
 use crate::index::{decode_index_payload, encode_index_payload, IndexEntry, IndexState};
-use crate::record::{encode_record_payload_v2, RowValue, ScalarValue};
+use crate::record::{
+    encode_record_payload_v2, encode_record_payload_v3, non_pk_defs_in_order, RowValue, ScalarValue,
+};
 use crate::schema::CollectionId;
 
 use crate::db::LatestMap;
@@ -128,7 +131,7 @@ pub fn checkpoint_from_state(
         }
     }
 
-    // Encode latest rows as v2 record payloads (insert op semantics).
+    // Encode latest rows as v2/v3 record payloads (insert op semantics).
     let mut record_payloads: Vec<Vec<u8>> = Vec::with_capacity(latest.len().min(1_000_000));
     for ((cid, _pk_key), row) in latest.iter() {
         let col = catalog
@@ -154,26 +157,34 @@ pub fn checkpoint_from_state(
             }))?;
         let pk_scalar: ScalarValue = pk_cell.clone().into_scalar()?;
 
-        let non_pk_defs: Vec<_> = col
-            .fields
-            .iter()
-            .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
-            .cloned()
-            .collect();
-        let mut ordered: Vec<(crate::schema::FieldDef, RowValue)> = Vec::new();
-        for def in non_pk_defs {
-            let key = def.path.0[0].as_ref();
-            let v = row.get(key).cloned().unwrap_or(RowValue::None);
-            ordered.push((def, v));
-        }
+        let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
+        let non_pk_defs = if has_multi_segment_schema {
+            col.fields
+                .iter()
+                .filter(|f| !(f.path.0.len() == 1 && f.path.0[0] == pk_name))
+                .collect::<Vec<_>>()
+        } else {
+            non_pk_defs_in_order(&col.fields, pk_name)
+        };
+        let ordered = build_non_pk_values_in_schema_order(row, &non_pk_defs)?;
 
-        record_payloads.push(encode_record_payload_v2(
-            *cid,
-            col.current_version.0,
-            &pk_scalar,
-            &pk_def.ty,
-            &ordered,
-        )?);
+        record_payloads.push(if has_multi_segment_schema {
+            encode_record_payload_v3(
+                *cid,
+                col.current_version.0,
+                &pk_scalar,
+                &pk_def.ty,
+                &ordered,
+            )?
+        } else {
+            encode_record_payload_v2(
+                *cid,
+                col.current_version.0,
+                &pk_scalar,
+                &pk_def.ty,
+                &ordered,
+            )?
+        });
     }
 
     let index_entries = indexes.entries_for_checkpoint();

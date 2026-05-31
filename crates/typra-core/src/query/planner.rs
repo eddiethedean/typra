@@ -132,9 +132,6 @@ pub fn execute_query(
                     if let Some(pks) = indexes.non_unique_lookup(collection_id, &index_name, &key) {
                         for pk in pks {
                             push_row(&mut out, pk);
-                            if limit.map(|n| out.len() >= n).unwrap_or(false) {
-                                break;
-                            }
                         }
                     }
                 }
@@ -212,6 +209,7 @@ impl<'a> Iterator for QueryRowIter<'a> {
                         if let Some(row) = latest.get(&(cid.0, pk_key)).cloned() {
                             return Some(Ok(row));
                         }
+                        continue;
                     }
                 }
             },
@@ -368,20 +366,24 @@ pub fn execute_query_iter<'a>(
 }
 
 #[cfg(test)]
-thread_local! {
-    static QUERY_SORT_SPILL_STORE_OPEN_HOOK: RefCell<
-        Option<Box<dyn FnMut(&std::path::Path) -> Result<FileStore, DbError>>>,
-    > = RefCell::new(None);
+type SortedQuerySpillStoreOpenHook = Box<dyn FnMut(&std::path::Path) -> Result<FileStore, DbError>>;
+#[cfg(test)]
+type SortedQuerySpillStoreOverrideHook =
+    Box<dyn FnMut(&std::path::Path) -> Result<SortedQuerySpillStore, DbError>>;
 
-    static QUERY_SORT_SPILL_STORE_OVERRIDE_HOOK: RefCell<
-        Option<Box<dyn FnMut(&std::path::Path) -> Result<SortedQuerySpillStore, DbError>>>,
-    > = RefCell::new(None);
+#[cfg(test)]
+thread_local! {
+    static QUERY_SORT_SPILL_STORE_OPEN_HOOK: RefCell<Option<SortedQuerySpillStoreOpenHook>> =
+        RefCell::new(None);
+
+    static QUERY_SORT_SPILL_STORE_OVERRIDE_HOOK: RefCell<Option<SortedQuerySpillStoreOverrideHook>> =
+        RefCell::new(None);
 }
 
 /// Covers sorted-query spill `FileStore` construction error paths during unit tests only.
 #[cfg(test)]
 pub(crate) fn test_set_sorted_query_spill_store_open_hook(
-    hook: Option<Box<dyn FnMut(&std::path::Path) -> Result<FileStore, DbError>>>,
+    hook: Option<SortedQuerySpillStoreOpenHook>,
 ) {
     QUERY_SORT_SPILL_STORE_OPEN_HOOK.with(|c| {
         *c.borrow_mut() = hook;
@@ -391,7 +393,7 @@ pub(crate) fn test_set_sorted_query_spill_store_open_hook(
 /// Test-only: override the underlying spill store implementation.
 #[cfg(test)]
 pub(crate) fn test_set_sorted_query_spill_store_override_hook(
-    hook: Option<Box<dyn FnMut(&std::path::Path) -> Result<SortedQuerySpillStore, DbError>>>,
+    hook: Option<SortedQuerySpillStoreOverrideHook>,
 ) {
     QUERY_SORT_SPILL_STORE_OVERRIDE_HOOK.with(|c| {
         *c.borrow_mut() = hook;
