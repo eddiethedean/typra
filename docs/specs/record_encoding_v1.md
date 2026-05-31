@@ -1,7 +1,5 @@
 # Record encoding v1
 
-Canonical spec: [`docs/06_record_encoding_v1.md`](../06_record_encoding_v1.md).
-
 ## Status
 
 Record payload **v1** is retained for **read compatibility**. New writes should not emit v1 (see v2/v3).

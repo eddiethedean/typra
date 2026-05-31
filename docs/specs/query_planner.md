@@ -1,6 +1,6 @@
 # Query planner and execution spec
 
-For now, see:
+Long-form design document (repo copy, not published in this site):
 
-- [`docs/05_query_planner_and_execution_spec.md`](../05_query_planner_and_execution_spec.md)
+- [Query planner and execution spec on GitHub](https://github.com/eddiethedean/typra/blob/main/docs/05_query_planner_and_execution_spec.md)
 

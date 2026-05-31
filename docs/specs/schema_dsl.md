@@ -1,7 +1,5 @@
 # Schema DSL spec
 
-Canonical spec: [`docs/04_schema_dsl_spec.md`](../04_schema_dsl_spec.md).
-
 ## Field paths (1.0 contract)
 
 Typra’s internal schema model uses `FieldPath` segments to address nested fields.

@@ -1,61 +1,42 @@
 # Typra
 
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
-[![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/?badge=latest)
+[![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/)
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
 [![PyPI](https://img.shields.io/pypi/v/typra.svg)](https://pypi.org/project/typra/)
 
 > **SQLite simplicity, with real types.**
 
-Typra is a **typed, embedded database** for application data.  
-It combines the ease of SQLite with **strict schemas, validation, and nested data support**—so your data is modeled explicitly end to end.
+Typra is a **typed, embedded database** for application data: one file, strict schemas, validation on write, and nested objects as first-class citizens. Same engine in **Rust** and **Python**.
 
-| Resource | Link |
-|----------|------|
-| **Documentation** | [typra.readthedocs.io](https://typra.readthedocs.io/en/latest/) |
-| **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
-| **Roadmap** | [ROADMAP.md](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
-| **Contributing** | [docs/contributing.md](https://github.com/eddiethedean/typra/blob/main/docs/contributing.md) |
+**Documentation:** **[typra.readthedocs.io](https://typra.readthedocs.io/en/latest/)**
 
-## What ships (v1.0.x)
+| | |
+|--|--|
+| [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | Install and first insert in minutes |
+| [Python guide](https://typra.readthedocs.io/en/latest/guides/python/) | `typra.models`, queries, DB-API |
+| [Core concepts](https://typra.readthedocs.io/en/latest/guides/concepts/) | Mental model |
+| [Compatibility](https://typra.readthedocs.io/en/latest/reference/compatibility/) · [Types](https://typra.readthedocs.io/en/latest/reference/types/) · [Security](https://typra.readthedocs.io/en/latest/reference/security/) | Production contracts |
+| [Operations runbook](https://typra.readthedocs.io/en/latest/ops/operations_and_failure_modes/) | Backup, recovery, locking |
+| [Contributing](https://typra.readthedocs.io/en/latest/dev/contributing_guide/) | Dev setup and release |
+| [Changelog](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) | Release notes and plans |
 
-- **Typed schemas + validation on write** (constraints, nested objects/lists, multi-segment field paths)
-- **Single-file durability** with transactions, recovery modes, checkpoints, and compaction
-- **Secondary indexes** (unique + non-unique) and **typed queries** (equality/AND/OR/ranges/order_by/limit)
-- **Rust facade** ([`typra`](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)) with optional `#[derive(DbModel)]`
-- **Python package** ([`typra`](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md)) with **`typra.models`** (recommended), `fields_json`, and a minimal read-only DB-API adapter
-- **Operational CLI** (`typra inspect`, `verify`, `backup`, `compact`, migrations) — see [CLI reference](https://github.com/eddiethedean/typra/blob/main/docs/reference/cli.md)
+## Install
 
-### Non-goals (for now)
+```bash
+pip install "typra>=1.0.0,<2"
+```
 
-- Full SQL / SQLAlchemy (phased post-1.0 — see [ROADMAP](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md#post-10-isoiec-9075-sql-track); today DB-API is a minimal read-only `SELECT` subset)
-- General-purpose OLAP engine features (joins/group-by SQL at scale, etc.)
+```toml
+[dependencies]
+typra = "1.0"
+```
 
-## Guarantees and contracts
+Full install notes and examples: **[Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/)**.
 
-- **Compatibility and recovery**: [docs/reference/compatibility.md](https://github.com/eddiethedean/typra/blob/main/docs/reference/compatibility.md)
-- **Types, constraints, indexes, queries**: [docs/reference/types.md](https://github.com/eddiethedean/typra/blob/main/docs/reference/types.md)
-- **Operations and failure modes**: [docs/ops/operations_and_failure_modes.md](https://github.com/eddiethedean/typra/blob/main/docs/ops/operations_and_failure_modes.md)
-- **Security posture**: [docs/reference/security.md](https://github.com/eddiethedean/typra/blob/main/docs/reference/security.md) · [SECURITY.md](https://github.com/eddiethedean/typra/blob/main/SECURITY.md)
-- **1.0 readiness checklist**: [docs/reference/readiness.md](https://github.com/eddiethedean/typra/blob/main/docs/reference/readiness.md)
+## Python (30 seconds)
 
-## Start here
-
-- [Quickstart](https://github.com/eddiethedean/typra/blob/main/docs/guides/quickstart.md)
-- [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md)
-- [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guides/concepts.md)
-- [Operations](https://github.com/eddiethedean/typra/blob/main/docs/ops/operations_and_failure_modes.md)
-
----
-
-## Python
-
-The **`typra`** package on PyPI is a native extension. The **primary** interface is **class-defined schemas** via **`typra.models`** (dataclasses or Pydantic), with typed collections and queries returning model instances.
-
-The lower-level **`fields_json`** API remains fully supported for programmatic schema generation and interop.
-
-- **Python:** 3.9+
-- **Wheels:** `cp39-abi3` (one wheel per platform)
+Recommended path: **`typra.models`** with dataclasses or Pydantic.
 
 ```python
 # Setup: class-defined schema + in-memory DB.
@@ -95,43 +76,11 @@ Book(title='Hello', year=2020, rating=4.5)
 1.0.0
 ```
 
-```bash
-pip install "typra>=1.0.0,<2"
-```
+More: **[Python guide](https://typra.readthedocs.io/en/latest/guides/python/)** · **[Models & collections](https://typra.readthedocs.io/en/latest/guides/models_and_collections/)** · PyPI package notes: [python/typra/README.md](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md)
 
-Full package docs: [python/typra/README.md](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md)
+## Rust (30 seconds)
 
----
-
-## Rust
-
-### Application crate (recommended)
-
-Use the **`typra`** crate — it re-exports the engine and enables **`#[derive(DbModel)]`** by default.
-
-```toml
-[dependencies]
-typra = "1.0"
-```
-
-Without proc-macros (engine only):
-
-```toml
-typra = { version = "1.0", default-features = false }
-```
-
-Crate README: [crates/typra/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)
-
-### Lower-level crates
-
-| Crate | Role | README |
-|-------|------|--------|
-| **`typra-core`** | Engine (storage, catalog, queries) | [crates/typra-core/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra-core/README.md) |
-| **`typra-derive`** | `#[derive(DbModel)]` proc-macros | [crates/typra-derive/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra-derive/README.md) |
-
-### Example
-
-In-memory (repeatable; no leftover file). From the repo: **`cargo run -p typra --example open`**.
+Use the **`typra`** facade crate. From this repo: `cargo run -p typra --example open`.
 
 ```rust
 use std::borrow::Cow;
@@ -141,10 +90,8 @@ use typra::Type;
 use typra::schema::FieldPath;
 
 fn main() -> Result<(), DbError> {
-    // Setup: in-memory database (no file on disk).
     let mut db = Database::open_in_memory()?;
     println!("opened: {}", db.path().display());
-    // Example: register a `books` collection with a string primary key `title`.
     let (id, ver) = db.register_collection(
         "books",
         vec![FieldDef {
@@ -166,49 +113,18 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-Field attributes on **`DbModel`** (top-level fields via `#[db(...)]`):
+More: **[Rust API reference](https://typra.readthedocs.io/en/latest/reference/rust_api/)** · **[Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/)** · crate README: [crates/typra/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)
 
-| Attribute | Effect |
-|-----------|--------|
-| `#[db(primary)]` | Primary key (exactly one field) |
-| `#[db(unique)]` | Unique secondary index |
-| `#[db(index)]` | Non-unique secondary index |
-| `#[db(collection = "name")]` | Override collection name |
-
-**Limitations (1.0):** nested field paths and constraint attributes are not emitted by the derive macro yet (use explicit `FieldDef` registration or Python `typra.models` for nested schemas).
-
----
-
-## Philosophy
-
-> **Your data should be correct by construction.**
-
----
-
-## Development
+## Repository layout
 
 | Path | Role |
 |------|------|
-| **`crates/`** | Rust crates — see per-crate READMEs linked above |
-| **`python/`** | PyPI packaging — [python/README.md](https://github.com/eddiethedean/typra/blob/main/python/README.md) |
-| **`docs/`** | Guides and specs — [docs/](https://github.com/eddiethedean/typra/tree/main/docs) |
+| **`crates/`** | Rust crates ([`typra`](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md), [`typra-core`](https://github.com/eddiethedean/typra/blob/main/crates/typra-core/README.md), [`typra-derive`](https://github.com/eddiethedean/typra/blob/main/crates/typra-derive/README.md)) |
+| **`python/`** | PyPI packaging ([python/README.md](https://github.com/eddiethedean/typra/blob/main/python/README.md)) |
+| **`docs/`** | Source for [typra.readthedocs.io](https://typra.readthedocs.io/en/latest/) |
 
-Full local checks (ruff, ty, cargo fmt/clippy/test, pytest, documented example verification):
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -U pip
-make check-full          # standard gate
-make check-1p0-ready     # check-full + async facade tests
-```
-
-Benchmarks (Criterion):
-
-```bash
-cargo bench -p typra-core --bench query
-cargo bench -p typra-core --bench workflows
-```
+Local checks: `make check-full` · 1.0 gate: `make check-1p0-ready`
 
 ## License
 
-MIT — see [LICENSE](https://github.com/eddiethedean/typra/blob/main/LICENSE).
+MIT — [LICENSE](https://github.com/eddiethedean/typra/blob/main/LICENSE)

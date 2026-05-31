@@ -1,6 +1,6 @@
 # Rust crate and module layout
 
-For now, see:
+Long-form design document (repo copy, not published in this site):
 
-- [`docs/03_rust_crate_and_module_layout.md`](../03_rust_crate_and_module_layout.md)
+- [Rust crate and module layout on GitHub](https://github.com/eddiethedean/typra/blob/main/docs/03_rust_crate_and_module_layout.md)
 

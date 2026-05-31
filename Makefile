@@ -100,7 +100,13 @@ docs-install: venv
 	@$(PYTHON) -m pip -q install -r docs/requirements.txt >/dev/null
 
 docs-check: docs-install
-	@$(PYTHON) -m mkdocs build --strict
+	@NO_MKDOCS_2_WARNING=1 $(PYTHON) -m mkdocs build --strict 2>&1 | tee /tmp/typra-mkdocs-build.log; \
+	status=$$?; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if grep -qE 'WARNING|excluded from the built site' /tmp/typra-mkdocs-build.log; then \
+	  echo "mkdocs build produced warnings (see above)" >&2; \
+	  exit 1; \
+	fi
 
 docs: docs-check
 

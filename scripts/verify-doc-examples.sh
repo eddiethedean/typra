@@ -2,7 +2,7 @@
 # Verifies stdout from the minimal Rust and Python snippets shown in README / guides.
 # Covered: root README (Rust + Python), docs/guides/quickstart.md (Rust cmd + Python),
 # docs/guides/python.md (quick start + query + realistic workflow + fields_json example),
-# python/typra/README.md (quick start + indexed sketch + fields_json nested/multi examples).
+# python/typra/README.md (quick start only; more examples live in the Python guide on readthedocs).
 # When outputs change intentionally, update the expected heredocs here and the matching ```text blocks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

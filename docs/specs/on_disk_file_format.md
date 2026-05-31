@@ -9,7 +9,7 @@ This section describes the **implemented** on-disk format and links to deeper hi
 
 **Design / historical notes (not a strict compatibility contract):**
 
-- Legacy long-form spec: [`docs/02_on_disk_file_format.md`](../02_on_disk_file_format.md)
+- Legacy long-form spec: [On-disk file format on GitHub](https://github.com/eddiethedean/typra/blob/main/docs/02_on_disk_file_format.md)
 
 ## Record payload versions (implemented)
 

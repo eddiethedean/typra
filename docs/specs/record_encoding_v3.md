@@ -43,7 +43,7 @@ Constraints:
 
 ### `value` encoding
 
-`value` is encoded as `RowValue` according to the field’s schema `Type`, using the v2 type-driven codec semantics (see [`docs/07_record_encoding_v2.md`](../07_record_encoding_v2.md)).
+`value` is encoded as `RowValue` according to the field’s schema `Type`, using the v2 type-driven codec semantics (see [Record encoding v2](record_encoding_v2.md)).
 
 ## Decoding and replay rules
 
