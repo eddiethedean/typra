@@ -100,7 +100,10 @@ mod std_fs_ops_tests {
 
         std::fs::create_dir_all(tmp.path().join("dir")).unwrap();
         let dir_path = tmp.path().join("dir");
+        #[cfg(unix)]
         assert!(StdFsOps.open_dir(&dir_path).is_ok());
+        #[cfg(not(unix))]
+        let _ = dir_path;
 
         let mut nw = StdFsOps.open_read_write_create_new(&e).unwrap();
         nw.write_all(b"x").unwrap();
