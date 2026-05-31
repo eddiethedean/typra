@@ -1,35 +1,40 @@
 # Debugging & tracing
 
-## Stable error “kinds” (Python)
+Tools for diagnosing validation failures, query plans, and engine behavior.
 
-Typra raises standard exceptions (`ValueError`, `OSError`, `RuntimeError`) and also exposes more specific subclasses so you can branch reliably:
+## Python exception types
 
-- `typra.TypraFormatError`
-- `typra.TypraSchemaError`
-- `typra.TypraValidationError`
-- `typra.TypraQueryError`
-- `typra.TypraTransactionError`
+Beyond `ValueError`, `OSError`, and `RuntimeError`, Typra exposes stable subclasses:
+
+| Class | Typical cause |
+|-------|---------------|
+| `typra.TypraFormatError` | File format / header issues |
+| `typra.TypraSchemaError` | Catalog / schema mismatch |
+| `typra.TypraValidationError` | Constraint or type failure on write |
+| `typra.TypraQueryError` | Invalid query shape |
+| `typra.TypraTransactionError` | Transaction framing issues |
+
+### Query plans
+
+Use **`explain()`** on collection queries to see whether index lookup was selected:
+
+```python
+plan = db.collection("books").where("title", "Hello").explain()
+print(plan)  # look for "IndexLookup"
+```
 
 ## Rust `tracing` (feature-gated)
 
-`typra-core` provides optional `tracing` instrumentation behind a feature flag. Spans and events are emitted at open, replay, checkpoint encode/decode, compaction, and query planning boundaries.
+`typra-core` emits spans at open, replay, checkpoint, compaction, and query planning when built with the **`tracing`** feature.
 
-### Compile with tracing enabled
+### Build with tracing
 
 ```bash
 cargo build -p typra-core --features tracing
-cargo test -p typra-core --features tracing
-```
-
-For the application facade:
-
-```bash
 cargo build -p typra --features tracing
 ```
 
-### Minimal subscriber example
-
-Add `tracing-subscriber` to your application and initialize it before opening a database:
+### Subscriber setup
 
 ```toml
 [dependencies]
@@ -50,26 +55,37 @@ fn main() {
 }
 ```
 
-Run with a filter:
+Run with filter:
 
 ```bash
 RUST_LOG=typra_core=debug cargo run --features tracing
 ```
 
-Useful targets:
+### Useful targets
 
-- `typra_core::db::open` — file open and recovery
-- `typra_core::db::replay` — segment replay (`replay_tail`, catalog load)
-- `typra_core::checkpoint` — checkpoint encode/decode
-- `typra_core::query::planner` — query plan selection and ORDER BY spill
+| Target | Events |
+|--------|--------|
+| `typra_core::db::open` | File open, recovery |
+| `typra_core::db::replay` | Segment replay, catalog load |
+| `typra_core::checkpoint` | Checkpoint encode/decode |
+| `typra_core::query::planner` | Plan selection, ORDER BY spill |
 
-### Python extension
+## Python extension + tracing
 
-The PyO3 extension links `typra-core` without the `tracing` feature by default. To build with tracing for local debugging:
+Default wheels link `typra-core` **without** tracing. Local debug build:
 
 ```bash
 cd python/typra
 maturin develop --release --features tracing
 ```
 
-Tracing output still requires a Rust subscriber in a custom embedding; the stock wheel build does not install one. For most Python debugging, use structured exception types and `explain()` on queries instead.
+Tracing output still needs a Rust subscriber in a custom embedding. For most Python debugging, use typed exceptions and **`explain()`**.
+
+## CLI inspection
+
+```bash
+typra inspect app.typra
+typra dump-catalog app.typra --json
+```
+
+See [CLI reference](../reference/cli.md).

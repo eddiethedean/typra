@@ -101,3 +101,53 @@ This checklist ties Typra’s 1.0 contract to concrete tests and documentation.
 
 - **Index vs scan, replay idempotence, unique index**
   - Rust: `crates/typra-core/tests/integration/property_invariants.rs`
+
+## Release cut checklist (1.0.0)
+
+Use this before tagging **`v1.0.0`** and publishing to crates.io / PyPI.
+
+### Pre-flight (local)
+
+1. **Workspace version** — root [`Cargo.toml`](https://github.com/eddiethedean/typra/blob/main/Cargo.toml) `[workspace.package] version = "1.0.0"` matches the intended tag.
+2. **Changelog** — [`CHANGELOG.md`](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) has a dated **`[1.0.0]`** section; **`[Unreleased]`** is empty or only future work.
+3. **Readiness pipeline** — from repo root:
+
+   ```bash
+   make check-1p0-ready
+   ```
+
+   This runs `check-full` (ruff, ty, cargo fmt/clippy/test, pytest, doc-example verification, docs build) plus `cargo test -p typra --features async`.
+
+4. **Doc examples** — README / guide snippets match verified output (`scripts/verify-doc-examples.sh`).
+
+### Tag and publish
+
+1. **Commit** any last-minute version/changelog/doc fixes on `main`.
+2. **Tag** (must match `Cargo.toml` exactly):
+
+   ```bash
+   git tag -a v1.0.0 -m "Typra 1.0.0"
+   git push origin main
+   git push origin v1.0.0
+   ```
+
+3. **CI publish** — pushing **`v1.0.0`** triggers [`.github/workflows/publish.yml`](https://github.com/eddiethedean/typra/blob/main/.github/workflows/publish.yml) (crates.io then PyPI wheels). Requires repository secrets **`CARGO_REGISTRY_TOKEN`** and **`PYPI_API_TOKEN`**.
+
+   Manual fallback: [Contributing → Publishing](../dev/contributing_guide.md#publishing) and `./scripts/publish-all.sh`.
+
+4. **GitHub release** — create a release from tag **`v1.0.0`** with notes from the **`[1.0.0]`** changelog section.
+
+### Post-publish verification
+
+- **crates.io**: `typra`, `typra-core`, and `typra-derive` at **1.0.0**.
+- **PyPI**: `pip index versions typra` shows **1.0.0**; `pip install "typra>=1.0.0,<2"` succeeds on your platform.
+- **Smoke test**:
+
+  ```bash
+  pip install "typra>=1.0.0,<2"
+  python -c "import typra; print(typra.__version__)"
+  ```
+
+### Known state before first 1.0.0 publish
+
+If PyPI / crates.io still show **0.13.0** as latest, the code is release-ready but the **`v1.0.0`** tag has not been pushed yet — complete the steps above to ship.

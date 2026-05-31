@@ -1,392 +1,409 @@
-# Python
+# Python guide
 
-This guide covers the **`typra`** PyPI package: installation, the **`Database`** API, optional **`indexes_json`**, the **query** builder on **`db.collection(...)`** (`where`, `and_where`, `limit`, `explain`, `all`, subset **`all(fields=[...])`**), the **`fields_json`** schema format, error behavior, and local development.
+Everything you need to build with the **`typra`** PyPI package: install, **`Database`**, **`typra.models`**, queries, schema JSON, DB-API, and local development.
 
-For project-wide status and roadmap, see [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md). For Rust-first usage, see [Quickstart](quickstart.md). For how the engine is organized in Rust, see [Rust crate/module layout](../specs/rust_crate_layout.md).
+!!! tip "Recommended path"
+    Prefer **`typra.models`** with dataclasses or Pydantic over hand-written `fields_json`. See [Models & collections](models_and_collections.md).
 
-For file-format and API compatibility expectations, see [Compatibility matrix](../reference/compatibility.md).
+| Resource | Link |
+|----------|------|
+| Roadmap | [ROADMAP on GitHub](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+| Compatibility | [Compatibility matrix](../reference/compatibility.md) |
+| Rust usage | [Quickstart](quickstart.md) |
 
 ## Install
 
-**Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9 and newer on that platform.
+**Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9+ on that platform.
 
-    pip install "typra>=1.0.0,<2"
+```bash
+pip install "typra>=1.0.0,<2"
+```
 
-Pin the major range you test against; 1.x releases follow SemVer (breaking changes require 2.0).
+Pin the major range you test against. Typra 1.x follows SemVer (breaking changes require 2.0).
 
 ## Quick start
 
-In-memory (repeatable; no file). To use a file instead, replace `open_in_memory()` with `open("/path/to/app.typra")`.
+In-memory (repeatable; no file). For a file, use `Database.open("/path/to/app.typra")`.
 
-    # Setup: module, in-memory DB, and one collection.
-    import typra
+```python
+# Setup: module, in-memory DB, and one collection.
+import typra
 
-    db = typra.Database.open_in_memory()
-    cid, ver = db.register_collection(
-        "books",
-        '[{"path": ["title"], "type": "string"}]',
-        "title",
-    )
-    # Example: show path, registration ids, and registered names.
-    print("path:", db.path())
-    print("collection_id:", cid, "schema_version:", ver)
-    print("collection_names:", db.collection_names())
+db = typra.Database.open_in_memory()
+cid, ver = db.register_collection(
+    "books",
+    '[{"path": ["title"], "type": "string"}]',
+    "title",
+)
+# Example: show path, registration ids, and registered names.
+print("path:", db.path())
+print("collection_id:", cid, "schema_version:", ver)
+print("collection_names:", db.collection_names())
+```
 
 Output:
 
-    path: :memory:
-    collection_id: 1 schema_version: 1
-    collection_names: ['books']
+```text
+path: :memory:
+collection_id: 1 schema_version: 1
+collection_names: ['books']
+```
 
-`register_collection` returns **`(collection_id, schema_version)`**. For a new collection, ids start at **`1`** and the first schema version is **`1`**.
+`register_collection` returns **`(collection_id, schema_version)`**. New collections start at id **`1`** and schema version **`1`**.
 
-A longer insert/get snippet with **`typra.__version__`** is in [Quickstart — Minimal Python example](quickstart.md#minimal-python-example) (also verified in CI).
+A longer insert/get example with **`typra.__version__`** is in [Quickstart](quickstart.md#python-models-insert-get) (verified in CI).
 
-## Backup and restore (snapshots)
+## Backup and restore
 
-- **Backup**: use `db.export_snapshot("/path/to/backup.typra")` (file-backed DBs checkpoint then copy).
-- **Restore**: use `typra.Database.restore_snapshot("/path/to/backup.typra", "/path/to/app.typra")` to atomically replace the destination file.
+| Operation | API |
+|-----------|-----|
+| **Backup** | `db.export_snapshot("/path/to/backup.typra")` — checkpoints then copies (file-backed DBs) |
+| **Restore** | `typra.Database.restore_snapshot(backup, dest)` — atomic replace of destination |
 
-## Defining schemas with Python classes
+## Define schemas with classes
 
-Typra’s core Python API takes a JSON schema descriptor (`fields_json`). If you prefer defining schemas as Python classes, use **`typra.models`**.
+The low-level API accepts **`fields_json`**. For application code, use **`typra.models`**.
 
-Rules (v1):
+### Rules (1.0)
 
-- Your class must be a **`@dataclass`** or a **Pydantic `BaseModel`** (Pydantic is an optional dependency).
-- You must explicitly declare the primary key field:
-  - `__typra_primary_key__ = "id"` (or any top-level field name)
-- Collection names default to **snake_case plural**:
-  - `Book` → `"books"`, `OrderLine` → `"order_lines"`
-  - Override with `__typra_collection__ = "my_name"`
+- Class must be a **`@dataclass`** or **Pydantic `BaseModel`** (Pydantic is optional)
+- Declare primary key: `__typra_primary_key__ = "id"`
+- Collection name defaults to **snake_case plural** (`Book` → `"books"`)
+- Override with `__typra_collection__ = "my_name"`
 
-### Constraints and indexes (declared in-class)
+### Constraints and indexes
 
-- **Constraints**: use `typing.Annotated[T, typra.models.constrained(...)]`
-- **Indexes**: declare `__typra_indexes__ = [typra.models.index(...), typra.models.unique(...)]`
-- **Nested paths**: use tuple paths for queries (e.g. `("profile","email")`) and index declarations via `fields_json`/`indexes_json` when working at the JSON layer.
+```python
+from __future__ import annotations
 
-Example (dataclass):
+from dataclasses import dataclass
+from typing import Annotated, Optional
+from uuid import UUID
+from datetime import datetime
 
-    from __future__ import annotations
+import typra
 
-    from dataclasses import dataclass
-    from typing import Annotated, Optional
-    from uuid import UUID
-    from datetime import datetime
 
-    import typra
+@dataclass
+class Book:
+    __typra_primary_key__ = "title"
+    __typra_indexes__ = [
+        typra.models.index("year"),
+        typra.models.unique("title"),
+    ]
 
-    @dataclass
-    class Book:
-        __typra_primary_key__ = "title"
-        __typra_indexes__ = [
-            typra.models.index("year"),
-            typra.models.unique("title"),
-        ]
+    title: str
+    year: Annotated[int, typra.models.constrained(min_i64=0)]
+    rating: Optional[float] = None
+    id: Optional[UUID] = None
+    published_at: Optional[datetime] = None
 
-        title: str
-        year: Annotated[int, typra.models.constrained(min_i64=0)]
-        rating: Optional[float] = None
-        id: Optional[UUID] = None
-        published_at: Optional[datetime] = None
 
-    db = typra.Database.open_in_memory()
-    books = typra.models.collection(db, Book)
+db = typra.Database.open_in_memory()
+books = typra.models.collection(db, Book)
 
-    books.insert(Book(title="Hello", year=2020, rating=4.5))
-    one = books.get("Hello")
-    rows = books.where("year", 2020).all()
+books.insert(Book(title="Hello", year=2020, rating=4.5))
+one = books.get("Hello")
+rows = books.where("year", 2020).all()
 
-    # You can also use field refs injected onto the class:
-    rows2 = books.where(Book.title, "Hello").all()
+# Field refs injected onto the class:
+rows2 = books.where(Book.title, "Hello").all()
 
-    # Projection (delegates to engine projection via `all(fields=...)`)
-    just_titles = books.where(Book.title, "Hello").select(["title"]).all()
+# Subset projection:
+just_titles = books.where(Book.title, "Hello").select(["title"]).all()
+```
 
-### Schema evolution (plan/apply)
+### Schema evolution
 
-Derive the current model schema and compare/register a new schema version:
+```python
+plan = typra.models.plan(db, Book)
+new_version = typra.models.apply(db, Book, force=False)
+```
 
-    plan = typra.models.plan(db, Book)
-    new_version = typra.models.apply(db, Book, force=False)
+### Updates (replace by primary key)
 
-### Updates/patches (read-modify-write)
+```python
+books.update("Hello", {"rating": 5.0})
+```
 
-Typra’s engine is “replace by primary key”. `typra.models` provides a small helper:
+## `Database` API
 
-    books.update("Hello", {"rating": 5.0})
+### Open and path
 
-## `Database`
+| Method | Behavior |
+|--------|----------|
+| **`Database.open(path)`** | Open or **create** at `path`. Parent dirs must exist (`OSError` otherwise). |
+| **`Database.open_in_memory()`** | Same logical DB in RAM |
+| **`path()`** | Path string used to open (OS-normalized) |
 
-### `Database.open(path: str) -> Database`
+Opening a **directory** or other non-file path raises **`OSError`**.
 
-Opens an existing file or **creates** a new database at `path`. Parent directories must already exist; otherwise an **`OSError`** is raised (same as creating a regular file in that location).
+### Register a collection
 
-Opening a **directory** path (or another non-file that cannot be used as a database file) results in an **`OSError`**.
+```python
+db.register_collection(name, fields_json, primary_field, indexes_json=None) -> tuple[int, int]
+```
 
-### `path() -> str`
+- Names are **trimmed**; empty after trim → **`ValueError`**
+- **`primary_field`**: single-segment top-level scalar in `fields_json`
+- **`indexes_json`**: optional array of `{name, path, kind}` — see [Indexes](#indexes_json)
 
-Returns the path string used to open the database (normalized by the OS path handling underlying the Rust core).
+Duplicate names or invalid JSON → **`ValueError`**. Unique violations on insert → **`ValueError`**.
 
-### `register_collection(name: str, fields_json: str, primary_field: str, indexes_json: str | None = None) -> tuple[int, int]`
+### Insert and get
 
-Registers a **new** collection named `name` with schema version **1**. Collection names are **trimmed** of leading/trailing whitespace; empty names after trimming raise **`ValueError`**.
+| Method | Notes |
+|--------|-------|
+| **`insert(collection, row)`** | Replace-by-PK. Nested dicts/lists per schema. Required fields required; optionals may be omitted or `None`. |
+| **`get(collection, pk)`** | Latest row as `dict`, or `None` |
 
-`fields_json` must be a JSON **array** of field objects (see below). **`primary_field`** must name a **single-segment** top-level field present in that array; the primary key must be a **primitive** scalar.
+### Snapshots
 
-Optional **`indexes_json`** is a JSON **array** of secondary index objects:
+| Method | Notes |
+|--------|-------|
+| **`snapshot_bytes()`** | Full in-memory image (in-memory / snapshot-opened DBs only) |
+| **`open_snapshot_bytes(data)`** | Open from bytes |
+| **`open_snapshot(path)`** | Open snapshot file in memory |
+| **`export_snapshot(dest)`** | Write consistent snapshot file |
 
-| Key | Type | Meaning |
-|-----|------|--------|
-| **`name`** | string | Stable index name within the collection (non-empty, unique in the array). |
-| **`path`** | array of strings | Must **exactly** match a `path` entry in `fields_json`; the field must be a scalar or optional-of-scalar (not a list or object root). |
-| **`kind`** | string | `"unique"` for a uniqueness index, or `"index"` / `"non_unique"` for a non-unique index. |
+### Metadata
 
-If parsing or typing fails, **`ValueError`** is raised with a message describing the problem. If the name is already registered, **`ValueError`** is raised. Unique index violations on **`insert`** also surface as **`ValueError`**.
+**`collection_names()`** — registered names in **sorted** order (not insertion order).
 
-### `insert(collection_name: str, row: dict) -> None`
+## Queries
 
-Inserts or replaces the latest row for that collection. **`row`** values are converted to the engine’s **`RowValue`** model (nested dicts/lists, optional omission / null per schema). Required fields must be present; **`Optional<T>`** fields may be omitted or set to **`None`**. Invalid types or **constraint** failures raise **`ValueError`** (same rules as Rust).
+### `collection(name) -> Collection`
 
-### `get(collection_name: str, pk: object) -> dict | None`
+Non-SQL query builder:
 
-Returns the latest row as a **`dict`** of JSON-like values, or **`None`** if no row exists for that primary key.
+| Method | Purpose |
+|--------|---------|
+| **`where(path, value)`** | Equality (path: dotted string or tuple) |
+| **`and_where(...)`** | Additional conjunct |
+| **`limit(n)`** | Cap results |
+| **`explain()`** | Simple plan string |
+| **`all()`** | Matching rows as `dict` |
+| **`all(fields=[...])`** | Subset projection — only listed paths in each result |
 
-### `Database.open_in_memory() -> Database` / `Database.open_snapshot_bytes(data: bytes) -> Database` / `snapshot_bytes() -> bytes`
-
-In-memory databases use the same logical format as files. **`snapshot_bytes`** copies the full image (only for in-memory / snapshot-opened databases).
-
-### `Database.open_snapshot(path: str) -> Database` / `export_snapshot(dest_path: str) -> None`
-
-For a supported backup/restore workflow:
-
-- Use **`export_snapshot(dest_path)`** to write a consistent snapshot file.
-- Use **`Database.open_snapshot(path)`** to open a snapshot **in memory** (useful for tests and tooling).
-
-### `collection_names() -> list[str]`
-
-Returns registered collection names in **sorted order** (not insertion order).
-
-## Queries and the `Collection` handle
-
-### `collection(name: str) -> Collection`
-
-Returns a handle for **non-SQL** queries on `name`. Use **`where(path, value)`** for equality (path as a dotted string or tuple of segments), **`and_where`** for additional conjuncts, **`limit(n)`**, **`explain()`** for a simple plan string, and **`all()`** for matching rows as **`dict`** values.
-
-**`all(fields=...)`** optionally takes a list (or tuple) of paths; each path must match a field in `fields_json`. Only those fields are copied into each result dict (subset projection for large rows).
-
-Design reference: [Query planner/execution spec](../specs/query_planner.md).
+Design: [Query planner spec](../specs/query_planner.md).
 
 ### Query example
 
-    # Setup: in-memory DB, schema, index, and one row.
-    import typra
+```python
+# Setup: in-memory DB, schema, index, and one row.
+import typra
 
-    db = typra.Database.open_in_memory()
-    fields = (
-        '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
-    )
-    indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
-    db.register_collection("books", fields, "title", indexes)
-    db.insert("books", {"title": "Hello", "year": 2020})
-    # Example: indexed equality query with subset projection.
-    explain = db.collection("books").where("title", "Hello").explain()
-    rows = db.collection("books").where("title", "Hello").all(fields=["title"])
-    print("index_lookup:", "IndexLookup" in explain)
-    print("rows:", rows)
+db = typra.Database.open_in_memory()
+fields = (
+    '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
+)
+indexes = '[{"name": "title_idx", "path": ["title"], "kind": "index"}]'
+db.register_collection("books", fields, "title", indexes)
+db.insert("books", {"title": "Hello", "year": 2020})
+# Example: indexed equality query with subset projection.
+explain = db.collection("books").where("title", "Hello").explain()
+rows = db.collection("books").where("title", "Hello").all(fields=["title"])
+print("index_lookup:", "IndexLookup" in explain)
+print("rows:", rows)
+```
 
 Output:
 
-    index_lookup: True
-    rows: [{'title': 'Hello'}]
+```text
+index_lookup: True
+rows: [{'title': 'Hello'}]
+```
 
 ### Realistic workflow: indexed queries on disk
 
-This pattern matches a small **order line** table: **integer primary key**, **non-unique indexes** on `sku` and `status`, several inserts, a conjunctive filter (`where` + `and_where`), **subset projection**, then **reopen** the same file and read back by primary key.
+Order-line table: integer PK, indexes on `sku` and `status`, conjunctive filter, subset projection, reopen and `get`.
 
-Row order from `all()` is not guaranteed to be sorted; sort in application code when you need a stable listing.
+Row order from `all()` is not guaranteed — sort in app code when needed.
 
-    # Setup: temp on-disk file, collection with indexes, and sample rows.
-    import tempfile
-    from pathlib import Path
+```python
+# Setup: temp on-disk file, collection with indexes, and sample rows.
+import tempfile
+from pathlib import Path
 
-    import typra
+import typra
 
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "app.typra"
-        db = typra.Database.open(str(path))
-        fields = """[
-          {"path": ["id"], "type": "int64"},
-          {"path": ["sku"], "type": "string"},
-          {"path": ["qty"], "type": "int64"},
-          {"path": ["status"], "type": "string"}
-        ]"""
-        indexes = """[
-          {"name": "sku_idx", "path": ["sku"], "kind": "index"},
-          {"name": "status_idx", "path": ["status"], "kind": "index"}
-        ]"""
-        db.register_collection("order_lines", fields, "id", indexes)
-        for oid, sku, qty, st in [
-            (1, "SKU-A", 2, "open"),
-            (2, "SKU-B", 1, "shipped"),
-            (3, "SKU-A", 4, "open"),
-        ]:
-            db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
-        # Example: conjunctive query, subset projection, reopen and `get` by PK.
-        q = (
-            db.collection("order_lines")
-            .where("status", "open")
-            .and_where("sku", "SKU-A")
-            .limit(10)
-        )
-        rows = sorted(q.all(), key=lambda r: r["id"])
-        print("indexed:", "IndexLookup" in q.explain())
-        print("matches:", len(rows))
-        print("rows:", rows)
-        short = sorted(
-            db.collection("order_lines")
-            .where("status", "open")
-            .all(fields=["id", "qty"]),
-            key=lambda r: r["id"],
-        )
-        print("subset:", short)
-        db2 = typra.Database.open(str(path))
-        row = db2.get("order_lines", 1)
-        print("reopen_qty:", row["qty"] if row else None)
+with tempfile.TemporaryDirectory() as d:
+    path = Path(d) / "app.typra"
+    db = typra.Database.open(str(path))
+    fields = """[
+      {"path": ["id"], "type": "int64"},
+      {"path": ["sku"], "type": "string"},
+      {"path": ["qty"], "type": "int64"},
+      {"path": ["status"], "type": "string"}
+    ]"""
+    indexes = """[
+      {"name": "sku_idx", "path": ["sku"], "kind": "index"},
+      {"name": "status_idx", "path": ["status"], "kind": "index"}
+    ]"""
+    db.register_collection("order_lines", fields, "id", indexes)
+    for oid, sku, qty, st in [
+        (1, "SKU-A", 2, "open"),
+        (2, "SKU-B", 1, "shipped"),
+        (3, "SKU-A", 4, "open"),
+    ]:
+        db.insert("order_lines", {"id": oid, "sku": sku, "qty": qty, "status": st})
+    # Example: conjunctive query, subset projection, reopen and `get` by PK.
+    q = (
+        db.collection("order_lines")
+        .where("status", "open")
+        .and_where("sku", "SKU-A")
+        .limit(10)
+    )
+    rows = sorted(q.all(), key=lambda r: r["id"])
+    print("indexed:", "IndexLookup" in q.explain())
+    print("matches:", len(rows))
+    print("rows:", rows)
+    short = sorted(
+        db.collection("order_lines").where("status", "open").all(
+            fields=["id", "qty"]
+        ),
+        key=lambda r: r["id"],
+    )
+    print("subset:", short)
+    db2 = typra.Database.open(str(path))
+    row = db2.get("order_lines", 1)
+    print("reopen_qty:", row["qty"] if row else None)
+```
 
 Output:
 
-    indexed: True
-    matches: 2
-    rows: [{'id': 1, 'qty': 2, 'sku': 'SKU-A', 'status': 'open'}, {'id': 3, 'qty': 4, 'sku': 'SKU-A', 'status': 'open'}]
-    subset: [{'id': 1, 'qty': 2}, {'id': 3, 'qty': 4}]
-    reopen_qty: 2
+```text
+indexed: True
+matches: 2
+rows: [{'id': 1, 'qty': 2, 'sku': 'SKU-A', 'status': 'open'}, {'id': 3, 'qty': 4, 'sku': 'SKU-A', 'status': 'open'}]
+subset: [{'id': 1, 'qty': 2}, {'id': 3, 'qty': 4}]
+reopen_qty: 2
+```
 
-For **ephemeral** integration tests (CI, notebooks), prefer a temp file as above. For a fixed path in an application, ensure parent directories exist before `open`, and catch **`OSError`** around file creation.
+For tests, use a temp file as above. For fixed paths, create parent directories before `open` and catch **`OSError`**.
 
-## DB-API 2.0 (PEP 249) and SQLAlchemy
+## DB-API 2.0 (PEP 249)
 
-Typra ships a **read-only** DB-API 2.0 adapter (PEP 249) starting in **0.10.0**, exposed as **`typra.dbapi`**. The SQL surface is intentionally small and maps onto the engine’s typed query AST.
+Read-only adapter at **`typra.dbapi`**. Maps to the typed query AST — not a full SQL engine.
 
-### Supported SQL subset (0.10.0+)
+### Supported SQL (1.0)
 
-- **Only `SELECT`** is supported (read-only).
-- `SELECT \<cols|*\> FROM \<collection\>`
-- Optional `WHERE` with `=` / `AND` / `OR` and range predicates (`<`, `<=`, `>`, `>=`) using **`?` positional parameters**.
-- Optional `ORDER BY \<field\> [ASC|DESC]` (default `ASC`)
-- Optional `LIMIT n`
+- **`SELECT` only** (read-only)
+- `SELECT cols|* FROM collection`
+- `WHERE` with `=`, `AND`, `OR`, ranges (`<`, `<=`, `>`, `>=`) and **`?`** parameters
+- `ORDER BY field [ASC|DESC]`
+- `LIMIT n`
 
-Anything outside this subset raises `ValueError`.
+Anything else → `ValueError`.
 
-### DB-API usage (0.10.0+)
+```python
+import typra
 
-    import typra
+conn = typra.dbapi.connect("app.typra")
+cur = conn.cursor()
+cur.execute(
+    "SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10",
+    (2020,),
+)
+rows = cur.fetchall()
+```
 
-    conn = typra.dbapi.connect("app.typra")
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10",
-        (2020,),
-    )
-    rows = cur.fetchall()
+!!! info "SQLAlchemy"
+    Full SQLAlchemy integration is planned post-1.0. Use the native query builder for application code today.
 
-### SQLAlchemy
+## `fields_json` reference
 
-SQLAlchemy integration remains **planned**. For now, prefer the native non-SQL query builder (`collection(...).where(...)`) for application code.
+JSON **array** of field objects:
 
-## `fields_json` (schema descriptor)
-
-`fields_json` is a JSON **array**. Each element is an object with:
-
-| Key | Type | Meaning |
-|-----|------|--------|
-| **`path`** | array of strings | Field path segments, e.g. `["profile", "name"]`. Each segment must be a JSON string. |
-| **`type`** | string or object | Primitive name, or a nested composite (optional, list, object, enum). |
-| **`constraints`** | array (optional) | Constraint objects persisted in the catalog (e.g. `{"min_i64": 0}`, `{"max_length": 100}`, `{"regex": "^[a-z]+$"}`, `{"email": true}`). See [`python/typra/README.md`](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md). |
+| Key | Meaning |
+|-----|---------|
+| **`path`** | Segment array, e.g. `["profile", "name"]` |
+| **`type`** | Primitive string or nested composite |
+| **`constraints`** | Optional array — see [Types matrix](../reference/types.md) |
 
 ### Primitives
 
-Use a string literal:
-
 `"bool"`, `"int64"`, `"uint64"`, `"float64"`, `"string"`, `"bytes"`, `"uuid"`, `"timestamp"`
 
-Unknown names produce a **`ValueError`** mentioning the unknown primitive.
+Unknown names → **`ValueError`**.
 
-### Optional
+### Composites
 
-    {"optional": "string"}
+```json
+{"optional": "string"}
+{"list": "string"}
+{"object": [{"path": ["street"], "type": "string"}]}
+{"enum": ["draft", "published"]}
+```
 
-Nested arbitrarily: `{"optional": {"list": "int64"}}`.
-
-### List
-
-    {"list": "string"}
-
-### Object (nested fields)
-
-    {"object": [
-      {"path": ["street"], "type": "string"},
-      {"path": ["zip"], "type": "string"}
-    ]}
-
-### Enum
-
-    {"enum": ["draft", "published"]}
-
-Each variant must be a JSON string.
+More examples: [python/typra README on GitHub](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md).
 
 ### Example: multiple top-level fields
 
-    # Setup: in-memory DB and a multi-field `books` schema (PK `title`).
-    import typra
+```python
+# Setup: in-memory DB and a multi-field `books` schema (PK `title`).
+import typra
 
-    db = typra.Database.open_in_memory()
-    fields = """[
-      {"path": ["title"], "type": "string"},
-      {"path": ["year"], "type": "int64"},
-      {"path": ["tags"], "type": {"list": "string"}}
-    ]"""
-    cid, ver = db.register_collection("books", fields, "title")
-    # Example: show assigned collection and schema version ids.
-    print("collection_id:", cid, "schema_version:", ver)
+db = typra.Database.open_in_memory()
+fields = """[
+  {"path": ["title"], "type": "string"},
+  {"path": ["year"], "type": "int64"},
+  {"path": ["tags"], "type": {"list": "string"}}
+]"""
+cid, ver = db.register_collection("books", fields, "title")
+# Example: show assigned collection and schema version ids.
+print("collection_id:", cid, "schema_version:", ver)
+```
 
 Output:
 
-    collection_id: 1 schema_version: 1
+```text
+collection_id: 1 schema_version: 1
+```
+
+## `indexes_json`
+
+Optional array passed to `register_collection`:
+
+| Key | Meaning |
+|-----|---------|
+| **`name`** | Stable index name (unique in array) |
+| **`path`** | Must match a `path` in `fields_json`; scalar or optional-of-scalar |
+| **`kind`** | `"unique"` or `"index"` / `"non_unique"` |
 
 ## Persistence
 
-Registrations are **durable**: after you close the process and open the same path again, `collection_names()` reflects what was registered. This uses the same on-disk catalog as the Rust API (schema segments + superblocks).
+Registrations are **durable**: reopen the same path and `collection_names()` reflects what was registered (same catalog as Rust).
 
 ## Errors
 
-| Situation | Typical exception |
-|-----------|-------------------|
-| Invalid JSON, wrong JSON shape, unknown type, duplicate collection name, invalid collection name | **`ValueError`** |
-| I/O problems opening the file (missing parent dir, permission, is a directory, etc.) | **`OSError`** |
-| Engine reports “not implemented” (should not occur for supported API paths) | **`RuntimeError`** |
+| Situation | Exception |
+|-----------|-----------|
+| Invalid JSON, schema shape, duplicate name | **`ValueError`** |
+| I/O (missing parent, permissions, directory path) | **`OSError`** |
+| Unsupported engine path | **`RuntimeError`** |
 
-Always catch **`ValueError`** and **`OSError`** around `open`, `register_collection`, and **`insert`** in production code.
+Also see typed subclasses in [Debugging](../ops/debugging.md): `TypraValidationError`, `TypraSchemaError`, etc.
 
-## What is not exposed in Python yet
+Catch **`ValueError`** and **`OSError`** around `open`, `register_collection`, and `insert` in production.
 
-- Arbitrary **SQL** (use the structured query builder; see [Queries and the `Collection` handle](#queries-and-the-collection-handle) above).
-- **Schema migrations beyond basic helpers** (the Python surface includes `plan_schema_version`, `register_schema_version(..., force=...)`, and `backfill_top_level_field`, but richer migration workflows are still evolving).
-- Pydantic model inference (you pass explicit `fields_json`; the Rust engine still validates on insert).
+## Not in Python yet
 
-See [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) for upcoming milestones.
+- Arbitrary SQL (use structured queries)
+- Rich migration workflows beyond `plan` / `apply` helpers
+- Automatic Pydantic → schema inference without explicit model metadata
 
-## Development (build from this repo)
+See the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 
-From the repository root, with Python 3.9+:
+## Development (from this repo)
 
-    python3 -m venv .venv
-    .venv/bin/python -m pip install -U pip
-    .venv/bin/python -m pip install -U "maturin>=1.5,<2" pytest
-    cd python/typra
-    maturin develop --release
-    pytest -q
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -U pip
+.venv/bin/python -m pip install -U "maturin>=1.5,<2" pytest
+cd python/typra
+maturin develop --release
+pytest -q
+```
 
-Or run **`make check-full`** from the repo root (Rust + Python checks and tests). See also [`python/README.md`](https://github.com/eddiethedean/typra/blob/main/python/README.md).
-
+Or from repo root: **`make check-full`**. See [python/README on GitHub](https://github.com/eddiethedean/typra/blob/main/python/README.md).

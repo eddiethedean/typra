@@ -11,14 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
-## [1.0.0] - 2026-04-24
+## [1.0.0] - 2026-05-31
+
+First **stable 1.x** release: semver + on-disk compatibility policy, production-oriented operations, and **`typra.models`** as the primary Python API.
 
 ### Added
 
 - **Multi-segment schema field paths**: collection schemas may define nested leaf fields via multi-segment `FieldPath`s (e.g. `["profile","timezone"]`) end-to-end (write, replay, indexes, query, projections).
 - **Record payload v3**: new record encoding that persists values keyed by full `FieldPath`, enabling multi-segment schema field defs while retaining v1/v2 read compatibility.
-- **Python parity**: `fields_json`, inserts, and typed query builder now accept and resolve multi-segment schema paths; new parity tests cover nested paths and index-backed queries.
-- **Docs**: updated types matrix + added a 1.0 readiness checklist tying key guarantees to tests.
+- **Python `typra.models`**: class-defined schemas (dataclass + Pydantic v2), constraints, indexes, migrations (`plan` / `apply`), and typed collections as the **recommended** application API.
+- **Operational CLI (`typra`)**: `inspect`, `verify`, `dump-catalog`, `checkpoint`, `compact`, `backup`, and migration helpers — see [`docs/reference/cli.md`](docs/reference/cli.md).
+- **Cross-process safety**: single-writer file locking with crisp errors when a second writer opens the same file.
+- **Backup/restore**: checkpoint + supported backup workflow (`typra backup`, snapshot bytes APIs).
+- **Observability**: optional **`tracing`** feature on `typra-core` / `typra-python`; structured error kinds documented in [`docs/ops/debugging.md`](docs/ops/debugging.md).
+- **Docs & contracts**: compatibility matrix ([`docs/reference/compatibility.md`](docs/reference/compatibility.md)), types matrix, security posture ([`SECURITY.md`](SECURITY.md), [`docs/reference/security.md`](docs/reference/security.md)), async policy ([`docs/reference/async_policy.md`](docs/reference/async_policy.md)), and 1.0 readiness checklist ([`docs/reference/readiness.md`](docs/reference/readiness.md)).
+- **CI / quality gates**: `make check-1p0-ready` (includes `check-full`, doc-example verification, and async-facade tests); minimum **`typra-core`** line-coverage gate in CI.
+
+### Changed
+
+- **Python parity**: `fields_json`, inserts, and the typed query builder accept and resolve multi-segment schema paths; new parity tests cover nested paths and index-backed queries.
+- **Stable API policy**: `typra`, `typra-core`, and `typra-derive` **1.0.x** are safe to depend on directly; breaking changes require **2.0**.
+
+### Notes
+
+- **Upgrading from 0.13.x**: additive for typical usage; new multi-segment paths and record v3 writes apply when you register schemas with nested field paths. Existing files remain readable.
+- **Post-1.0 work** (SQL, SQLAlchemy) is tracked in [`ROADMAP.md`](ROADMAP.md), not part of this release.
 
 ## [0.13.0] - 2026-04-24
 
@@ -203,3 +220,9 @@ See the release notes above for details.
 [0.6.0]: https://github.com/eddiethedean/typra/releases/tag/v0.6.0
 [0.7.0]: https://github.com/eddiethedean/typra/releases/tag/v0.7.0
 [0.8.0]: https://github.com/eddiethedean/typra/releases/tag/v0.8.0
+[0.9.0]: https://github.com/eddiethedean/typra/releases/tag/v0.9.0
+[0.10.0]: https://github.com/eddiethedean/typra/releases/tag/v0.10.0
+[0.11.0]: https://github.com/eddiethedean/typra/releases/tag/v0.11.0
+[0.12.0]: https://github.com/eddiethedean/typra/releases/tag/v0.12.0
+[0.13.0]: https://github.com/eddiethedean/typra/releases/tag/v0.13.0
+[1.0.0]: https://github.com/eddiethedean/typra/releases/tag/v1.0.0

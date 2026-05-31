@@ -466,19 +466,15 @@ These items were high-leverage for real applications shipping Typra as an embedd
   - Add at least one “budget” guardrail in CI (e.g. compare against a recorded baseline in a non-blocking job, or run benches on demand with saved results).
   - Definition of done: documented performance methodology and a repeatable bench command set.
 
-**Rust — remaining work**
-- **API + format stability**: explicit compatibility matrix (forward read / write policy per minor), feature-flag policy for `typra` / `typra-core`.
-- **Types matrix**: supported **`Type`** / **`RowValue`** / **constraints** / **indexes**—including multi-segment schema paths if implemented by then.
-- **Hardening beyond today:** dedicated **fuzz** targets (header, catalog, record, **index** payloads), **property tests** (index invariants, replay idempotence), broader bench coverage (txn, compaction when they exist).
-- **Security**: threat model for **local embedded** + corrupt-file handling; disclosure process (may start earlier, but **documented** by 1.0).
-- **Modes doc**: in-memory vs snapshot vs on-disk vs hybrid—what is **guaranteed** vs best-effort.
-- **Async decision**: sync-only public API vs dual sync/async—**decide and document** (implementation may stay minimal if sync-only).
+**Delivered in 1.0.0 (policy + operations + models)**
 
-**Python — remaining work**
-- Stable **`typra`** API + **`typra.pyi`** / typing story; compatibility policy vs **on-disk** minors.
-- **DB-API 2.0** module: **documented + tested** for the subset of operations Typra supports (parameters, transactions, errors)—expanded to full parity in **1.7**; **SQLAlchemy** in **1.9** (see [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track)).
+- **Operational CLI**, **file locking**, **backup/restore**, **multi-segment paths + record v3**, **`typra.models`** stabilization, **tracing** feature, **compatibility/security/readiness docs**, and **CI gates** — see [`CHANGELOG.md`](CHANGELOG.md) **1.0.0** and [`docs/reference/readiness.md`](docs/reference/readiness.md).
 
-**Definition of done**
+**Deferred to 1.1+** (see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track)):
+
+- Projection-aware decode, ORDER BY spill isolation, expanded join/agg operators, **`DbModel` derive** nested paths/constraints, optional **`cargo-deny`**, expanded property tests beyond `property_invariants.rs`, Python async.
+
+**Definition of done** *(met for 1.0.0)*
 - End-to-end **documented** journey: register → insert → **index/query** → **txn batch** → reopen → **migrate** → **compact** → recover from controlled corruption tests.
 - Doc set: Getting Started, Schema, Queries, Transactions, Operations, Failure modes.
 

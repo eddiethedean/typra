@@ -1,8 +1,8 @@
-# Compatibility matrix
+# Compatibility
 
-This document describes **read/write compatibility** for Typra database files and **stability expectations** for public APIs.
+Read/write compatibility for `.typra` files and stability expectations for public APIs.
 
-Typra is **1.x**: breaking changes require a major version bump, and file-format evolution is explicit and well-tested.
+Typra is **1.x**: breaking changes require a major version bump. File-format evolution is explicit and tested.
 
 ## File-format compatibility
 

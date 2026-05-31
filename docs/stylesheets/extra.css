@@ -1,0 +1,13 @@
+/* Typra docs — light layout polish on Material */
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset .grid.cards > ul > li {
+  border-radius: 0.5rem;
+}
+
+.md-typeset code {
+  font-size: 0.85em;
+}

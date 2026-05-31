@@ -1,13 +1,9 @@
-# Types matrix
+# Types & constraints
 
-This document is a **truth table** for what Typra supports *today* across:
+Truth table for what Typra **1.0** supports today: catalog types, row values, constraints, indexes, and query predicates.
 
-- catalog field `Type`
-- row values (`RowValue` / `ScalarValue`)
-- constraints
-- indexes + predicates
-
-It is intentionally conservative: if something is partially implemented or shape-limited, it is called out explicitly.
+!!! note "Conservative by design"
+    Partial implementations and shape limits are called out explicitly — not hidden.
 
 ## Types (`schema::Type`) and row values
 

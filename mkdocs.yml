@@ -1,37 +1,73 @@
 site_name: Typra
-site_description: Typed embedded database (Rust core, Python bindings)
+site_description: Typed embedded database — SQLite simplicity with real types
+site_url: https://typra.readthedocs.io/
 repo_url: https://github.com/eddiethedean/typra
 repo_name: eddiethedean/typra
+edit_uri: edit/main/docs/
 
 theme:
   name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - navigation.instant
+    - navigation.instant.progress
     - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
     - navigation.top
     - navigation.indexes
     - navigation.footer
+    - navigation.path
     - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
   - attr_list
-  - fenced_code
-  - codehilite
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - def_list
+  - md_in_html
   - tables
   - toc:
       permalink: true
+      toc_depth: 3
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 plugins:
   - search
 
 exclude_docs: |
-  # Legacy doc copies kept for history; use `docs/specs/*` and `docs/reference/*`.
   01_full_architecture_spec.md
   02_on_disk_file_format.md
   03_rust_crate_and_module_layout.md
@@ -40,53 +76,59 @@ exclude_docs: |
   06_record_encoding_v1.md
   07_record_encoding_v2.md
   typed_embedded_db_spec.md
-
-  # Legacy guide duplicates (superseded by `docs/guides/*`).
   guide_storage_modes.md
   guide_getting_started.md
   guide_operations_and_failure_modes.md
   guide_python.md
-
-  # Legacy reference duplicates (superseded by `docs/reference/*`).
   compatibility_matrix.md
   security_threat_model.md
   types_matrix.md
-
-  # Legacy contributing doc (superseded by `docs/dev/contributing_guide.md`).
   contributing.md
 
 nav:
   - Home: index.md
-  - Docs map: map.md
-  - Guides:
+  - Get started:
+      - Overview: index.md
       - Quickstart: guides/quickstart.md
-      - Concepts: guides/concepts.md
+      - Core concepts: guides/concepts.md
+      - Choose your path: map.md
+  - Guides:
       - Python: guides/python.md
       - Models & collections: guides/models_and_collections.md
       - Storage modes: guides/storage_modes.md
-  - Operations:
-      - Operations & failure modes: ops/operations_and_failure_modes.md
-      - Debugging & tracing: ops/debugging.md
   - Reference:
-      - Compatibility matrix: reference/compatibility.md
-      - Types matrix: reference/types.md
-      - 1.0 readiness: reference/readiness.md
-      - Async vs sync policy: reference/async_policy.md
-      - Security threat model: reference/security.md
+      - Python API: reference/python_api.md
+      - Rust API: reference/rust_api.md
+      - Types & constraints: reference/types.md
+      - Compatibility: reference/compatibility.md
       - CLI: reference/cli.md
-      - Rust API (curated): reference/rust_api.md
-      - Python API (curated): reference/python_api.md
-  - Glossary: glossary.md
-  - Specs:
-      - Full architecture: specs/full_architecture.md
-      - On-disk file format: specs/on_disk_file_format.md
-      - Rust crate/module layout: specs/rust_crate_layout.md
+      - Security: reference/security.md
+      - Async policy: reference/async_policy.md
+      - 1.0 readiness: reference/readiness.md
+  - Operations:
+      - Runbook: ops/operations_and_failure_modes.md
+      - Debugging & tracing: ops/debugging.md
+  - Specifications:
+      - Overview: specs/index.md
+      - Architecture: specs/full_architecture.md
+      - On-disk format: specs/on_disk_file_format.md
       - Schema DSL: specs/schema_dsl.md
-      - Query planner/execution: specs/query_planner.md
-      - Record encoding v1: specs/record_encoding_v1.md
-      - Record encoding v2: specs/record_encoding_v2.md
-      - Record encoding v3: specs/record_encoding_v3.md
-      - Typed embedded DB: specs/typed_embedded_db.md
-  - Dev:
+      - Query planner: specs/query_planner.md
+      - Record encodings:
+          - v1: specs/record_encoding_v1.md
+          - v2: specs/record_encoding_v2.md
+          - v3: specs/record_encoding_v3.md
+      - Rust layout: specs/rust_crate_layout.md
+      - Product vision: specs/typed_embedded_db.md
+  - Glossary: glossary.md
+  - Develop:
       - Contributing: dev/contributing_guide.md
 
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/eddiethedean/typra
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/typra/
+    - icon: fontawesome/brands/rust
+      link: https://crates.io/crates/typra

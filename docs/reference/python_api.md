@@ -1,8 +1,6 @@
-# Python API (curated)
+# Python API
 
-This page is a curated reference for Typra’s Python surface (`typra` on PyPI).
-
-For worked examples and the SQL/DB-API subset, see the [Python guide](../guides/python.md).
+Curated reference for the **`typra`** PyPI package. For tutorials and DB-API examples, see the [Python guide](../guides/python.md).
 
 ## Install
 
@@ -67,7 +65,7 @@ Typra maps engine errors to standard Python exceptions (`ValueError`, `OSError`,
 
 Typra ships a **read-only** DB-API 2.0 adapter for a minimal `SELECT` subset.
 
-- Supported subset is documented in [Python guide → DB-API](../guides/python.md#db-api-20-pep-249-and-sqlalchemy).
+- Supported subset is documented in [Python guide → DB-API](../guides/python.md#db-api-20-pep-249).
 - Non-`SELECT` SQL raises `ValueError`.
 
 ## Typing truth

@@ -1,26 +1,46 @@
-# Docs map
+# Choose your path
 
-Use this page to find the right document quickly.
+Not sure which doc to open? Start here.
 
-## I’m evaluating Typra
+## I'm evaluating Typra
 
-- What is Typra? Start at [Home](index.md) and [Quickstart](guides/quickstart.md).
-- What does Typra guarantee? Read [Compatibility matrix](reference/compatibility.md), [Types matrix](reference/types.md), and [Security threat model](reference/security.md).
+| Question | Read |
+|----------|------|
+| What is it? | [Home](index.md) |
+| Can I try it in 5 minutes? | [Quickstart](guides/quickstart.md) |
+| What does it guarantee? | [Compatibility](reference/compatibility.md) · [Types](reference/types.md) · [Security](reference/security.md) |
+| What's planned next? | [Roadmap on GitHub](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
 
-## I’m building with Typra
+## I'm building an app
 
-- Getting started: [Quickstart](guides/quickstart.md)
-- Python usage: [Python guide](guides/python.md) and [Python API (curated)](reference/python_api.md)
-- Rust usage: [Rust API (curated)](reference/rust_api.md)
-- Ops: [Operations & failure modes](ops/operations_and_failure_modes.md)
+| I use… | Start with |
+|--------|------------|
+| **Python** | [Python guide](guides/python.md) → [Models & collections](guides/models_and_collections.md) |
+| **Rust** | [Quickstart](guides/quickstart.md) → [Rust API](reference/rust_api.md) |
 
-## I’m digging into the design
+Then:
 
-- Overall architecture: [Full architecture spec](specs/full_architecture.md)
-- File format: [On-disk file format](specs/on_disk_file_format.md)
-- Query execution: [Query planner/execution](specs/query_planner.md)
+- [Core concepts](guides/concepts.md) — mental model
+- [Storage modes](guides/storage_modes.md) — file vs memory
+- [Operations runbook](ops/operations_and_failure_modes.md) — backups, recovery, locking
 
-## I’m contributing
+## I'm operating in production
 
-- Start here: [Contributing](dev/contributing_guide.md)
+| Task | Doc |
+|------|-----|
+| Backup / restore | [Operations runbook](ops/operations_and_failure_modes.md) |
+| Inspect or verify a file | [CLI reference](reference/cli.md) |
+| Corruption or crash recovery | [Compatibility → recovery](reference/compatibility.md) |
+| Enable tracing | [Debugging](ops/debugging.md) |
 
+## I'm contributing or extending Typra
+
+| Task | Doc |
+|------|-----|
+| Dev setup & CI | [Contributing](dev/contributing_guide.md) |
+| File format & engine layout | [Specifications](specs/index.md) |
+| 1.0 release checklist | [Readiness](reference/readiness.md) |
+
+## Terminology
+
+Quick definitions: [Glossary](glossary.md).

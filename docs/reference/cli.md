@@ -1,94 +1,78 @@
-# CLI
+# CLI reference
 
-Typra ships a small operational CLI named **`typra`**. It is designed for debugging and integrity checks of `.typra` files.
+The **`typra`** CLI inspects, verifies, checkpoints, compacts, and migrates `.typra` files. Built for operators and support — not application hot paths.
 
-## Install / run (from source)
+## Install / run
 
-From the repo root:
+=== "From source (repo)"
 
+    ```bash
     cargo run -p typra-cli -- inspect ./app.typra
+    ```
 
-Or build it:
+=== "Build binary"
 
+    ```bash
     cargo build -p typra-cli
     ./target/debug/typra inspect ./app.typra
+    ```
 
 ## Commands
 
-### `typra inspect <path>`
+### `inspect <path>`
 
-Prints a human-readable summary:
+Human-readable summary:
 
-- file format major/minor
-- selected superblock generation
-- manifest and checkpoint offsets
-- catalog summary (collections + schema versions + index counts)
+- Format major/minor
+- Superblock generation
+- Manifest and checkpoint offsets
+- Catalog summary (collections, schema versions, index counts)
 
-Typical uses:
+**Use when:** confirming format minor, checkpoint presence, or “what collections exist?”
 
-- Confirm what format minor a file is on.
-- Check whether a checkpoint is present (non-zero checkpoint offset/len).
-- Quick “what collections exist?” debugging in prod support situations.
+### `verify <path>`
 
-### `typra verify <path>`
+Read-only integrity scan — segment framing, checksums, catalog decode. Exits non-zero on failure.
 
-Runs a read-only integrity scan:
+**Use when:** validating backups before restore, or checking suspicious files before recovery open.
 
-- segment framing and payload checksums
-- schema catalog segment decode/apply
+### `dump-catalog <path> --json`
 
-Exits non-zero on failure.
+Schema catalog as JSON.
 
-Typical uses:
+**Use when:** attaching catalog state to issues, confirming PKs/constraints/indexes.
 
-- Verify a database before restoring it from backup.
-- Validate a suspicious file before attempting a recovery open.
+### `checkpoint <path>`
 
-### `typra dump-catalog <path> --json`
+Write a durable checkpoint.
 
-Print the schema catalog as JSON for debugging/support.
+**Use when:** creating a stable marker before filesystem backup, or reducing replay time on open.
 
-Typical uses:
+### `compact <path>`
 
-- Attach catalog state to an issue (collection ids, schema versions, fields, index defs).
-- Confirm primary keys, constraints, and index definitions.
+| Flag | Action |
+|------|--------|
+| **`--in-place`** | Crash-safe atomic replace of live file |
+| **`--to <dest>`** | Write compacted copy to destination |
 
-### `typra checkpoint <path>`
+### `backup <path> --to <dest> [--verify]`
 
-Write a durable checkpoint to the file.
+Checkpoint + copy. With **`--verify`**, runs `verify` on the snapshot.
 
-Typical uses:
+### `migrate plan` / `migrate apply`
 
-- Create a “stable state marker” before taking a filesystem-level backup.
-- Reduce open/replay time by publishing a checkpoint.
+Schema migration helpers for deployment pipelines.
 
-### `typra compact <path> --in-place`
+```bash
+typra migrate plan ./app.typra --collection books --schema-json schema.json
+typra migrate apply ./app.typra --collection books --schema-json schema.json [--force]
+```
 
-Compact the database in place (crash-safe atomic replace).
+**`plan`** — JSON describing whether a schema update is safe and required steps.
 
-### `typra compact <path> --to <dest>`
+**`apply`** — register new schema version using engine helpers. If classification is `NeedsMigration`, perform required backfill/rebuild steps, then use **`--force`**.
 
-Write a compacted copy to `<dest>`.
+## Related
 
-### `typra backup <path> --to <dest> [--verify]`
-
-Create a consistent snapshot at `<dest>` (checkpoint + copy). If `--verify` is set, runs `typra verify`
-on the produced snapshot.
-
-### `typra migrate plan <path> --collection <name> --schema-json <file> [--indexes-json <file>]`
-
-Print a JSON payload describing whether a proposed schema update is safe and what steps are required.
-
-Typical uses:
-
-- Integrate Typra migrations into a deployment pipeline.
-- Preview whether a schema change requires a backfill or index rebuild.
-
-### `typra migrate apply <path> --collection <name> --schema-json <file> [--indexes-json <file>] [--backfill-field <field> --backfill-value <json>] [--rebuild-indexes] [--force]`
-
-Apply simple migration steps using engine helpers, then register the new schema version.
-
-Notes:
-
-- If the schema update is `NeedsMigration`, you will typically need `--force` after performing the required rewrite/backfill steps.
-
+- [Operations runbook](../ops/operations_and_failure_modes.md)
+- [Compatibility matrix](compatibility.md)

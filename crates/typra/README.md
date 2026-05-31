@@ -2,31 +2,42 @@
 
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
+[![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/?badge=latest)
 
-User-facing crate for **Typra**: a typed, embedded database (single file, append-only segments, schema catalog, record insert/get, secondary indexes, minimal typed queries).
+> **SQLite simplicity, with real types.**
 
-## Status (v1.0.x)
-
-`Database::open`, **`register_collection` / `register_schema_version`** (with **`primary_field`** on create), **`insert` / `get` / `delete`** with **`RowValue`** and validation/constraints, **`Database::open_in_memory`**, snapshot import/export, **`#[derive(DbModel)]`** (via the default `derive` feature), **secondary indexes**, typed **query** execution (**equality**, `And`, `Or`, ranges, `limit`, `order_by`, `explain`), **`Database::query_iter`**, and **subset projections**. Typra’s **SQL text** surface remains minimal (primarily to support Python DB-API); applications should prefer the typed query builder APIs.
-
-For guarantees and operational behavior, see the repo docs:
-
-- [`docs/reference/compatibility.md`](../../docs/reference/compatibility.md)
-- [`docs/reference/types.md`](../../docs/reference/types.md)
-- [`docs/ops/operations_and_failure_modes.md`](../../docs/ops/operations_and_failure_modes.md)
-
-## Stability and feature policy
-
-- **Prefer this crate** (`typra`) in applications. It is the stable facade for Typra’s Rust ecosystem.
-- **Feature flags** are intended to be **additive**:
-  - Default features should be safe for most users.
-  - Experimental features should be clearly labeled in docs and may change faster than the default surface.
+User-facing Rust crate for **Typra**: a typed, embedded, single-file database with schema catalog, validation, indexes, and typed queries.
 
 | Resource | Link |
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
-| **User guides** | [Quickstart](https://github.com/eddiethedean/typra/blob/main/docs/guides/quickstart.md) · [Concepts](https://github.com/eddiethedean/typra/blob/main/docs/guides/concepts.md) · [Python](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md) · [Operations](https://github.com/eddiethedean/typra/blob/main/docs/ops/operations_and_failure_modes.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+| **Quickstart** | [docs/guides/quickstart.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/quickstart.md) |
+| **Concepts** | [docs/guides/concepts.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/concepts.md) |
+| **Python bindings** | [python/typra/README.md](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md) |
+| **Roadmap** | [ROADMAP.md](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+
+## What ships (v1.0.x)
+
+- **`Database::open`** / **`open_in_memory`** / **`open_with_options`** with **`FileStore`** and **`VecStore`**
+- **`register_collection`** / **`register_schema_version`** with validation, constraints, and **multi-segment field paths**
+- **`insert` / `get` / `delete`** with **`RowValue`**, transactions, checkpoints, compaction, snapshots
+- **Secondary indexes** and typed **queries** (equality, `And`, `Or`, ranges, `order_by`, `limit`, `explain`, **`query_iter`**, subset projections)
+- **`#[derive(DbModel)]`** via default **`derive`** feature ([`typra-derive`](https://github.com/eddiethedean/typra/blob/main/crates/typra-derive/README.md))
+- Optional **`async`** feature: **`AsyncDatabase`** (experimental wrapper)
+
+SQL text is minimal (primarily for Python DB-API); prefer the typed query APIs in application code.
+
+## Guarantees
+
+- [Compatibility and recovery](https://github.com/eddiethedean/typra/blob/main/docs/reference/compatibility.md)
+- [Types matrix](https://github.com/eddiethedean/typra/blob/main/docs/reference/types.md)
+- [Operations and failure modes](https://github.com/eddiethedean/typra/blob/main/docs/ops/operations_and_failure_modes.md)
+
+## Stability
+
+- **`typra` 1.0.x** is the **recommended** stable entry point for Rust applications.
+- **Feature flags** are additive: default features are safe; experimental features are documented separately.
 
 ## Install
 
@@ -35,10 +46,16 @@ For guarantees and operational behavior, see the repo docs:
 typra = "1.0"
 ```
 
-Disable the default `derive` feature if you only need the engine:
+Engine only (no proc-macros):
 
 ```toml
 typra = { version = "1.0", default-features = false }
+```
+
+Optional async facade:
+
+```toml
+typra = { version = "1.0", features = ["async"] }
 ```
 
 ## Example
@@ -83,7 +100,7 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-The derive emits **`DbModel`** with optional field attributes on **top-level fields**:
+### `#[derive(DbModel)]`
 
 | Attribute | Effect |
 |-----------|--------|
@@ -92,28 +109,23 @@ The derive emits **`DbModel`** with optional field attributes on **top-level fie
 | `#[db(index)]` | Non-unique index |
 | `#[db(collection = "books")]` | Collection name override |
 
-Nested paths and constraint attributes are not generated by the macro in 1.0 — register those via explicit `FieldDef` values or Python models.
+Nested paths and constraint attributes are not generated in 1.0 — use explicit **`FieldDef`** values or Python **`typra.models`**.
 
 ## Features
 
 | Feature | Role |
 |---------|------|
 | **`derive`** (default) | `#[derive(DbModel)]` via **`typra-derive`** |
-| **`async`** | Async wrapper API (`AsyncDatabase`) implemented via Tokio `spawn_blocking` |
-
-## When to use `typra-core` directly
-
-Use `typra-core` instead of `typra` if you need:
-
-- a minimal dependency graph (no proc-macros, no facade re-exports)
-- access to lower-level engine types that the facade intentionally doesn’t surface
+| **`async`** | **`AsyncDatabase`** via Tokio `spawn_blocking` (experimental) |
 
 ## Related crates
 
-| Crate | Role |
-|-------|------|
-| **`typra-core`** | Engine (`Database`, storage, catalog, records) |
-| **`typra-derive`** | Proc-macros |
+| Crate | Role | README |
+|-------|------|--------|
+| **`typra-core`** | Engine | [crates/typra-core/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra-core/README.md) |
+| **`typra-derive`** | Proc-macros | [crates/typra-derive/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra-derive/README.md) |
+
+Use **`typra-core`** directly when you need a minimal dependency graph or lower-level engine types.
 
 ## License
 

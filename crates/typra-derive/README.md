@@ -2,29 +2,42 @@
 
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/typra-derive.svg)](https://crates.io/crates/typra-derive)
+[![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/?badge=latest)
 
-Proc-macro crate for **Typra** (`#[derive(DbModel)]`).
+Proc-macro crate for **Typra**: **`#[derive(DbModel)]`**.
 
-## Status (v1.0.x)
-
-The derive emits **`DbModel`** for structs with named fields. Supported attributes:
-
-- `#[db(primary)]` — mark the primary key field (required)
-- `#[db(unique)]` — unique secondary index on the field
-- `#[db(index)]` — non-unique secondary index
-- `#[db(collection = "books")]` — override the default collection name
-
-**Limitations:** top-level scalar/list fields only; nested `FieldPath`s and constraint metadata are not generated (use manual `FieldDef` registration or Python `typra.models`).
+Most users should depend on **[`typra`](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)** with the default **`derive`** feature instead of this crate directly.
 
 | Resource | Link |
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
-| **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
 | **Facade crate** | [`typra` on crates.io](https://crates.io/crates/typra) |
+| **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
+| **Quickstart** | [docs/guides/quickstart.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/quickstart.md) |
+
+## What ships (v1.0.x)
+
+The derive emits **`DbModel`** for structs with named fields.
+
+| Attribute | Effect |
+|-----------|--------|
+| `#[db(primary)]` | Primary key (required) |
+| `#[db(unique)]` | Unique secondary index |
+| `#[db(index)]` | Non-unique secondary index |
+| `#[db(collection = "books")]` | Override collection name |
+
+**Limitations (1.0):** top-level scalar/list fields only. Nested **`FieldPath`s** and constraint metadata are not generated — use manual **`FieldDef`** registration or Python **`typra.models`**.
 
 ## Install
 
-Most users should depend on **`typra`** (default `derive` feature). To depend on this crate directly:
+Via the facade (recommended):
+
+```toml
+[dependencies]
+typra = "1.0"
+```
+
+Direct dependency:
 
 ```toml
 [dependencies]
@@ -46,7 +59,9 @@ struct Book {
 }
 ```
 
-Use **`typra_core::DbModel`** as a trait bound when you need the marker trait explicitly.
+Use **`typra_core::DbModel`** (or **`typra::DbModel`**) as a trait bound when you need the marker explicitly.
+
+Runnable facade example with output verification: **`cargo run -p typra --example open`** — see [crates/typra/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md).
 
 ## License
 

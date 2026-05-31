@@ -1,65 +1,73 @@
 # Models & collections
 
-This guide explains how application models map to Typra collections, naming overrides, and **subset models** (read projections).
+How application models map to Typra collections: naming, registration, compatibility, and **subset models** (read projections).
 
-## Current status (1.0.x)
+## What ships in 1.0
 
-**Shipped today:**
+| Surface | Capability |
+|---------|------------|
+| **Rust** | `register_model::<T>()`, `collection::<T>()`, subset models as compatible catalog subsets |
+| **Python** | `typra.models.collection(db, Model)` — auto-register on first use; reopen validates against catalog |
+| **Projections** | `ModelQuery.select([...])` / `all(fields=[...])` (Python); subset `QueryBuilder::all()` (Rust) |
+| **Naming** | Rust `#[db(collection = "...")]`; Python `__typra_collection__` or pluralized snake_case |
 
-- **Rust:** `Database::register_model::<T>()`, typed `db.collection::<T>()`, and subset models validated via the same catalog entry (fewer `DbModel` fields allowed).
-- **Python:** `typra.models.collection(db, Model)` auto-registers on first use; re-opening validates the model against the existing catalog (primary key, field paths/types, indexes when the model declares the full schema).
-- **Projections:** `ModelQuery.select([...])` / `all(fields=[...])` (Python) and `QueryBuilder::all()` on subset types (Rust) materialize only declared fields.
-- **Naming:** Rust `#[db(collection = "...")]` / `DbModel::collection_name()`; Python `__typra_collection__` or default pluralized snake_case class name.
+!!! note "Coming in 1.1"
+    Projection-aware decode (skip unused columns at record layer); `DbModel` derive for nested paths and constraints. See [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 
-**Planned for 1.1:** projection-aware decode (skip unused columns at the record layer); `DbModel` derive support for nested paths and constraints.
-
-See the [Python guide](python.md), [async policy](../reference/async_policy.md), and [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
+Related: [Python guide](python.md) · [Async policy](../reference/async_policy.md)
 
 ## Collection identity vs name
 
-- **Collection ID:** stable internal identity (does not change)
-- **Collection name:** human-facing handle in APIs and debugging
+| Concept | Behavior |
+|---------|----------|
+| **Collection ID** | Stable internal identity — never changes |
+| **Collection name** | Human-facing handle in APIs and CLI |
 
-Rename a model class without renaming stored data by keeping the same collection name override.
+Rename a Python class or Rust struct without touching stored data by keeping the same collection name override.
 
 ## Default collection names
 
-### Rust
+=== "Python"
 
-Default is the Rust type name (e.g. `User`). Override with `#[db(collection = "users")]` or `DbModel::collection_name()`.
+    Pluralized snake_case of the class name:
 
-### Python
+    | Class | Default collection |
+    |-------|-------------------|
+    | `User` | `users` |
+    | `OrderLine` | `order_lines` |
 
-Default is pluralized snake_case of the class name (e.g. `User` → `users`). Override with `__typra_collection__ = "users"`.
+    Override: `__typra_collection__ = "users"`
 
-## Registering models and schema compatibility
+=== "Rust"
 
-| Surface | Registration |
-|---------|----------------|
-| Rust | `db.register_model::<Book>()` then `db.collection::<Book>()` |
-| Python | `typra.models.collection(db, Book)` |
+    Default is the Rust type name (e.g. `User`).
 
-Compatibility rules:
+    Override: `#[db(collection = "users")]` or `DbModel::collection_name()`
 
-- **Collection missing:** create with the model schema.
-- **Collection exists:** model fields must be a **compatible subset** of the catalog (same primary key; each declared path/type must match). Full-schema models must also match index definitions.
+## Registering models
 
-Schema **version** changes use `plan_schema_version` / `register_schema_version` (and `typra.models.plan` / `apply`), not silent re-registration.
+| Language | Pattern |
+|----------|---------|
+| **Rust** | `db.register_model::<Book>()` then `db.collection::<Book>()` |
+| **Python** | `typra.models.collection(db, Book)` |
 
-## Subset models / projections
+### Compatibility on reopen
 
-Define a class or struct with **fewer fields** than the stored collection to reduce materialization cost at the API layer.
+- **Collection missing** → create with model schema
+- **Collection exists** → model fields must be a **compatible subset** of the catalog (same PK; each path/type must match). Full-schema models must match index definitions too
+
+Schema **version** changes use `plan_schema_version` / `register_schema_version` (Python: `typra.models.plan` / `apply`) — not silent re-registration.
+
+## Subset models
+
+Define a type with **fewer fields** than the stored collection to reduce materialization at the API layer.
 
 ### Semantics
 
-- Subset models are **read projections** (they do not alter storage).
-- Every declared field path must exist in the catalog with a matching type.
-- Undeclared catalog fields are omitted from materialized results.
-- Inserts/updates through a subset model still validate the **subset** fields you provide; use the full model when writing complete rows.
-
-### Rust example
-
-See [`crates/typra/examples/subset_models.rs`](https://github.com/eddiethedean/typra/blob/main/crates/typra/examples/subset_models.rs).
+- **Read projections only** — do not alter storage
+- Every declared path must exist in the catalog with matching type
+- Undeclared catalog fields are omitted from results
+- Writes through a subset model validate only the fields you provide — use the full model for complete rows
 
 ### Python example
 
@@ -71,6 +79,7 @@ class Book:
     title: str
     year: int
 
+
 @dataclass
 class BookTitle:
     __typra_primary_key__ = "id"
@@ -78,20 +87,25 @@ class BookTitle:
     id: int
     title: str
 
+
 books = typra.models.collection(db, BookTitle)
 rows = books.where("id", 1).all()
 ```
 
-### Performance note
+### Rust example
 
-1.0 decodes full rows internally then projects in memory. Avoiding decode for unused fields is a 1.1 optimization.
+See [`subset_models.rs` on GitHub](https://github.com/eddiethedean/typra/blob/main/crates/typra/examples/subset_models.rs).
+
+### Performance (1.0)
+
+Full rows are decoded internally, then projected in memory. Skipping decode for unused fields is a **1.1** optimization.
 
 ### Common use cases
 
 - UI list views (`UserSummary`)
-- Partial nested reads (declare nested paths in Python/Rust field metadata)
+- Partial nested reads
 - Low-latency endpoints that do not need full records
 
-## Naming + subset models together
+## Naming + subsets together
 
-Subset models target the **same collection name** as the full model. Compatibility checks run against the catalog entry anchored by that name.
+Subset models target the **same collection name** as the full model. Compatibility checks run against the catalog entry for that name.

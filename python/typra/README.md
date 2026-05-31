@@ -2,28 +2,41 @@
 
 [![CI](https://github.com/eddiethedean/typra/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/typra/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/typra.svg)](https://pypi.org/project/typra/)
+[![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/?badge=latest)
+
+> **SQLite simplicity, with real types.**
 
 Official **CPython** bindings for **Typra** (PyO3 native extension): a typed, embedded database with a Rust core.
 
-## Status
-
-You get a durable **schema catalog**, **validation**, nested **row values** (record **v3** for multi-segment paths; **v2**/**v1** still replay), and **constraints** in a single **`.typra`** file, plus **in-memory** databases and **snapshot** bytes.
-
-**Queries and secondary indexes:** register optional **`indexes_json`** on **`register_collection`**, then use **`db.collection(\"name\").where(\"field\", value).and_where(...).limit(n).explain()`** and **`all()`** / **`all(fields=[...])`** for subset rows. A longer **on-disk + reopen** example lives in the [Python guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#realistic-workflow-indexed-queries-on-disk). Typra also ships a **read-only DB-API 2.0 adapter** (`typra.dbapi`) with a minimal `SELECT` subset—see the [Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#db-api-20-pep-249-and-sqlalchemy).
+**Primary API:** **`typra.models`** — define schemas with dataclasses or Pydantic v2, then use typed collections and queries. Lower-level **`fields_json`** remains available for dynamic schemas.
 
 | Resource | Link |
 |----------|------|
 | **Repository** | [github.com/eddiethedean/typra](https://github.com/eddiethedean/typra) |
-| **Rust crates** | [`typra` on crates.io](https://crates.io/crates/typra) |
-| **Full Python guide** | [docs/guides/python.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md) |
+| **Rust crate** | [`typra` on crates.io](https://crates.io/crates/typra) |
+| **Python guide** | [docs/guides/python.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md) |
 | **Quickstart** | [docs/guides/quickstart.md](https://github.com/eddiethedean/typra/blob/main/docs/guides/quickstart.md) |
-| **Rust module layout** | [docs/specs/rust_crate_layout.md](https://github.com/eddiethedean/typra/blob/main/docs/specs/rust_crate_layout.md) |
+| **API reference** | [docs/reference/python_api.md](https://github.com/eddiethedean/typra/blob/main/docs/reference/python_api.md) |
+| **Types matrix** | [docs/reference/types.md](https://github.com/eddiethedean/typra/blob/main/docs/reference/types.md) |
 | **Changelog** | [CHANGELOG.md](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) |
+| **Roadmap** | [ROADMAP.md](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+
+## What ships (v1.0.x)
+
+- **Single-file** (`.typra`) and **in-memory** databases with snapshot import/export
+- **Schema catalog** with validation, constraints, and **multi-segment nested paths** (record v3)
+- **Transactions**, migrations (`plan` / `apply`, backfill), compaction, backup snapshots
+- **Secondary indexes** and typed **query builder** (`where`, `and_where`, `limit`, `explain`, subset `all(fields=[...])`)
+- **`typra.models`** (dataclass / Pydantic) as the recommended application API
+- **`typra.dbapi`**: read-only PEP 249 adapter with a minimal `SELECT` subset
+- Structured errors: **`TypraFormatError`**, **`TypraSchemaError`**, **`TypraValidationError`**, **`TypraQueryError`**, **`TypraTransactionError`**
+
+Full SQL / SQLAlchemy are **planned post-1.0** — see [ROADMAP](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md#post-10-isoiec-9075-sql-track).
 
 ## Requirements
 
 - **CPython 3.9+**
-- Wheels use the stable ABI (**`cp39-abi3`**): one wheel per platform, compatible with Python 3.9+ on that platform.
+- Wheels use the stable ABI (**`cp39-abi3`**): one wheel per platform
 
 ## Install
 
@@ -31,7 +44,7 @@ You get a durable **schema catalog**, **validation**, nested **row values** (rec
 pip install "typra>=1.0.0,<2"
 ```
 
-Pin the major range you test against; 1.x releases follow SemVer (breaking changes require 2.0).
+Pin the major range you test against; **1.x** follows SemVer (breaking changes require **2.0**).
 
 ## Quick start
 
@@ -73,7 +86,7 @@ Book(title='Typra', year=2020, rating=4.5)
 1.0.0
 ```
 
-On disk, use **`Database.open("app.typra")`** instead; registrations are **persisted** across process restarts for that path.
+On disk, use **`Database.open("app.typra")`** instead; registrations persist across restarts.
 
 ### Indexed query (sketch)
 
@@ -96,7 +109,7 @@ Output:
 [{'id': 1, 'sku': 'abc'}]
 ```
 
-See **[`docs/guides/python.md`](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md)** for `and_where`, `limit`, `explain`, subset projections, and the DB-API adapter.
+More examples: [Python guide — Realistic workflow](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#realistic-workflow-indexed-queries-on-disk) · [DB-API subset](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md#db-api-20-pep-249-and-sqlalchemy)
 
 ## API overview
 
@@ -121,26 +134,21 @@ See **[`docs/guides/python.md`](https://github.com/eddiethedean/typra/blob/main/
 | `Database.open_in_memory()` / `Database.open_snapshot_bytes(data)` / `db.snapshot_bytes()` | In-memory DB and byte snapshots. |
 | `db.collection_names() -> list[str]` | All registered names, **sorted** alphabetically. |
 
-For behavior details (errors, edge cases, development), see the **[Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md)**.
+Behavior details (errors, edge cases, migrations): **[Python guide](https://github.com/eddiethedean/typra/blob/main/docs/guides/python.md)**.
 
-## `fields_json` (schema descriptor)
+## `fields_json` (advanced)
 
-`fields_json` is the lower-level schema descriptor accepted by `Database.register_collection(...)`. Prefer **`typra.models`** unless you need programmatic JSON generation or a dynamic schema.
+JSON array schema descriptor for **`register_collection`**. Prefer **`typra.models`** unless you need programmatic or dynamic schemas.
 
-It must be a JSON **array** of objects. Each object describes one field:
+Each field object:
 
-- **`path`**: JSON array of strings (path segments), e.g. `["profile", "name"]`.
-- **`type`**: either a **primitive** name or a **composite** object.
+- **`path`**: JSON array of strings, e.g. `["profile", "name"]`
+- **`type`**: primitive name or composite object
+- **`constraints`** (optional): e.g. `{"min_i64": 0}`, `{"max_length": 100}`, `{"email": true}`
 
 **Primitives:** `"bool"`, `"int64"`, `"uint64"`, `"float64"`, `"string"`, `"bytes"`, `"uuid"`, `"timestamp"`.
 
-**Composites:**
-
-- Optional: `{"optional": <inner>}`
-- List: `{"list": <inner>}`
-- Object: `{"object": [ … same shape as top-level field objects … ]}`
-- Enum: `{"enum": ["a", "b"]}` (variants must be strings)
-- **`constraints`** (optional): JSON array of constraint objects, e.g. `{"min_i64": 0}`, `{"max_length": 100}`, `{"email": true}`, `{"regex": "^[a-z]+$"}`.
+**Composites:** `{"optional": …}`, `{"list": …}`, `{"object": […]}`, `{"enum": ["a", "b"]}`.
 
 ### Example (nested)
 
@@ -189,17 +197,29 @@ multi: ['books']
 
 ## Exceptions
 
-- **`ValueError`**: invalid JSON, wrong shape, unknown type, invalid collection name, duplicate collection name, validation failures, or format/schema errors from the engine when registering.
-- **`OSError`**: I/O failures when opening the database file.
-- **`RuntimeError`**: reserved for engine “not implemented” paths (unexpected for supported API paths).
+| Exception | Typical cause |
+|-----------|----------------|
+| **`ValueError`** | Invalid JSON/shape, unknown types, duplicate collection, validation failures |
+| **`OSError`** | I/O failures opening the database file |
+| **`TypraFormatError`** | Corrupt or unsupported on-disk format |
+| **`TypraSchemaError`** | Schema mismatch, unknown collection, migration required |
+| **`TypraValidationError`** | Constraint or type validation on write |
+| **`TypraQueryError`** | Query construction or SQL adapter errors |
+| **`TypraTransactionError`** | Transaction boundary violations |
+| **`RuntimeError`** | Unexpected engine paths (should not occur on supported APIs) |
 
 ## Building from source
 
-You need **Rust**, **Python 3.9+**, and **[maturin](https://www.maturin.rs/)**. From the repo’s **`python/typra`** directory:
+Requires **Rust**, **Python 3.9+**, and **[maturin](https://www.maturin.rs/)**.
 
 ```bash
+cd python/typra
 maturin develop --release
 pytest -q
 ```
 
-From the repository root, **`make check-full`** runs Rust + Python checks, tests, and **`make verify-doc-examples`** (validates documented command output). See also **[python/README.md](https://github.com/eddiethedean/typra/blob/main/python/README.md)** (workspace layout for contributors).
+From the repository root, **`make check-full`** runs the full pipeline including **`scripts/verify-doc-examples.sh`**. Contributor layout: **[python/README.md](https://github.com/eddiethedean/typra/blob/main/python/README.md)**.
+
+## License
+
+MIT — see [LICENSE](https://github.com/eddiethedean/typra/blob/main/LICENSE).

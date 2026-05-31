@@ -1,11 +1,11 @@
-# Rust API (curated)
+# Rust API
 
-This page is a curated reference for Typra’s Rust surface, optimized for “what do I import?” and “what’s stable?”.
+What to import and what’s stable in Typra’s Rust crates.
 
-For the full, authoritative API docs, use rustdoc:
-
-- `typra` (facade): `https://docs.rs/typra`
-- `typra-core` (engine): `https://docs.rs/typra-core`
+| Crate | docs.rs |
+|-------|---------|
+| **`typra`** (facade — use this) | [docs.rs/typra](https://docs.rs/typra) |
+| **`typra-core`** (engine) | [docs.rs/typra-core](https://docs.rs/typra-core) |
 
 ## Recommended crate
 

@@ -129,8 +129,12 @@ Rust crates under `crates/` include **`typra`** (application facade), **`typra-c
 **Before you tag or publish**, from the repo root:
 
 ```bash
+make check-1p0-ready   # 1.0 gate: check-full + async facade tests
+# or, minimum:
 make check-full
 ```
+
+For a **1.0.0** cut, also follow the release checklist in [`docs/reference/readiness.md`](../reference/readiness.md#release-cut-checklist-100) (tag **`v1.0.0`**, changelog, post-publish smoke tests).
 
 That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guides/quickstart.md`**, **`docs/guides/python.md`**, and **`python/typra/README.md`** still matches `cargo run -p typra --example open` and every Python snippet that has a paired **text** output block in those files (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
 
