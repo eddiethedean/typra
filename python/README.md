@@ -28,7 +28,7 @@ The Rust workspace lists **`python/typra`** as a member so **`cargo check -p typ
 
 Primary API: **`typra.models`** (dataclass/Pydantic-style schemas). Lower-level **`fields_json`** remains supported.
 
-- **`typra.Database`**: `open`, `open_in_memory`, snapshot import/export, `register_collection`, `register_schema_version`, `plan_schema_version`, `backfill_top_level_field`, `insert`, `get`, `delete`, `transaction`, `collection`, `collection_names`, `compact` / `compact_to`, `rebuild_indexes`
+- **`typra.Database`**: `open`, `open_in_memory`, snapshot import/export, `register_collection`, `register_schema_version`, `plan_schema_version`, `backfill_top_level_field`, `backfill_field_at_path`, `insert`, `get`, `delete`, `transaction`, `collection`, `collection_names`, `compact` / `compact_to`, `rebuild_indexes`
 - **`typra.models`**: class-defined schemas, `collection`, migration helpers
 - **`typra.dbapi`**: read-only PEP 249 adapter (minimal `SELECT` subset)
 - **`Typra*Error`** subclasses for structured error mapping

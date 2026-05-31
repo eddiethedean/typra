@@ -15,7 +15,7 @@ pub struct CollectionId(pub u32);
 pub struct SchemaVersion(pub u32);
 
 /// Dot-style path segments for a field (v1 rows use single-segment top-level names only).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FieldPath(pub Vec<Cow<'static, str>>);
 
 impl FieldPath {
@@ -189,6 +189,8 @@ pub enum SchemaChange {
         reason: String,
         /// Top-level field name to backfill when adding a new required single-segment field.
         backfill_top_level_field: Option<String>,
+        /// Full path to backfill when adding a new required field (any segment count).
+        backfill_field_path: Option<FieldPath>,
     },
     /// Update is not supported/safe and should be rejected by default.
     Breaking { reason: String },

@@ -35,6 +35,38 @@ def test_plan_and_register_schema_version_add_required_field_needs_migration(
     assert got["x"] == 5
 
 
+def test_nested_required_field_backfill_at_path(tmp_path) -> None:
+    db = typra.Database.open(str(tmp_path / "nested.typra"))
+    fields_v1 = json.dumps(
+        [
+            {"path": ["id"], "type": "string"},
+            {"path": ["profile", "timezone"], "type": "string"},
+        ]
+    )
+    db.register_collection("users", fields_v1, "id")
+    db.insert(
+        "users",
+        {"id": "u1", "profile": {"timezone": "UTC"}},
+    )
+
+    fields_v2 = json.dumps(
+        [
+            {"path": ["id"], "type": "string"},
+            {"path": ["profile", "timezone"], "type": "string"},
+            {"path": ["profile", "age"], "type": "int64"},
+        ]
+    )
+    plan = db.plan_schema_version("users", fields_v2)
+    assert plan["change"] == "needs_migration"
+    assert any("backfill_field_at_path" in s for s in plan["steps"])
+
+    db.register_schema_version("users", fields_v2, force=True)
+    db.backfill_field_at_path("users", ["profile", "age"], 30)
+    got = db.get("users", "u1")
+    assert got is not None
+    assert got["profile"]["age"] == 30
+
+
 def test_compaction_apis(tmp_path) -> None:
     src = tmp_path / "src.typra"
     dst = tmp_path / "dst.typra"

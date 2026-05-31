@@ -59,7 +59,7 @@ fn decode_field_path(cur: &mut Cursor<'_>) -> Result<FieldPath, DbError> {
     Ok(FieldPath(parts))
 }
 
-fn insert_value_at_path(
+pub(crate) fn insert_value_at_path(
     root: &mut BTreeMap<String, RowValue>,
     path: &FieldPath,
     value: RowValue,

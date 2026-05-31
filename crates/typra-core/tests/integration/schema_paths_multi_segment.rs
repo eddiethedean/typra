@@ -165,3 +165,62 @@ fn multi_segment_schema_checkpoint_preserves_nested_fields() {
     );
     assert_eq!(profile.get("age"), Some(&RowValue::Int64(30)));
 }
+
+#[test]
+fn nested_required_field_migration_plan_and_backfill_at_path() {
+    use typra_core::schema::SchemaChange;
+    use typra_core::MigrationStep;
+
+    let mut db = Database::open_in_memory().unwrap();
+    let v1 = vec![
+        def(&["id"], Type::String),
+        def(&["profile", "timezone"], Type::String),
+    ];
+    let (cid, _) = db.register_collection("users", v1, "id").unwrap();
+
+    let mut row = BTreeMap::new();
+    row.insert("id".into(), RowValue::String("u1".into()));
+    row.insert(
+        "profile".into(),
+        RowValue::Object(BTreeMap::from([(
+            "timezone".into(),
+            RowValue::String("UTC".into()),
+        )])),
+    );
+    db.insert(cid, row).unwrap();
+
+    let v2 = vec![
+        def(&["id"], Type::String),
+        def(&["profile", "timezone"], Type::String),
+        def(&["profile", "age"], Type::Int64),
+    ];
+    let plan = db
+        .plan_schema_version_with_indexes(cid, v2.clone(), vec![])
+        .unwrap();
+    assert!(matches!(
+        plan.change,
+        SchemaChange::NeedsMigration {
+            backfill_top_level_field: None,
+            backfill_field_path: Some(_),
+            ..
+        }
+    ));
+    assert!(plan.steps.iter().any(|s| matches!(
+        s,
+        MigrationStep::BackfillFieldAtPath { path } if path.0.len() == 2
+    )));
+
+    db.register_schema_version_with_indexes_force(cid, v2, vec![])
+        .unwrap();
+    db.backfill_field_at_path_with_value(cid, &path(&["profile", "age"]), RowValue::Int64(42))
+        .unwrap();
+
+    let got = db
+        .get(cid, &ScalarValue::String("u1".into()))
+        .unwrap()
+        .unwrap();
+    let RowValue::Object(profile) = got.get("profile").unwrap() else {
+        panic!("expected profile object");
+    };
+    assert_eq!(profile.get("age"), Some(&RowValue::Int64(42)));
+}

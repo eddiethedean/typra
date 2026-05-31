@@ -2,9 +2,13 @@ name: Bench (on demand)
 
 on:
   workflow_dispatch: {}
+  schedule:
+    # Weekly non-blocking performance snapshot (Sunday 06:00 UTC).
+    - cron: "0 6 * * 0"
 
 jobs:
   benches:
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

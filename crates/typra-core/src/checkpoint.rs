@@ -24,6 +24,13 @@ pub struct CheckpointV0 {
 }
 
 pub fn encode_checkpoint_payload_v0(cp: &CheckpointV0) -> Vec<u8> {
+    #[cfg(feature = "tracing")]
+    tracing::debug!(
+        catalog_records = cp.catalog_records.len(),
+        record_payloads = cp.record_payloads.len(),
+        index_entries = cp.index_entries.len(),
+        "encode_checkpoint_payload_v0"
+    );
     // NOTE: caller is responsible for setting replay_from_offset (we may patch it later).
     let mut out = Vec::new();
     out.extend_from_slice(&CHECKPOINT_VERSION_V0.to_le_bytes());
@@ -50,6 +57,8 @@ pub fn encode_checkpoint_payload_v0(cp: &CheckpointV0) -> Vec<u8> {
 }
 
 pub fn decode_checkpoint_payload(bytes: &[u8]) -> Result<CheckpointV0, DbError> {
+    #[cfg(feature = "tracing")]
+    let _span = tracing::info_span!("decode_checkpoint_payload", bytes = bytes.len()).entered();
     let mut cur = Cursor::new(bytes);
     let ver = cur.take_u16()?;
     if ver != CHECKPOINT_VERSION_V0 {
@@ -86,12 +95,21 @@ pub fn decode_checkpoint_payload(bytes: &[u8]) -> Result<CheckpointV0, DbError> 
         }));
     }
 
-    Ok(CheckpointV0 {
+    let cp = CheckpointV0 {
         replay_from_offset,
         catalog_records,
         record_payloads,
         index_entries,
-    })
+    };
+    #[cfg(feature = "tracing")]
+    tracing::info!(
+        replay_from_offset = cp.replay_from_offset,
+        catalog_records = cp.catalog_records.len(),
+        record_payloads = cp.record_payloads.len(),
+        index_entries = cp.index_entries.len(),
+        "decode_checkpoint_payload_ok"
+    );
+    Ok(cp)
 }
 
 /// Build a checkpoint representation from current in-memory engine state.
@@ -103,6 +121,8 @@ pub fn checkpoint_from_state(
     latest: &LatestMap,
     indexes: &IndexState,
 ) -> Result<CheckpointV0, DbError> {
+    #[cfg(feature = "tracing")]
+    let _span = tracing::info_span!("checkpoint_from_state").entered();
     let mut catalog_records: Vec<CatalogRecordWire> = Vec::new();
     let mut cols = catalog.collections();
     cols.sort_by_key(|c| c.id.0);
@@ -189,12 +209,20 @@ pub fn checkpoint_from_state(
 
     let index_entries = indexes.entries_for_checkpoint();
 
-    Ok(CheckpointV0 {
+    let cp = CheckpointV0 {
         replay_from_offset: 0,
         catalog_records,
         record_payloads,
         index_entries,
-    })
+    };
+    #[cfg(feature = "tracing")]
+    tracing::info!(
+        catalog_records = cp.catalog_records.len(),
+        record_payloads = cp.record_payloads.len(),
+        index_entries = cp.index_entries.len(),
+        "checkpoint_from_state_ok"
+    );
+    Ok(cp)
 }
 
 /// Decode a checkpoint payload into engine state (catalog/latest/indexes).

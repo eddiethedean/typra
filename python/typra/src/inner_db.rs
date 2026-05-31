@@ -129,6 +129,18 @@ impl InnerDb {
         }
     }
 
+    pub(crate) fn backfill_field_at_path_with_value(
+        &mut self,
+        id: CollectionId,
+        path: &typra_core::schema::FieldPath,
+        value: RowValue,
+    ) -> Result<(), typra_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.backfill_field_at_path_with_value(id, path, value),
+            InnerDb::Mem(d) => d.backfill_field_at_path_with_value(id, path, value),
+        }
+    }
+
     pub(crate) fn rebuild_indexes_for_collection(
         &mut self,
         id: CollectionId,

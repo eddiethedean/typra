@@ -642,11 +642,14 @@ impl<S: Store> Database<S> {
             SchemaChange::NeedsMigration {
                 reason,
                 backfill_top_level_field,
+                backfill_field_path,
             } => {
                 if let Some(field) = backfill_top_level_field {
                     steps.push(MigrationStep::BackfillTopLevelField {
                         field: field.clone(),
                     });
+                } else if let Some(path) = backfill_field_path {
+                    steps.push(MigrationStep::BackfillFieldAtPath { path: path.clone() });
                 } else if reason.contains("unique index") {
                     steps.push(MigrationStep::RebuildIndexes);
                 }
@@ -664,20 +667,29 @@ impl<S: Store> Database<S> {
         field: &str,
         value: RowValue,
     ) -> Result<(), DbError> {
+        let path = crate::schema::FieldPath(vec![std::borrow::Cow::Owned(field.to_string())]);
+        self.backfill_field_at_path_with_value(collection_id, &path, value)
+    }
+
+    /// Backfill a missing field (any segment path) with a fixed value for all rows.
+    pub fn backfill_field_at_path_with_value(
+        &mut self,
+        collection_id: CollectionId,
+        path: &crate::schema::FieldPath,
+        value: RowValue,
+    ) -> Result<(), DbError> {
         let col = self
             .catalog_for_read()
             .get(collection_id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection {
                 id: collection_id.0,
             }))?;
-        let _pk_name =
-            col.primary_field
-                .as_deref()
-                .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
-                    collection_id: collection_id.0,
-                }))?;
+        let _field_def = col.fields.iter().find(|f| f.path == *path).ok_or_else(|| {
+            DbError::Schema(SchemaError::RowUnknownField {
+                name: path.0.last().map(|s| s.to_string()).unwrap_or_default(),
+            })
+        })?;
 
-        // Snapshot the current rows so we can mutate the DB while iterating.
         let mut rows: Vec<BTreeMap<String, RowValue>> = Vec::new();
         for ((cid, _), row) in self.latest_for_read().iter() {
             if *cid != collection_id.0 {
@@ -688,11 +700,10 @@ impl<S: Store> Database<S> {
 
         self.transaction(|db| {
             for mut row in rows {
-                if row.contains_key(field) {
+                if row_value_at_path_segments(&row, &path.0).is_some() {
                     continue;
                 }
-                row.insert(field.to_string(), value.clone());
-                // `insert` performs replace-by-PK semantics and index maintenance.
+                crate::record::insert_value_at_path(&mut row, path, value.clone())?;
                 db.insert(collection_id, row)?;
             }
             Ok(())
@@ -1111,6 +1122,8 @@ impl<S: Store> Database<S> {
     /// avoid scanning/replaying the full log. Works with any [`Store`] (file-backed [`FileStore`] or
     /// [`VecStore`] snapshots).
     pub fn checkpoint(&mut self) -> Result<(), DbError> {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::info_span!("database_checkpoint").entered();
         if self.txn_staging.is_some() {
             return Err(DbError::Transaction(TransactionError::NestedTransaction));
         }
@@ -1145,6 +1158,13 @@ impl<S: Store> Database<S> {
             Some((checkpoint_offset, payload.len() as u32)),
         )?;
         self.store.sync()?;
+        #[cfg(feature = "tracing")]
+        tracing::info!(
+            checkpoint_offset,
+            replay_from,
+            payload_bytes = payload.len(),
+            "database_checkpoint_ok"
+        );
         Ok(())
     }
 
@@ -1199,6 +1219,12 @@ impl Database<FileStore> {
         fs: &dyn FsOps,
         dest_path: impl AsRef<Path>,
     ) -> Result<(), DbError> {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::info_span!(
+            "database_compact_to",
+            dest = %dest_path.as_ref().display()
+        )
+        .entered();
         let bytes = self.compact_snapshot_bytes()?;
         let path = dest_path.as_ref();
         let file = fs
@@ -1208,15 +1234,17 @@ impl Database<FileStore> {
         store.write_all_at(0, &bytes)?;
         store.truncate(bytes.len() as u64)?;
         store.sync()?;
+        #[cfg(feature = "tracing")]
+        tracing::info!(bytes = bytes.len(), "database_compact_to_ok");
         Ok(())
     }
-
-    /// Compact and rewrite this database in place.
     pub fn compact_in_place(&mut self) -> Result<(), DbError> {
         self.compact_in_place_with_fsops(&StdFsOps)
     }
 
     pub(crate) fn compact_in_place_with_fsops(&mut self, fs: &dyn FsOps) -> Result<(), DbError> {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::info_span!("database_compact_in_place").entered();
         // Crash-safety: write a full new image to a sidecar file, fsync it, then atomically
         // replace the live path via rename (using a backup on platforms where rename does not
         // overwrite an existing destination).
@@ -1286,6 +1314,8 @@ impl Database<FileStore> {
         // 3) Refresh in-memory state by reopening.
         let reopened = Database::open_with_options(live_path, OpenOptions::default())?;
         *self = reopened;
+        #[cfg(feature = "tracing")]
+        tracing::info!(bytes = bytes.len(), "database_compact_in_place_ok");
         Ok(())
     }
 
@@ -1452,29 +1482,12 @@ impl<'a, S: Store, T: crate::schema::DbModel> QueryBuilder<'a, S, T> {
 fn validate_subset_model<T: crate::schema::DbModel>(
     col: &crate::catalog::CollectionInfo,
 ) -> Result<(), DbError> {
-    let want_primary = T::primary_field();
-    let Some(pk) = col.primary_field.as_deref() else {
-        return Err(DbError::Schema(SchemaError::NoPrimaryKey {
-            collection_id: col.id.0,
-        }));
-    };
-    if pk != want_primary {
-        return Err(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-            name: want_primary.to_string(),
-        }));
-    }
-    let model_fields = T::fields();
-    for mf in &model_fields {
-        let Some(cf) = col.fields.iter().find(|f| f.path == mf.path) else {
-            return Err(DbError::Schema(SchemaError::RowUnknownField {
-                name: mf.path.0.last().map(|s| s.to_string()).unwrap_or_default(),
-            }));
-        };
-        if cf.ty != mf.ty {
-            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
-        }
-    }
-    Ok(())
+    crate::schema_compat::validate_model_fields_against_catalog(
+        col,
+        T::primary_field(),
+        &T::fields(),
+        &T::indexes(),
+    )
 }
 
 /// Build a row map containing only the listed fields (same rules as subset-model projection).

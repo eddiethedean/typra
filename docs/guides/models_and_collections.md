@@ -1,105 +1,97 @@
 # Models & collections
 
-This guide explains how application models map to collections, how collection naming should work, and how **subset models / projections** should reduce friction when working with large schemas.
+This guide explains how application models map to Typra collections, naming overrides, and **subset models** (read projections).
 
-## Current status (important)
+## Current status (1.0.x)
 
-As of **`1.0.x`**, Typra persists a **schema catalog** (append-only schema segments; catalogs store per-field **constraints** and **index definitions**), supports transaction framing, ships schema evolution helpers (compatibility checks + planning), supports richer query predicates, and has the first pieces of bounded-memory query execution scaffolding (ephemeral `Temp` spill segments + a streaming `query_iter` boundary).
+**Shipped today:**
 
-For the Python surface, see the [Python guide](python.md) and [`python/typra/README.md`](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md). For overall milestones, see [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
+- **Rust:** `Database::register_model::<T>()`, typed `db.collection::<T>()`, and subset models validated via the same catalog entry (fewer `DbModel` fields allowed).
+- **Python:** `typra.models.collection(db, Model)` auto-registers on first use; re-opening validates the model against the existing catalog (primary key, field paths/types, indexes when the model declares the full schema).
+- **Projections:** `ModelQuery.select([...])` / `all(fields=[...])` (Python) and `QueryBuilder::all()` on subset types (Rust) materialize only declared fields.
+- **Naming:** Rust `#[db(collection = "...")]` / `DbModel::collection_name()`; Python `__typra_collection__` or default pluralized snake_case class name.
+
+**Planned for 1.1:** projection-aware decode (skip unused columns at the record layer); `DbModel` derive support for nested paths and constraints.
+
+See the [Python guide](python.md), [async policy](../reference/async_policy.md), and [`ROADMAP.md`](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 
 ## Collection identity vs name
 
-Typra should treat:
+- **Collection ID:** stable internal identity (does not change)
+- **Collection name:** human-facing handle in APIs and debugging
 
-- **Collection ID**: the stable internal identity (does not change)
-- **Collection name**: a human-facing handle used in APIs and debugging
-
-This mirrors the idea that you should be able to rename a model class without accidentally renaming the underlying stored collection.
+Rename a model class without renaming stored data by keeping the same collection name override.
 
 ## Default collection names
 
 ### Rust
 
-Default should be the Rust type name (e.g. `User`), but with an override.
-
-Planned direction is consistent with the design spec’s `DbModel` trait shape:
-
-```text
-DbModel::collection_name() -> &'static str
-```
+Default is the Rust type name (e.g. `User`). Override with `#[db(collection = "users")]` or `DbModel::collection_name()`.
 
 ### Python
 
-Default should be the class `__name__` (e.g. `User`), with an override (e.g. a `__collection__` attribute or config field).
-
-## Overriding collection names
-
-Typra should support explicit naming to avoid accidental renames:
-
-- **Rust**: `#[db(collection = "users")]` (exact attribute spelling TBD)
-- **Python**: `__collection__ = "users"` (exact mechanism TBD)
+Default is pluralized snake_case of the class name (e.g. `User` → `users`). Override with `__typra_collection__ = "users"`.
 
 ## Registering models and schema compatibility
 
-Today, you register collections explicitly: **`Database::register_collection`** (Rust) or **`Database.register_collection(..., primary_field)`** (Python, with a `fields_json` descriptor).
+| Surface | Registration |
+|---------|----------------|
+| Rust | `db.register_model::<Book>()` then `db.collection::<Book>()` |
+| Python | `typra.models.collection(db, Book)` |
 
-Longer term, the database should also support ergonomic registration from model types:
+Compatibility rules:
 
-- `db.register(User)` (Python-style)
-- `db.register_collection::<User>()` or similar (Rust-style)
+- **Collection missing:** create with the model schema.
+- **Collection exists:** model fields must be a **compatible subset** of the catalog (same primary key; each declared path/type must match). Full-schema models must also match index definitions.
 
-Compatibility rules should be explicit:
-
-- If a collection name does not exist yet: create it with that schema.
-- If it exists: the schema must be compatible (or you must provide a migration path).
+Schema **version** changes use `plan_schema_version` / `register_schema_version` (and `typra.models.plan` / `apply`), not silent re-registration.
 
 ## Subset models / projections
 
-Large collections can become cumbersome if every interaction requires a huge model with deeply nested fields. Typra should support **subset models** (projections/views) so you can interact with only the fields you care about.
+Define a class or struct with **fewer fields** than the stored collection to reduce materialization cost at the API layer.
 
-### What a subset model is
-
-If the underlying collection has many fields, you can define a model with fewer fields:
-
-- only 5 of 20 top-level fields
-- only a subset of nested object fields (partial nested projection)
-
-When you query into that subset model, results materialize into the subset shape.
-
-### Semantics (v1 target)
+### Semantics
 
 - Subset models are **read projections** (they do not alter storage).
-- A subset model must be **compatible** with the collection schema:
-  - every declared field path exists in the collection schema
-  - types match (or are safely coercible under strictness policy)
-- Undeclared fields are simply not materialized.
+- Every declared field path must exist in the catalog with a matching type.
+- Undeclared catalog fields are omitted from materialized results.
+- Inserts/updates through a subset model still validate the **subset** fields you provide; use the full model when writing complete rows.
 
-### Performance expectation
+### Rust example
 
-Where the encoding allows, queries should avoid decoding fields that are not requested by the projection (projection-aware materialization).
+See [`crates/typra/examples/subset_models.rs`](https://github.com/eddiethedean/typra/blob/main/crates/typra/examples/subset_models.rs).
 
-### API direction
+### Python example
 
-Rust-first conceptual options:
+```python
+@dataclass
+class Book:
+    __typra_primary_key__ = "id"
+    id: int
+    title: str
+    year: int
 
-- `db.collection::<FullUser>()` vs `db.collection::<UserSummary>()`
-- or `db.collection::<FullUser>().project::<UserSummary>()`
+@dataclass
+class BookTitle:
+    __typra_primary_key__ = "id"
+    __typra_collection__ = "books"  # same collection as Book
+    id: int
+    title: str
 
-Python should allow defining a class with fewer fields than the collection, then querying to return that type.
+books = typra.models.collection(db, BookTitle)
+rows = books.where("id", 1).all()
+```
+
+### Performance note
+
+1.0 decodes full rows internally then projects in memory. Avoiding decode for unused fields is a 1.1 optimization.
 
 ### Common use cases
 
-- UI list views (e.g. `UserSummary { id, display_name, last_seen_at }`)
-- partial nested reads (e.g. `profile.timezone` without loading all of `profile`)
-- low-latency endpoints that don’t need the full record
+- UI list views (`UserSummary`)
+- Partial nested reads (declare nested paths in Python/Rust field metadata)
+- Low-latency endpoints that do not need full records
 
 ## Naming + subset models together
 
-Subset models should be able to target the **same collection name** as the full model, because they represent a different materialization, not a different stored dataset.
-
-To avoid ambiguity:
-
-- the collection identity is anchored by the catalog entry
-- subset models must pass compatibility checks against that catalog schema
-
+Subset models target the **same collection name** as the full model. Compatibility checks run against the catalog entry anchored by that name.

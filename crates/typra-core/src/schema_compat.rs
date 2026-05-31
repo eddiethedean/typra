@@ -1,4 +1,4 @@
-use crate::error::DbError;
+use crate::error::{DbError, FormatError, SchemaError};
 use crate::schema::{IndexDef, IndexKind, SchemaChange, Type};
 use crate::{schema, validation};
 
@@ -62,6 +62,7 @@ pub fn classify_schema_update(
             } else {
                 None
             },
+            backfill_field_path: Some((*path).clone()),
         });
     }
 
@@ -99,11 +100,83 @@ pub fn classify_schema_update(
             return Ok(SchemaChange::NeedsMigration {
                 reason: format!("new unique index {name:?} needs rebuild/validation"),
                 backfill_top_level_field: None,
+                backfill_field_path: None,
             });
         }
     }
 
     Ok(SchemaChange::Safe)
+}
+
+/// Validate that a model's declared fields (and optional indexes) are compatible with an
+/// existing collection catalog entry.
+///
+/// - Every model field must exist in the catalog with the same type.
+/// - Primary key name must match.
+/// - If the model declares the full field set, index definitions must match the catalog.
+/// - Subset models may omit catalog fields; index defs on subset models are optional but must
+///   match when present.
+pub fn validate_model_fields_against_catalog(
+    col: &crate::catalog::CollectionInfo,
+    primary_field: &str,
+    model_fields: &[schema::FieldDef],
+    model_indexes: &[IndexDef],
+) -> Result<(), DbError> {
+    let Some(pk) = col.primary_field.as_deref() else {
+        return Err(DbError::Schema(SchemaError::NoPrimaryKey {
+            collection_id: col.id.0,
+        }));
+    };
+    if pk != primary_field {
+        return Err(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+            name: primary_field.to_string(),
+        }));
+    }
+    for mf in model_fields {
+        let Some(cf) = col.fields.iter().find(|f| f.path == mf.path) else {
+            return Err(DbError::Schema(SchemaError::RowUnknownField {
+                name: mf.path.0.last().map(|s| s.to_string()).unwrap_or_default(),
+            }));
+        };
+        if cf.ty != mf.ty {
+            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+        }
+    }
+
+    let model_paths: std::collections::BTreeSet<_> = model_fields.iter().map(|f| &f.path).collect();
+    let catalog_paths: std::collections::BTreeSet<_> = col.fields.iter().map(|f| &f.path).collect();
+    let is_full_schema = model_paths == catalog_paths;
+
+    if is_full_schema && !indexes_match(&col.indexes, model_indexes) {
+        return Err(DbError::Schema(SchemaError::IncompatibleSchemaChange {
+            message: "model index definitions do not match collection catalog".into(),
+        }));
+    }
+    if !is_full_schema {
+        for mi in model_indexes {
+            let Some(ci) = col.indexes.iter().find(|i| i.name == mi.name) else {
+                return Err(DbError::Schema(SchemaError::IncompatibleSchemaChange {
+                    message: format!("unknown index {:?}", mi.name),
+                }));
+            };
+            if ci.kind != mi.kind || ci.path != mi.path {
+                return Err(DbError::Schema(SchemaError::IncompatibleSchemaChange {
+                    message: format!("index {:?} does not match catalog", mi.name),
+                }));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn indexes_match(a: &[IndexDef], b: &[IndexDef]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().all(|ia| {
+        b.iter()
+            .any(|ib| ib.name == ia.name && ib.kind == ia.kind && ib.path == ia.path)
+    })
 }
 
 fn type_is_compatible(old: &Type, new: &Type) -> bool {

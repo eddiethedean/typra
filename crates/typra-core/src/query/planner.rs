@@ -43,6 +43,8 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
                 id: query.collection.0,
             }))?;
     let plan = plan_query(col.id, &col.indexes, query);
+    #[cfg(feature = "tracing")]
+    tracing::debug!(plan = ?plan, "explain_query");
     Ok(match plan {
         Plan::IndexLookup {
             index_name,
@@ -104,6 +106,9 @@ pub fn execute_query(
                 id: query.collection.0,
             }))?;
     let plan = plan_query(col.id, &col.indexes, query);
+
+    #[cfg(feature = "tracing")]
+    tracing::debug!(plan = ?plan, "execute_query");
 
     match plan {
         Plan::IndexLookup {
@@ -559,6 +564,8 @@ pub fn execute_query_iter_with_spill_path<'a>(
 
     // Build a sorted key source (potentially spilling to Temp segments).
     let spill_store = open_sorted_query_spill_store(path)?;
+    #[cfg(feature = "tracing")]
+    tracing::debug!(spill_path = %path.display(), "execute_query_order_by_spill");
     let spill = crate::spill::TempSpillFile::new(spill_store)?;
     let sort_source = Box::new(ExternalSortSource::new(
         spill, latest, base, col.id.0, order_by,

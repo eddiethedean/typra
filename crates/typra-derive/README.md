@@ -7,7 +7,14 @@ Proc-macro crate for **Typra** (`#[derive(DbModel)]`).
 
 ## Status (v1.0.x)
 
-The derive emits a minimal **`DbModel`** implementation. Field attributes (`#[db(primary)]`, etc.) are **not** implemented yet.
+The derive emits **`DbModel`** for structs with named fields. Supported attributes:
+
+- `#[db(primary)]` — mark the primary key field (required)
+- `#[db(unique)]` — unique secondary index on the field
+- `#[db(index)]` — non-unique secondary index
+- `#[db(collection = "books")]` — override the default collection name
+
+**Limitations:** top-level scalar/list fields only; nested `FieldPath`s and constraint metadata are not generated (use manual `FieldDef` registration or Python `typra.models`).
 
 | Resource | Link |
 |----------|------|
@@ -32,7 +39,10 @@ use typra_derive::DbModel;
 
 #[derive(DbModel)]
 struct Book {
+    #[db(primary)]
     title: String,
+    #[db(index)]
+    year: i64,
 }
 ```
 

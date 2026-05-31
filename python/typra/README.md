@@ -109,6 +109,7 @@ See **[`docs/guides/python.md`](https://github.com/eddiethedean/typra/blob/main/
 | `db.register_schema_version(name, fields_json, indexes_json=None, *, force=False) -> int` | Bump schema version (migration-aware; use **`plan_schema_version`** first). |
 | `db.plan_schema_version(name, fields_json, indexes_json=None) -> dict` | Plan migration steps before registering a new schema version. |
 | `db.backfill_top_level_field(name, field, value) -> None` | Backfill a missing top-level field for all rows. |
+| `db.backfill_field_at_path(name, path, value) -> None` | Backfill a missing nested field (`path` is a list of segments). |
 | `db.delete(collection_name, pk) -> None` | Delete a row by primary key. |
 | `db.compact()` / `db.compact_to(path)` | Rewrite the database to drop dead log segments. |
 | `db.export_snapshot(path)` / `Database.open_snapshot(path)` | Backup/restore via snapshot files. |

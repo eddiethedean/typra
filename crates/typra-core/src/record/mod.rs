@@ -14,6 +14,7 @@ pub use payload_v2::{
     decode_record_payload, encode_record_payload_v2, encode_record_payload_v2_op,
     RECORD_PAYLOAD_VERSION_V2,
 };
+pub(crate) use payload_v3::insert_value_at_path;
 pub use payload_v3::{
     decode_record_payload_any, encode_record_payload_v3, encode_record_payload_v3_op,
     RECORD_PAYLOAD_VERSION_V3,

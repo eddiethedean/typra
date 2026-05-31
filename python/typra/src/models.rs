@@ -7,7 +7,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString, PyTuple};
 
 use typra_core::schema::{FieldPath, Type};
-use typra_core::FieldDef;
+use typra_core::{validate_model_fields_against_catalog, FieldDef};
 
 use crate::database::{lock_inner, Database};
 use crate::errors::db_error_to_py;
@@ -529,18 +529,47 @@ fn obj_to_row_dict(
     Ok(out.unbind())
 }
 
+fn model_top_level_field_names(
+    py: Python<'_>,
+    cls: &Bound<'_, PyAny>,
+) -> PyResult<std::collections::HashSet<String>> {
+    let hints = get_type_hints(py, cls)?;
+    Ok(hints
+        .bind(py)
+        .keys()
+        .iter()
+        .filter_map(|k| k.extract::<String>().ok())
+        .collect())
+}
+
+fn row_dict_for_model<'py>(
+    py: Python<'py>,
+    cls: &Bound<'py, PyAny>,
+    d: &Bound<'py, PyDict>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let names = model_top_level_field_names(py, cls)?;
+    let out = PyDict::new(py);
+    for (k, v) in d.iter() {
+        let key: String = k.extract()?;
+        if names.contains(&key) {
+            out.set_item(k, v)?;
+        }
+    }
+    Ok(out)
+}
+
 fn dict_to_obj(
-    _py: Python<'_>,
+    py: Python<'_>,
     cls: &Bound<'_, PyAny>,
     d: &Bound<'_, PyDict>,
     is_pydantic: bool,
 ) -> PyResult<Py<PyAny>> {
+    let filtered = row_dict_for_model(py, cls, d)?;
     if is_pydantic {
-        let v = cls.call_method1("model_validate", (d,))?;
+        let v = cls.call_method1("model_validate", (filtered,))?;
         return Ok(v.unbind());
     }
-    let kwargs = d;
-    let v = cls.call((), Some(kwargs))?;
+    let v = cls.call((), Some(&filtered))?;
     Ok(v.unbind())
 }
 
@@ -586,7 +615,7 @@ pub fn collection(
     let fields = fields_from_model(py, &model_cls, 0)?;
     let indexes = indexes_from_model(py, &model_cls)?;
 
-    // Register collection if missing; otherwise leave as-is.
+    // Register collection if missing; otherwise validate model against catalog.
     let db_ref = db.bind(py).borrow();
     let exists = {
         let g = lock_inner(&db_ref.inner)?;
@@ -596,6 +625,15 @@ pub fn collection(
         let mut g = lock_inner(&db_ref.inner)?;
         let _ = g
             .register_collection_with_indexes(&name, fields, indexes, &pk)
+            .map_err(db_error_to_py)?;
+    } else {
+        let g = lock_inner(&db_ref.inner)?;
+        let cid = g.collection_id_named(&name).map_err(db_error_to_py)?;
+        let col = g
+            .catalog()
+            .get(cid)
+            .ok_or_else(|| PyValueError::new_err("internal: collection missing from catalog"))?;
+        validate_model_fields_against_catalog(col, &pk, &fields, &indexes)
             .map_err(db_error_to_py)?;
     }
 

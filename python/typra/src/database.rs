@@ -292,6 +292,10 @@ impl Database {
                 typra_core::MigrationStep::BackfillTopLevelField { field } => {
                     format!("backfill_top_level_field:{field}")
                 }
+                typra_core::MigrationStep::BackfillFieldAtPath { path } => {
+                    let segs: Vec<&str> = path.0.iter().map(|s| s.as_ref()).collect();
+                    format!("backfill_field_at_path:{}", segs.join("."))
+                }
                 typra_core::MigrationStep::RebuildIndexes => "rebuild_indexes".to_string(),
             })
             .collect();
@@ -319,6 +323,35 @@ impl Database {
             .collection_id_named(collection_name)
             .map_err(db_error_to_py)?;
         g.backfill_top_level_field_with_value(cid, field, rv)
+            .map_err(db_error_to_py)
+    }
+
+    /// Backfill a missing field at a multi-segment path with a fixed value for all rows.
+    fn backfill_field_at_path(
+        &self,
+        py: Python<'_>,
+        collection_name: &str,
+        path: Vec<String>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        use std::borrow::Cow;
+        let col = collection_info(&self.inner, collection_name)?;
+        let fp = typra_core::schema::FieldPath(
+            path.iter()
+                .map(|s| Cow::Owned(s.clone()))
+                .collect::<Vec<_>>(),
+        );
+        let def = col
+            .fields
+            .iter()
+            .find(|f| f.path == fp)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown field path {path:?}")))?;
+        let rv = row_values::value_from_py(py, value, &def.ty)?;
+        let mut g = lock_inner(&self.inner)?;
+        let cid = g
+            .collection_id_named(collection_name)
+            .map_err(db_error_to_py)?;
+        g.backfill_field_at_path_with_value(cid, &fp, rv)
             .map_err(db_error_to_py)
     }
 

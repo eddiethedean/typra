@@ -444,7 +444,18 @@ fn migrate_apply(
             }
         }
         let rv = row_value_from_json(&v);
-        db.backfill_top_level_field_with_value(cid, &field, rv)?;
+        if field.contains('.') {
+            use std::borrow::Cow;
+            let path = typra_core::schema::FieldPath(
+                field
+                    .split('.')
+                    .map(|s| Cow::Owned(s.to_string()))
+                    .collect(),
+            );
+            db.backfill_field_at_path_with_value(cid, &path, rv)?;
+        } else {
+            db.backfill_top_level_field_with_value(cid, &field, rv)?;
+        }
     }
     if rebuild_indexes {
         db.rebuild_indexes_for_collection(cid)?;

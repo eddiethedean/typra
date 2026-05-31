@@ -32,11 +32,25 @@ pub(crate) fn load_catalog_latest_and_indexes<S: Store>(
     segment_start: u64,
     format_minor: u16,
 ) -> Result<(Catalog, LatestMap, IndexState), DbError> {
-    if format_minor < FORMAT_MINOR_V6 {
+    #[cfg(feature = "tracing")]
+    let _span = tracing::info_span!(
+        "load_catalog_latest_and_indexes",
+        segment_start,
+        format_minor
+    )
+    .entered();
+    let out = if format_minor < FORMAT_MINOR_V6 {
         load_catalog_latest_and_indexes_legacy(store, segment_start)
     } else {
         load_catalog_latest_and_indexes_v6(store, segment_start)
-    }
+    }?;
+    #[cfg(feature = "tracing")]
+    tracing::info!(
+        collections = out.0.collections().len(),
+        latest_rows = out.1.len(),
+        "load_catalog_latest_and_indexes_ok"
+    );
+    Ok(out)
 }
 
 pub(crate) fn replay_tail_into<S: Store>(
@@ -47,11 +61,22 @@ pub(crate) fn replay_tail_into<S: Store>(
     latest: &mut LatestMap,
     indexes: &mut IndexState,
 ) -> Result<(), DbError> {
-    if format_minor < FORMAT_MINOR_V6 {
+    #[cfg(feature = "tracing")]
+    let _span = tracing::info_span!("replay_tail", start, format_minor).entered();
+    let result = if format_minor < FORMAT_MINOR_V6 {
         replay_tail_legacy(store, start, catalog, latest, indexes)
     } else {
         replay_tail_v6(store, start, catalog, latest, indexes)
+    };
+    #[cfg(feature = "tracing")]
+    if result.is_ok() {
+        tracing::info!(
+            collections = catalog.collections().len(),
+            latest_rows = latest.len(),
+            "replay_tail_ok"
+        );
     }
+    result
 }
 
 fn replay_tail_legacy<S: Store>(
@@ -98,6 +123,8 @@ fn replay_tail_v6<S: Store>(
     indexes: &mut IndexState,
 ) -> Result<(), DbError> {
     let metas = scan_segments(store, start)?;
+    #[cfg(feature = "tracing")]
+    tracing::debug!(segment_count = metas.len(), "replay_tail_v6_scan");
 
     let mut committed: Vec<StagedSegment> = Vec::new();
     let mut in_txn = false;

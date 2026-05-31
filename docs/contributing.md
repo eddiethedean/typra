@@ -50,6 +50,29 @@ cargo +nightly fuzz run decode_segment_header -- -max_total_time=30
 
 Fuzz targets live under `fuzz/fuzz_targets/` and should treat decode errors as success; only panics/UB are failures.
 
+## Benchmarks and performance regression checks
+
+Criterion benches live under `crates/typra-core/benches/` (`query`, `workflows`).
+
+Local run:
+
+```bash
+make bench
+# or
+cargo bench -p typra-core --bench query
+cargo bench -p typra-core --bench workflows
+```
+
+Compare two Criterion output trees (for example before/after a change):
+
+```bash
+python scripts/bench_compare.py --base target/criterion-old --new target/criterion
+```
+
+CI runs benches weekly via [`.github/workflows/bench.yml`](../.github/workflows/bench.yml) as a **non-blocking** job (`continue-on-error: true`). Upload artifacts from that workflow when updating a stored baseline for manual comparison.
+
+The **1.0 readiness** gate (`make check-1p0-ready`) runs `check-full` plus async-surface Rust tests; see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+
 ## Versioning
 
 Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **1.0.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.

@@ -34,6 +34,7 @@ See the [Python guide → Models](../guides/python.md) and the package README on
   - `register_schema_version(name, fields_json, indexes_json=None, *, force=False) -> schema_version`
   - `plan_schema_version(name, fields_json, indexes_json=None) -> dict`
   - `backfill_top_level_field(name, field, value) -> None`
+  - `backfill_field_at_path(name, path, value) -> None` — multi-segment path as `list[str]`
   - `rebuild_indexes(name) -> None`
   - `insert(collection, row: dict) -> None`
   - `get(collection, pk) -> dict | None`

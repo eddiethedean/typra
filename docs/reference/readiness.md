@@ -74,3 +74,30 @@ This checklist ties Typra’s 1.0 contract to concrete tests and documentation.
   - Python: `python/typra/tests/test_e2e_production_journey.py`
 - **Fuzz harness (decode surfaces)**
   - `fuzz/` targets (see `.github/workflows/fuzz.yml`)
+
+## Observability + CI gates
+
+- **Tracing feature compiles and instruments core paths**
+  - Rust: `cargo test -p typra-core --features tracing`
+  - Docs: `docs/ops/debugging.md`
+- **1.0 readiness pipeline**
+  - `make check-1p0-ready` (includes async facade tests)
+  - CI: `.github/workflows/ci.yml` `readiness` job
+- **Pydantic parity in CI**
+  - Python: `python/typra/tests/test_models.py` (with `pydantic>=2` installed)
+- **Async vs sync policy documented**
+  - `docs/reference/async_policy.md`
+
+## Model ergonomics
+
+- **Python subset models + catalog compatibility**
+  - Python: `python/typra/tests/test_models.py`
+  - Rust: `crates/typra/examples/subset_models.rs`
+- **Nested field migration backfill**
+  - Rust: `crates/typra-core/tests/integration/schema_paths_multi_segment.rs`
+  - Python: `python/typra/tests/test_migrations_and_compaction.py`
+
+## Property invariants
+
+- **Index vs scan, replay idempotence, unique index**
+  - Rust: `crates/typra-core/tests/integration/property_invariants.rs`

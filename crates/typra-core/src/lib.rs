@@ -50,6 +50,8 @@ pub use schema::IndexDef;
 pub use schema::IndexKind;
 pub use schema::SchemaVersion;
 pub use schema::Type;
+pub use schema_compat::classify_schema_update;
+pub use schema_compat::validate_model_fields_against_catalog;
 
 /// Convenient re-exports for typical application code (`Database`, schema types, [`DbError`]).
 pub mod prelude {

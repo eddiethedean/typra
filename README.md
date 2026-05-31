@@ -158,7 +158,16 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-Field attributes (`#[db(primary)]`, etc.) on **`DbModel`** are **not** implemented yet.
+Field attributes on **`DbModel`** are supported for **top-level fields** via `#[db(...)]`:
+
+| Attribute | Effect |
+|-----------|--------|
+| `#[db(primary)]` | Primary key (exactly one field) |
+| `#[db(unique)]` | Unique secondary index |
+| `#[db(index)]` | Non-unique secondary index |
+| `#[db(collection = "name")]` | Override collection name |
+
+**Limitations (1.0):** nested field paths and constraint attributes are not emitted by the derive macro yet (use explicit `FieldDef` registration or Python `typra.models` for nested schemas).
 
 ---
 

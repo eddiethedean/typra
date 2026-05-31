@@ -10,6 +10,8 @@ use crate::schema::SchemaChange;
 pub enum MigrationStep {
     /// Backfill a missing top-level field for all existing rows in a collection.
     BackfillTopLevelField { field: String },
+    /// Backfill a missing field at a multi-segment path for all existing rows.
+    BackfillFieldAtPath { path: crate::schema::FieldPath },
     /// Rebuild index entries for a collection (typically after adding a new index definition).
     RebuildIndexes,
 }

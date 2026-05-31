@@ -247,12 +247,12 @@ Design anchor: validation semantics in [`docs/typed_embedded_db_spec.md`](docs/t
   - Optional **`indexes_json`** on **`register_collection`**; **`db.collection(name)`** with **`where`**, **`and_where`**, **`limit`**, **`explain`**, **`all()`**, **`all(fields=[...])`** (catalog-validated path allowlist).
   - Docs: **[`docs/guides/python.md`](docs/guides/python.md)** (queries, indexes, DB-API/SQLAlchemy **design** note); verified examples in **`scripts/verify-doc-examples.sh`**; integration tests under **`python/typra/tests/`**.
 
-**Deferred / later** (still aligns with [Subset models / projections](#subset-models--projections-ui-ergonomics), **0.8+**, or broader query work)
+**Deferred / later** (historical 0.7 notes — superseded where **1.0** shipped)
 
-- **Index maintenance**: no **update**/logical **delete** ops yet—indexes reflect **insert** / replace-by-PK only (same as rows).
-- **Schema paths**: collection **`FieldDef.path`** is still **single-segment** for inserts (`NotImplemented` for multi-segment schema paths); index and predicate **`FieldPath`** can target scalars under top-level **`Object`** values where data and indexes agree.
-- **Typed subset `DbModel` handles** on the facade and **Pydantic-class subset models** in Python—ergonomics beyond dict projection are still roadmap, not required API in 0.7.
-- **Operators**: no join or aggregation yet; sorting is currently **in-memory** (`order_by`) and range predicates ship, but more complete **index-driven range planning**, pagination (`offset` / cursors), and bounded-memory operators remain future work. Minimal SQL text + DB-API ship in **0.10.0** (see below).
+- **Index maintenance**: **update**/logical **delete** shipped in **0.9.0**; indexes reflect insert/replace/delete.
+- **Schema paths**: **multi-segment** `FieldDef.path` + record **v3** shipped in **1.0.0** (see [`docs/specs/record_encoding_v3.md`](docs/specs/record_encoding_v3.md)).
+- **Typed subset models**: Rust `collection::<T>()` + Python `typra.models.collection` compatibility checks shipped in **1.0.x**; projection-aware decode remains **1.1**.
+- **Operators**: join/agg spill foundations in **0.12–0.13**; broader planner growth is **1.1+**.
 
 Design anchor: query planner + AST in [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 
@@ -472,7 +472,7 @@ Same as the **Non-goals** section at the end of this file: still **no** distribu
   - Invariant testing: **unique indexes** and **index vs scan** consistency have **started** in `typra-core` / Python tests—**expand** for txn boundaries, compaction, and multi-version schemas (**0.8+**).
 - **Security**
   - Threat model document (local attacker, malicious/corrupt file, untrusted input).
-  - Fuzz the file-format decode surface (header/segments/**record**/**catalog**/**index** decode) and treat crashes/panics as bugs (**no** dedicated fuzz harness in-tree yet—see **Open questions** below).
+  - Fuzz the file-format decode surface (header/segments/**record**/**catalog**/**index** decode) and treat crashes/panics as bugs — **`fuzz/`** harness + CI workflow shipped in **0.13.0**; expand targets over time.
   - The workspace forbids **`unsafe`** (root [`Cargo.toml`](Cargo.toml) **`[workspace.lints.rust]`**); keep fuzzing and property tests on decoding/index invariants as those surfaces expand.
   - Security disclosure process (private reporting channel + coordinated release notes).
 - **Tooling**
@@ -519,7 +519,8 @@ From the architecture spec’s v1 non-goals:
 - **Index physical layout**: **0.7.0** uses **append-only index segments** (replay into `IndexState`); compaction / full rebuild / embedded-in-record strategies remain open for **0.9+** compaction work.
 - **Encryption / secrets**: whether to support optional at-rest encryption (and key management) for on-disk databases.
 - **Transactional log design** (**0.8**): how **BEGIN/COMMIT/ROLLBACK** (or equivalent) map to segment payloads; how **record** + **index** appends share an **atomic** boundary at replay; whether **partial segments** are truncated or rejected on open.
-- **Deferred hardening (not scheduled)**: optional **`cargo-deny`**, file-format **fuzz** targets, **property tests** for decode/index invariants, and stricter **clippy** tiers — revisit as APIs and persistence paths grow (no dedicated fuzz harness in-tree today).
+- **Deferred hardening (1.1+)**: optional **`cargo-deny`**, expanded **property tests** beyond current `property_invariants.rs`, ORDER BY spill isolation, projection-aware decode, **`DbModel` derive** nested paths/constraints, Python async — see **1.1.0** below.
+- **Async policy**: documented in [`docs/reference/async_policy.md`](docs/reference/async_policy.md) — sync `Database` is the 1.0 contract; Rust `async` feature is optional/experimental.
 
 ## In-memory, hybrid, and streaming execution (refined plan)
 

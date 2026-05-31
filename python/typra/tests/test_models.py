@@ -144,3 +144,51 @@ def test_models_pydantic_constraints_update_select_and_plan_apply_if_installed()
     _plan = typra.models.plan(db, User)
     ver = typra.models.apply(db, User, force=False)
     assert isinstance(ver, int)
+
+
+@dataclass
+class BookFull:
+    __typra_primary_key__ = "id"
+    __typra_collection__ = "books"
+
+    id: int
+    title: str
+    year: int
+
+
+@dataclass
+class BookTitle:
+    __typra_primary_key__ = "id"
+    __typra_collection__ = "books"
+
+    id: int
+    title: str
+
+
+def test_models_subset_class_targets_same_collection() -> None:
+    db = typra.Database.open_in_memory()
+    full = typra.models.collection(db, BookFull)
+    full.insert(BookFull(id=1, title="Hello", year=2020))
+    books = typra.models.collection(db, BookTitle)
+    got = books.get(1)
+    assert got is not None
+    assert got.title == "Hello"
+    rows = books.where("id", 1).all()
+    assert len(rows) == 1
+    assert rows[0].title == "Hello"
+
+
+def test_models_incompatible_primary_key_raises_schema_error() -> None:
+    db = typra.Database.open_in_memory()
+    typra.models.collection(db, BookFull)
+
+    @dataclass
+    class BadBook:
+        __typra_primary_key__ = "title"
+        __typra_collection__ = "books"
+
+        title: str
+        year: int
+
+    with pytest.raises(typra.TypraSchemaError):
+        typra.models.collection(db, BadBook)

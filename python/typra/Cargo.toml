@@ -27,5 +27,8 @@ typra-core.workspace = true
 # abi3-py39: one wheel per platform compatible with CPython 3.9+ (PEP 384 limited API).
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
 
+[features]
+tracing = ["typra-core/tracing"]
+
 [lints]
 workspace = true
