@@ -6,6 +6,7 @@ pub(crate) trait FsOps {
     fn copy(&self, from: &Path, to: &Path) -> std::io::Result<u64>;
 
     fn open_read(&self, path: &Path) -> std::io::Result<std::fs::File>;
+    #[cfg_attr(not(unix), allow(dead_code))]
     fn open_dir(&self, path: &Path) -> std::io::Result<std::fs::File>;
 
     fn open_read_write_create_truncate(&self, path: &Path) -> std::io::Result<std::fs::File>;
@@ -34,6 +35,7 @@ impl FsOps for StdFsOps {
         std::fs::OpenOptions::new().read(true).open(path)
     }
 
+    #[cfg_attr(not(unix), allow(dead_code))]
     fn open_dir(&self, path: &Path) -> std::io::Result<std::fs::File> {
         std::fs::File::open(path)
     }
