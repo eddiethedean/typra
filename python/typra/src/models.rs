@@ -563,10 +563,15 @@ fn dict_to_obj(
     cls: &Bound<'_, PyAny>,
     d: &Bound<'_, PyDict>,
     is_pydantic: bool,
+    partial_projection: bool,
 ) -> PyResult<Py<PyAny>> {
     let filtered = row_dict_for_model(py, cls, d)?;
     if is_pydantic {
-        let v = cls.call_method1("model_validate", (filtered,))?;
+        let v = if partial_projection {
+            cls.call_method("model_construct", (), Some(&filtered))?
+        } else {
+            cls.call_method1("model_validate", (filtered,))?
+        };
         return Ok(v.unbind());
     }
     let v = cls.call((), Some(&filtered))?;
@@ -675,7 +680,7 @@ impl ModelCollection {
         }
         let d = row.cast::<PyDict>()?;
         let cls = self.model_cls.bind(py);
-        let obj = dict_to_obj(py, cls, d, self.is_pydantic)?;
+        let obj = dict_to_obj(py, cls, d, self.is_pydantic, false)?;
         Ok(Some(obj))
     }
 
@@ -711,12 +716,13 @@ impl ModelCollection {
                 col.call_method("all", (), Some(&kwargs))?
             }
         };
+        let partial = fields.is_some();
         let rows = rows_any.cast::<PyList>()?;
         let cls = self.model_cls.bind(py);
         let mut out = Vec::with_capacity(rows.len());
         for item in rows.iter() {
             let d = item.cast::<PyDict>()?;
-            out.push(dict_to_obj(py, cls, d, self.is_pydantic)?);
+            out.push(dict_to_obj(py, cls, d, self.is_pydantic, partial)?);
         }
         Ok(out)
     }
@@ -812,12 +818,13 @@ impl ModelQuery {
                 self.inner.bind(py).call_method("all", (), Some(&kwargs))?
             }
         };
+        let partial = fields.is_some();
         let rows = rows_any.cast::<PyList>()?;
         let cls = self.model_cls.bind(py);
         let mut out = Vec::with_capacity(rows.len());
         for item in rows.iter() {
             let d = item.cast::<PyDict>()?;
-            out.push(dict_to_obj(py, cls, d, self.is_pydantic)?);
+            out.push(dict_to_obj(py, cls, d, self.is_pydantic, partial)?);
         }
         Ok(out)
     }
