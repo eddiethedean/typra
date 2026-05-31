@@ -1,16 +1,14 @@
 # Record encoding v3 (1.0.0)
 
-Record payloads live in `SegmentType::Record` segments. Payloads begin with a little-endian `u16` **payload version**:
+**Status:** required when the collection schema includes any **multi-segment** `FieldPath`. Otherwise prefer [v2](record_encoding_v2.md).
 
-- v1: primitives-only, non-PK values in schema order (0.5.x)
-- v2: composite `RowValue` encoding, non-PK values in schema order (0.6.0+)
-- **v3 (this document)**: supports **multi-segment schema field definitions** by encoding each non-PK value with its full **`FieldPath`**.
+Record payloads live in `SegmentType::Record` segments. Payloads begin with a little-endian `u16` **payload version** (**3**).
 
 ## Motivation
 
-v1/v2 assume that collection schemas define non-PK fields as **single-segment, top-level** paths and store non-PK values in a fixed schema order. That cannot represent schemas whose field definitions are nested leaf paths (e.g. `["profile","timezone"]`) without losing structure.
+[v1](record_encoding_v1.md) and [v2](record_encoding_v2.md) store non-PK values in a fixed **schema order** and assume top-level field definitions. That cannot represent nested leaf paths such as `["profile","timezone"]` without flattening.
 
-v3 keeps the public row shape as a nested object tree (`RowValue::Object`) but persists values keyed by full `FieldPath`, so replay can rebuild nested rows deterministically.
+v3 keeps the public row shape as a nested object tree (`RowValue::Object`) but persists each value with its full **`FieldPath`**, so replay rebuilds nested rows deterministically.
 
 ## Wire layout (version 3)
 
@@ -22,47 +20,42 @@ All integers are **little-endian**.
 | `collection_id` | `u32` | Must exist in catalog |
 | `schema_version` | `u32` | Must equal catalog’s current version for that collection |
 | `op` | `u8` | `1` = insert, `2` = replace, `3` = delete |
-| `pk` | tagged primitive | Primary key remains a **single-segment top-level scalar** |
-| `field_count` | `u32` | Number of **non-PK** schema fields |
-| entries | repeated | For each non-PK schema field: `(field_path, value)` |
+| `pk` | tagged primitive | Primary key: single-segment top-level scalar ([v1 tags](record_encoding_v1.md#tagged-scalar-primitives)) |
+| `field_count` | `u32` | Number of **non-PK** schema fields (0 for delete) |
+| `entries` | repeated | For each non-PK field: `(field_path, value)` |
 
-### `field_path` encoding
+### `field_path` encoding (record v3)
 
-Each entry encodes the `FieldPath` explicitly:
+Distinct from [catalog FieldPath](catalog_encoding.md#fieldpath-catalog) (which uses `u32` segment count):
 
 | Field | Type | Notes |
-|-------|------|------|
-| `segment_count` | `u8` | Must be `>= 1` |
-| segments | repeated | Each: `u16` byte length + UTF-8 bytes |
-
-Constraints:
-
-- `segment_count` must be non-zero.
-- segment length must be non-zero.
-- segments must be valid UTF-8.
+|-------|------|-------|
+| `segment_count` | `u8` | Must be ≥ 1 and ≤ 255 |
+| `segments` | repeated | Each: `u16` byte length + UTF-8 bytes (non-empty) |
 
 ### `value` encoding
 
-`value` is encoded as `RowValue` according to the field’s schema `Type`, using the v2 type-driven codec semantics (see [Record encoding v2](record_encoding_v2.md)).
+Each value uses [RowValue encoding](record_encoding_v2.md#rowvalue-encoding) for the field’s schema `Type`.
 
 ## Decoding and replay rules
 
-- The decoder validates `field_count` matches the number of non-PK fields in the schema.
+- `field_count` must match the number of non-PK fields in the schema (0 for `op = 3`).
 - Each decoded `field_path` must match exactly one schema `FieldDef.path` (excluding PK).
 - Duplicate `field_path` entries are rejected.
 - The decoded row is reconstructed as a nested object tree:
-  - `["a"]` inserts into top-level key `"a"`.
-  - `["a","b","c"]` creates/merges objects so the leaf is stored under `row["a"]["b"]["c"]`.
-- Last-write-wins by `(collection_id, pk)` still applies at the segment replay layer.
+  - `["a"]` → top-level key `"a"`.
+  - `["a","b","c"]` → nested objects ending at `row["a"]["b"]["c"]`.
+- **Last-write-wins** by `(collection_id, pk)` at the segment replay layer.
 
 ## When to emit v3
 
-An engine may emit v3 when the collection’s schema includes any multi-segment `FieldDef.path`.
+Emit v3 when the collection schema includes any multi-segment `FieldDef.path`; otherwise emit v2.
 
 ## Compatibility
 
-Replay accepts **v1/v2/v3** payload versions in the same file. New writes should prefer:
+Replay accepts **v1, v2, and v3** in the same file.
 
-- v2 when all schema field definitions are single-segment top-level paths
-- v3 when the schema includes multi-segment `FieldPath`s
+## See also
 
+- [On-disk file format](on_disk_file_format.md)
+- [Catalog encoding](catalog_encoding.md)

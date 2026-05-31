@@ -13,6 +13,7 @@ MATURIN ?= $(PYTHON) -m maturin
 
 .PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples examples-smoke bench
 .PHONY: docs-lint
+.PHONY: test-format-compat
 .PHONY: check-1p0-ready
 .PHONY: docs-install docs-check docs
 .PHONY: coverage coverage-rust coverage-python
@@ -30,10 +31,12 @@ help:
 	@echo ""
 	@echo "Checks:"
 	@echo "  check-full      Python + Rust checks, tests, doc examples, examples-smoke, docs"
+	@echo "  check-1p0-ready check-full + test-format-compat + async facade tests"
 	@echo "  check-python    ruff format/check + ty check (python/)"
 	@echo "  check-rust      cargo fmt/clippy/check/doc/test (workspace)"
 	@echo ""
 	@echo "Tests:"
+	@echo "  test-format-compat  1.x must read 1.0-shaped .typra fixtures"
 	@echo "  test            maturin develop --release + pytest (python/typra)"
 	@echo "  verify-doc-examples  Assert README + guides output matches all verified Python/Rust snippets"
 	@echo "  examples-smoke    Run todo_app + cli_notes example CLIs (requires python-develop)"
@@ -51,7 +54,10 @@ check-full: check-python check-rust test verify-doc-examples examples-smoke docs
 # “1.0 readiness” suite (no version bump): contracts + docs + API surfaces.
 # - Runs the full cross-language check pipeline.
 # - Adds an explicit async-surface compile/test run for the Rust facade.
-check-1p0-ready: check-full
+test-format-compat:
+	cargo test -p typra-core --test format_back_compat_1x
+
+check-1p0-ready: check-full test-format-compat
 	cargo test -p typra --features async
 
 check-python: install-tools ruff-format-check ruff-check ty-check

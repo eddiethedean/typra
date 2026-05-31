@@ -7,6 +7,7 @@ This document is the **project roadmap** for Typra: a typed, embedded, single-fi
 - **Next milestone**: `1.1.0` — planner/operator growth + query hardening + SQL foundation (see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track)). **`1.0.0`** is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Post-1.0 track**: phased **ISO/IEC 9075** SQL (**`1.1`–`1.8`**) then **full SQLAlchemy** (**`1.9+`**) — see [Post-1.0: ISO/IEC 9075 SQL track](#post-10-isoiec-9075-sql-track) and [Post-1.0: SQLAlchemy track](#post-10-sqlalchemy-track).
 - **Roadmap style**: release-based milestones (SemVer). Patch versions are bugfix-only; minor versions (`1.x`) may add features without breaking stable APIs.
+- **1.x `.typra` compatibility**: any **1.y** release must read files written by **1.0+** (and supported pre-1.0 minors); breaking on-disk changes require **2.0** / `FORMAT_MAJOR` bump. Policy: [`docs/reference/compatibility.md`](docs/reference/compatibility.md), [`docs/specs/format_evolution.md`](docs/specs/format_evolution.md); CI: `make test-format-compat`.
 
 ## Guiding principles (from the specs)
 

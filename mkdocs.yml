@@ -122,6 +122,9 @@ nav:
       - Overview: specs/index.md
       - Architecture: specs/full_architecture.md
       - On-disk format: specs/on_disk_file_format.md
+      - Format evolution (1.x): specs/format_evolution.md
+      - Catalog encoding: specs/catalog_encoding.md
+      - Index segments: specs/index_segment_encoding.md
       - Schema DSL: specs/schema_dsl.md
       - Query planner: specs/query_planner.md
       - Record encodings:

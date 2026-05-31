@@ -126,6 +126,10 @@ name = "error_more"
 path = "tests/integration/error_more.rs"
 
 [[test]]
+name = "format_back_compat_1x"
+path = "tests/integration/format_back_compat_1x.rs"
+
+[[test]]
 name = "file_format"
 path = "tests/integration/file_format.rs"
 

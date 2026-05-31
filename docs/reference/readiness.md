@@ -6,6 +6,10 @@ This checklist ties Typra’s 1.0 contract to concrete tests and documentation. 
 
 ## File format + recovery
 
+- **1.x reads 1.0-shaped `.typra` files (golden fixture + append)**
+  - Rust: `crates/typra-core/tests/integration/format_back_compat_1x.rs`
+  - Fixture: `crates/typra-core/tests/fixtures/format/typra_1_0_minor6.typra` (regenerate: `scripts/generate-format-fixtures.sh`)
+  - Policy: [`docs/reference/compatibility.md`](compatibility.md), [`docs/specs/format_evolution.md`](../specs/format_evolution.md)
 - **Open never panics on malformed snapshots**
   - Rust: `crates/typra-core/tests/integration/snapshot_hardening.rs`
 - **Strict vs AutoTruncate recovery for torn tails**

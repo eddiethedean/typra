@@ -61,7 +61,7 @@ Every major guide should open with **outcomes** (problem → solution), not impl
 |------|-------|
 | [Specifications overview](../specs/index.md) | Advanced |
 | [On-disk format](../specs/on_disk_file_format.md) | Advanced |
-| [Record encodings](../specs/record_encoding_v3.md) | Advanced |
+| [Catalog / index / record encodings](../specs/index.md#normative-on-disk-specification-10x) | Advanced |
 | [Query planner](../specs/query_planner.md) | Advanced |
 | [Architecture](../specs/full_architecture.md) | Advanced |
 

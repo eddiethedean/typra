@@ -31,3 +31,6 @@
 
 # MkDocs build output
 /site/
+
+# Typra writer locks (examples, tests, local DBs)
+*.typra.writer.lock

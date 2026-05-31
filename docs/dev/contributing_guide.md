@@ -137,5 +137,6 @@ Publish order for crates.io: **`typra-core`** → **`typra-derive`** → **`typr
 |-------|-----|
 | File format | [Specifications](../specs/index.md) |
 | API contracts | [Compatibility](../reference/compatibility.md) |
+| 1.x file-format rules | [Format evolution](../specs/format_evolution.md) · `make test-format-compat` |
 | Roadmap | [ROADMAP on GitHub](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
 | Full contributing notes (repo root) | [contributing.md on GitHub](https://github.com/eddiethedean/typra/blob/main/docs/contributing.md) |

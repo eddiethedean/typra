@@ -1,8 +1,11 @@
 # Typed Embedded Database – On-Disk File Format Specification
 
 > Note: this document contains a mix of **historical design** and **implementation notes**.
-> The **normative compatibility contract** is in [`docs/reference/compatibility.md`](reference/compatibility.md),
-> and the implemented header/version constants live in `crates/typra-core/src/file_format.rs`.
+>
+> **Published wire spec (Read the Docs):** [`docs/specs/on_disk_file_format.md`](specs/on_disk_file_format.md) and linked pages under [`docs/specs/`](specs/index.md).
+>
+> The **normative compatibility contract** is in [`docs/reference/compatibility.md`](reference/compatibility.md).
+> Implemented header/version constants live in `crates/typra-core/src/file_format.rs`.
 
 ## Goals
 The on-disk format should be:

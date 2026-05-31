@@ -50,7 +50,7 @@ Model-first workflows: [Pydantic guide](../guides/pydantic.md) · [Models & coll
 - **v2**: composite `RowValue` encoding, schema-ordered non-PK values (default for single-segment schema field defs)
 - **v3**: encodes each non-PK value with its full `FieldPath` (required for multi-segment schema field defs)
 
-See: [`docs/specs/record_encoding_v3.md`](../specs/record_encoding_v3.md).
+See: [Record encodings](../specs/index.md#normative-on-disk-specification-10x) (v1–v3).
 
 ## Constraints (`schema::Constraint`)
 

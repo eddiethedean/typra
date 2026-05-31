@@ -6,11 +6,26 @@ Read/write compatibility for `.typra` files and stability expectations for publi
 
 New to Typra? Start with [Why Typra](../guides/why_typra.md) and [Quickstart](../guides/quickstart.md). Typra is **1.x**: breaking changes require a major version bump. File-format evolution is explicit and tested.
 
+## 1.x on-disk backwards compatibility pledge
+
+**Any Typra 1.y.z release must remain able to read `.typra` files produced by earlier 1.x releases** (and pre-1.0 minors that 1.0 already reads), without requiring users to migrate or rewrite files.
+
+| Guarantee | Meaning |
+|-----------|---------|
+| **Read** | Open + replay returns the same logical data the file contained when it was last committed (per `RecoveryMode`). |
+| **Append** | Supported write paths may append new segments; they must not corrupt or drop existing committed rows. |
+| **Lazy upgrade** | The engine may bump `format_minor` in the file header (e.g. to **6** for transaction framing) when a write requires newer invariants; the log prefix remains replayable. |
+| **Payload versions** | Catalog **v1–v4**, record **v1–v3**, and index **v1–v2** stay decodable for the life of **1.x**. |
+
+**Requires Typra 2.0 (new `FORMAT_MAJOR`):** removing replay for any of the above, changing segment-type semantics, or incompatible layout changes to headers/superblocks/segments that existing 1.x files rely on.
+
+Contributor rules and release checklist: [Format evolution (1.x)](../specs/format_evolution.md). CI: `make test-format-compat` and golden fixtures under `crates/typra-core/tests/fixtures/format/`.
+
 ## File-format compatibility
 
 Typra database files have a **format major** and **format minor** (see [On-disk file format spec](../specs/on_disk_file_format.md)).
 
-- **Format major (`FORMAT_MAJOR`)**: breaking changes. Typra will refuse to open unknown majors.
+- **Format major (`FORMAT_MAJOR`)**: breaking changes. Typra will refuse to open unknown majors. **1.x uses major 0**; a future incompatible format uses major **1** with Typra **2.0**.
 - **Format minor (`FORMAT_MINOR`)**: compatible evolution within a major. Minors may gate new segment types, replay semantics, or publication metadata.
 
 ### Compatibility terms
@@ -65,6 +80,15 @@ truncate the underlying file).
 - Unknown **segment types** are refused by default, unless explicitly declared ignorable/ephemeral by the format spec for that major/minor.
 
 Typra prefers **explicit compatibility** over “best guess” parsing.
+
+### What 1.1, 1.2, … may add (without breaking old files)
+
+- New **optional** segment types (must be documented; default is refuse unknown types).
+- New **record/catalog/index payload versions** (old versions still replay).
+- New **format minor** values (older minors **3–6** remain readable; matrix updated in this doc).
+- Engine features (SQL, planner, compaction) that only **append** new segments or add decode paths.
+
+See [Format evolution (1.x)](../specs/format_evolution.md).
 
 ## Segment types and stability
 
