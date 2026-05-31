@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/typra-derive.svg)](https://crates.io/crates/typra-derive)
 [![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/)
 
-Proc-macros for Typra: **`#[derive(DbModel)]`**.
+Proc-macros for Typra: **`#[derive(DbModel)]`** — map Rust structs to Typra collections with validation and indexes.
 
 Most users should depend on **[`typra`](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)** with the default **`derive`** feature.
 
@@ -41,7 +41,7 @@ struct Book {
 }
 ```
 
-Attributes, limitations, and nested paths: **[Models & collections](https://typra.readthedocs.io/en/latest/guides/models_and_collections/)**.
+Attributes and nested paths: **[Models & collections](https://typra.readthedocs.io/en/latest/guides/models_and_collections/)**.
 
 Runnable demo: `cargo run -p typra --example open`
 

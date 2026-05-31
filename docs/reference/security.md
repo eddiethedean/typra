@@ -1,6 +1,10 @@
 # Security threat model
 
-This document defines Typra’s security posture as a **local, embedded** database library and the expectations we place on the codebase.
+**Audience:** intermediate (security review, production deployment)
+
+Typra is a **local, embedded** database — one file in your app’s trust boundary, not a network service. This page defines threat model, expectations, and non-goals.
+
+Evaluating Typra: [Why Typra](../guides/why_typra.md) · Operations: [Runbook](../ops/operations_and_failure_modes.md)
 
 ## Scope and non-goals
 

@@ -1,6 +1,8 @@
 # Python API
 
-Curated reference for the **`typra`** PyPI package. For tutorials and DB-API examples, see the [Python guide](../guides/python.md).
+Curated reference for the **`typra`** PyPI package — **store Pydantic and dataclass models** via `typra.models`.
+
+Tutorials: [Pydantic guide](../guides/pydantic.md) · [Python guide](../guides/python.md) · [Examples](../examples/index.md)
 
 ## Install
 

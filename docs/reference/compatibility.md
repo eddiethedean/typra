@@ -1,8 +1,10 @@
 # Compatibility
 
-Read/write compatibility for `.typra` files and stability expectations for public APIs.
+**Audience:** intermediate (operators and library consumers)
 
-Typra is **1.x**: breaking changes require a major version bump. File-format evolution is explicit and tested.
+Read/write compatibility for `.typra` files and stability expectations for public APIs — what you can rely on when you **ship a single `.typra` file`** with your app.
+
+New to Typra? Start with [Why Typra](../guides/why_typra.md) and [Quickstart](../guides/quickstart.md). Typra is **1.x**: breaking changes require a major version bump. File-format evolution is explicit and tested.
 
 ## File-format compatibility
 

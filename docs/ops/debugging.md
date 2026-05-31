@@ -1,5 +1,7 @@
 # Debugging & tracing
 
+**Audience:** advanced (operators and engine debugging)
+
 Tools for diagnosing validation failures, query plans, and engine behavior.
 
 ## Python exception types

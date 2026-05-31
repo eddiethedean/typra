@@ -5,21 +5,66 @@
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
 [![PyPI](https://img.shields.io/pypi/v/typra.svg)](https://pypi.org/project/typra/)
 
-> **SQLite simplicity, with real types.**
+## SQLite simplicity, with real types
 
-Typra is a **typed, embedded database** for application data: one file, strict schemas, validation on write, and nested objects as first-class citizens. Same engine in **Rust** and **Python**.
+**Typra is the database for application models** — a typed embedded database for application data.
+
+Store dataclasses and Pydantic models directly with validation, indexes, migrations, and single-file deployment. Same engine in **Rust** and **Python**.
 
 **Documentation:** **[typra.readthedocs.io](https://typra.readthedocs.io/en/latest/)**
 
-| | |
-|--|--|
-| [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | Install and first insert in minutes |
-| [Python guide](https://typra.readthedocs.io/en/latest/guides/python/) | `typra.models`, queries, DB-API |
-| [Core concepts](https://typra.readthedocs.io/en/latest/guides/concepts/) | Mental model |
-| [Compatibility](https://typra.readthedocs.io/en/latest/reference/compatibility/) · [Types](https://typra.readthedocs.io/en/latest/reference/types/) · [Security](https://typra.readthedocs.io/en/latest/reference/security/) | Production contracts |
-| [Operations runbook](https://typra.readthedocs.io/en/latest/ops/operations_and_failure_modes/) | Backup, recovery, locking |
-| [Contributing](https://typra.readthedocs.io/en/latest/dev/contributing_guide/) | Dev setup and release |
-| [Changelog](https://github.com/eddiethedean/typra/blob/main/CHANGELOG.md) · [Roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) | Release notes and plans |
+## Why Typra?
+
+| Alternative | Limitation | Typra |
+|-------------|------------|-------|
+| **SQLite** | SQL schemas and migrations; loose typing for app objects | Model-first schemas; validation on write; nested objects native |
+| **JSON files** | No indexes, weak queries, manual integrity | Typed storage, indexes, queries, durability |
+| **TinyDB** | Document store without production-grade validation or evolution | Strict schemas, migrations, indexes, crash-safe file format |
+| **DuckDB** | Built for analytics (OLAP), not app CRUD | Embedded OLTP for application models (complementary, not competing) |
+
+Deeper comparisons: [Typra vs SQLite](https://typra.readthedocs.io/en/latest/comparisons/sqlite/) · [JSON](https://typra.readthedocs.io/en/latest/comparisons/json/) · [TinyDB](https://typra.readthedocs.io/en/latest/comparisons/tinydb/) · [DuckDB](https://typra.readthedocs.io/en/latest/comparisons/duckdb/) · [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/)
+
+## 60-second example (Python)
+
+Store a Pydantic model — no low-level schema JSON:
+
+```python
+# pip install "typra>=1.0.0,<2" pydantic
+from pydantic import BaseModel
+import typra
+
+
+class Book(BaseModel):
+    __typra_primary_key__ = "title"
+
+    title: str
+    year: int
+
+
+db = typra.Database.open_in_memory()
+books = typra.models.collection(db, Book)
+books.insert(Book(title="Hello", year=2020))
+print(books.get("Hello"))
+print(typra.__version__)
+```
+
+Output:
+
+```text
+title='Hello' year=2020
+1.0.0
+```
+
+Also works with **dataclasses** — see the [Pydantic guide](https://typra.readthedocs.io/en/latest/guides/pydantic/) and [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/).
+
+## Who is it for?
+
+| Persona | What you get |
+|---------|----------------|
+| **FastAPI developer** | Local persistence without PostgreSQL; models map straight to storage — [FastAPI guide](https://typra.readthedocs.io/en/latest/guides/fastapi/) |
+| **Desktop app** | Ship a `.typra` file; validation and indexes built in |
+| **CLI tool** | Durable, typed local data — better than ad-hoc JSON |
+| **Local-first app** | Offline storage with schema evolution — no database server |
 
 ## Install
 
@@ -32,51 +77,19 @@ pip install "typra>=1.0.0,<2"
 typra = "1.0"
 ```
 
-Full install notes and examples: **[Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/)**.
+## Documentation (by goal)
 
-## Python (30 seconds)
-
-Recommended path: **`typra.models`** with dataclasses or Pydantic.
-
-```python
-# Setup: class-defined schema + in-memory DB.
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Annotated, Optional
-
-import typra
-
-
-@dataclass
-class Book:
-    __typra_primary_key__ = "title"
-    __typra_indexes__ = [
-        typra.models.index("year"),
-        typra.models.unique("title"),
-    ]
-
-    title: str
-    year: Annotated[int, typra.models.constrained(min_i64=0)]
-    rating: Optional[float] = None
-
-
-db = typra.Database.open_in_memory()
-books = typra.models.collection(db, Book)
-
-books.insert(Book(title="Hello", year=2020, rating=4.5))
-print(books.get("Hello"))
-print(typra.__version__)
-```
-
-Output:
-
-```text
-Book(title='Hello', year=2020, rating=4.5)
-1.0.0
-```
-
-More: **[Python guide](https://typra.readthedocs.io/en/latest/guides/python/)** · **[Models & collections](https://typra.readthedocs.io/en/latest/guides/models_and_collections/)** · PyPI package notes: [python/typra/README.md](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md)
+| I want to… | Start here |
+|------------|------------|
+| Understand why Typra exists | [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) |
+| Store my first model in 5 minutes | [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) |
+| Use Pydantic or FastAPI | [Pydantic](https://typra.readthedocs.io/en/latest/guides/pydantic/) · [FastAPI](https://typra.readthedocs.io/en/latest/guides/fastapi/) |
+| Compare to SQLite / JSON / TinyDB | [Comparisons](https://typra.readthedocs.io/en/latest/comparisons/) |
+| Run sample apps | [Examples](https://typra.readthedocs.io/en/latest/examples/) · [examples/](https://github.com/eddiethedean/typra/tree/main/examples) |
+| Build with Python or Rust | [Python guide](https://typra.readthedocs.io/en/latest/guides/python/) · [Rust API](https://typra.readthedocs.io/en/latest/reference/rust_api/) |
+| Run backups and recovery | [Operations runbook](https://typra.readthedocs.io/en/latest/ops/operations_and_failure_modes/) |
+| Evaluate production contracts | [Compatibility](https://typra.readthedocs.io/en/latest/reference/compatibility/) · [Security](https://typra.readthedocs.io/en/latest/reference/security/) |
+| Read the launch essay | [Blog](https://github.com/eddiethedean/typra/blob/main/blog/typra-for-application-models.md) |
 
 ## Rust (30 seconds)
 
@@ -113,15 +126,17 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-More: **[Rust API reference](https://typra.readthedocs.io/en/latest/reference/rust_api/)** · **[Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/)** · crate README: [crates/typra/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)
+More: **[Rust API](https://typra.readthedocs.io/en/latest/reference/rust_api/)** · crate README: [crates/typra/README.md](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
-| **`crates/`** | Rust crates ([`typra`](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md), [`typra-core`](https://github.com/eddiethedean/typra/blob/main/crates/typra-core/README.md), [`typra-derive`](https://github.com/eddiethedean/typra/blob/main/crates/typra-derive/README.md)) |
-| **`python/`** | PyPI packaging ([python/README.md](https://github.com/eddiethedean/typra/blob/main/python/README.md)) |
-| **`docs/`** | Source for [typra.readthedocs.io](https://typra.readthedocs.io/en/latest/) |
+| **`crates/`** | Rust engine and facade |
+| **`python/`** | PyPI package ([python/typra/README.md](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md)) |
+| **`docs/`** | [typra.readthedocs.io](https://typra.readthedocs.io/en/latest/) |
+| **`examples/`** | Runnable todo, CLI, FastAPI, and desktop samples |
+| **`blog/`** | [Launch essay](https://github.com/eddiethedean/typra/blob/main/blog/typra-for-application-models.md) |
 
 Local checks: `make check-full` · 1.0 gate: `make check-1p0-ready`
 

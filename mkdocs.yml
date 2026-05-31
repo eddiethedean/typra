@@ -1,5 +1,5 @@
 site_name: Typra
-site_description: Typed embedded database — SQLite simplicity with real types
+site_description: The database for application models — SQLite simplicity with real types
 site_url: https://typra.readthedocs.io/
 repo_url: https://github.com/eddiethedean/typra
 repo_name: eddiethedean/typra
@@ -84,18 +84,28 @@ exclude_docs: |
   security_threat_model.md
   types_matrix.md
   contributing.md
+  TYPRA_DOCUMENTATION_POSITIONING_MASTER_PLAN.md
 
 nav:
   - Home: index.md
   - Get started:
-      - Overview: index.md
+      - Why Typra: guides/why_typra.md
       - Quickstart: guides/quickstart.md
-      - Core concepts: guides/concepts.md
       - Choose your path: map.md
-  - Guides:
+      - Core concepts: guides/concepts.md
+  - Build:
+      - Pydantic: guides/pydantic.md
+      - FastAPI: guides/fastapi.md
       - Python: guides/python.md
       - Models & collections: guides/models_and_collections.md
       - Storage modes: guides/storage_modes.md
+  - Comparisons:
+      - Overview: comparisons/index.md
+      - vs SQLite: comparisons/sqlite.md
+      - vs JSON files: comparisons/json.md
+      - vs TinyDB: comparisons/tinydb.md
+      - vs DuckDB: comparisons/duckdb.md
+  - Examples: examples/index.md
   - Reference:
       - Python API: reference/python_api.md
       - Rust API: reference/rust_api.md
@@ -123,6 +133,8 @@ nav:
   - Glossary: glossary.md
   - Develop:
       - Contributing: dev/contributing_guide.md
+      - Documentation map: dev/documentation_map.md
+      - Launch messaging: dev/launch_messaging.md
 
 extra:
   social:

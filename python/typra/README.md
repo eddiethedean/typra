@@ -4,20 +4,21 @@
 [![PyPI](https://img.shields.io/pypi/v/typra.svg)](https://pypi.org/project/typra/)
 [![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/)
 
-> **SQLite simplicity, with real types.**
+## Store Pydantic models directly
 
-Official **CPython** bindings for Typra (PyO3). **Recommended API:** **`typra.models`** with dataclasses or Pydantic v2.
+**SQLite simplicity, with real types.** Official **CPython** bindings for Typra (PyO3).
+
+Store dataclasses and **Pydantic v2** models with validation, indexes, migrations, and single-file deployment — no low-level schema JSON required for the recommended path.
 
 **Read the docs:** **[typra.readthedocs.io](https://typra.readthedocs.io/en/latest/)**
 
 | | |
 |--|--|
-| [Python guide](https://typra.readthedocs.io/en/latest/guides/python/) | Full API, queries, DB-API, `fields_json` |
-| [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | Install and first steps |
-| [Models & collections](https://typra.readthedocs.io/en/latest/guides/models_and_collections/) | Class schemas and projections |
-| [Python API reference](https://typra.readthedocs.io/en/latest/reference/python_api/) | Curated member list |
-| [Types matrix](https://typra.readthedocs.io/en/latest/reference/types/) | Supported types and constraints |
-| [Repository](https://github.com/eddiethedean/typra) · [Rust crate](https://crates.io/crates/typra) | Source and engine |
+| [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) | Positioning and tradeoffs |
+| [Pydantic guide](https://typra.readthedocs.io/en/latest/guides/pydantic/) | Model-first schemas |
+| [FastAPI guide](https://typra.readthedocs.io/en/latest/guides/fastapi/) | Small API services |
+| [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | First insert in minutes |
+| [Comparisons](https://typra.readthedocs.io/en/latest/comparisons/) | vs SQLite, JSON, TinyDB, DuckDB |
 
 ## Install
 
@@ -27,35 +28,20 @@ Official **CPython** bindings for Typra (PyO3). **Recommended API:** **`typra.mo
 pip install "typra>=1.0.0,<2"
 ```
 
-## Quick start
+## Quick start (Pydantic)
 
 ```python
-# Setup: class-defined schema + in-memory DB.
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Annotated, Optional
-
+from pydantic import BaseModel
 import typra
 
-
-@dataclass
-class Book:
+class Book(BaseModel):
     __typra_primary_key__ = "title"
-    __typra_indexes__ = [
-        typra.models.index("year"),
-        typra.models.unique("title"),
-    ]
-
     title: str
-    year: Annotated[int, typra.models.constrained(min_i64=0)]
-    rating: Optional[float] = None
-
+    year: int
 
 db = typra.Database.open_in_memory()
 books = typra.models.collection(db, Book)
-
-books.insert(Book(title="Typra", year=2020, rating=4.5))
+books.insert(Book(title="Typra", year=2020))
 print(books.get("Typra"))
 print(typra.__version__)
 ```
@@ -63,11 +49,11 @@ print(typra.__version__)
 Output:
 
 ```text
-Book(title='Typra', year=2020, rating=4.5)
+title='Typra' year=2020
 1.0.0
 ```
 
-Next steps: **[Python guide](https://typra.readthedocs.io/en/latest/guides/python/)** (indexed queries, migrations, errors, DB-API) · **[Operations runbook](https://typra.readthedocs.io/en/latest/ops/operations_and_failure_modes/)**
+Dataclass example and indexed queries: **[Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/)** · **[Python guide](https://typra.readthedocs.io/en/latest/guides/python/)**
 
 ## Build from source
 

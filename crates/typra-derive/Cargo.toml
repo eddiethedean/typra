@@ -1,6 +1,6 @@
 [package]
 name = "typra-derive"
-description = "Proc-macro derives for Typra database models."
+description = "Derive DbModel for Typra — map Rust structs to typed collections with validation and indexes."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

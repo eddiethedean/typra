@@ -1,6 +1,8 @@
 # Models & collections
 
-How application models map to Typra collections: naming, registration, compatibility, and **subset models** (read projections).
+**Store application models directly** — how dataclasses, Pydantic classes, and Rust structs map to Typra collections: naming, registration, compatibility, and **subset models** (read projections).
+
+For a first model, see [Pydantic](pydantic.md) or [Quickstart](quickstart.md). For a full app shape, see [Examples](../examples/index.md).
 
 ## What ships in 1.0
 

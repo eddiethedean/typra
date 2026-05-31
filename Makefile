@@ -11,7 +11,7 @@ RUFF ?= $(PYTHON) -m ruff
 TY ?= $(PYTHON) -m ty
 MATURIN ?= $(PYTHON) -m maturin
 
-.PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples bench
+.PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples examples-smoke bench
 .PHONY: docs-lint
 .PHONY: check-1p0-ready
 .PHONY: docs-install docs-check docs
@@ -29,13 +29,14 @@ help:
 	@echo "  python-develop  Build/install native extension (maturin develop --release)"
 	@echo ""
 	@echo "Checks:"
-	@echo "  check-full      Python checks + Rust checks + Python tests + doc example outputs"
+	@echo "  check-full      Python + Rust checks, tests, doc examples, examples-smoke, docs"
 	@echo "  check-python    ruff format/check + ty check (python/)"
 	@echo "  check-rust      cargo fmt/clippy/check/doc/test (workspace)"
 	@echo ""
 	@echo "Tests:"
 	@echo "  test            maturin develop --release + pytest (python/typra)"
 	@echo "  verify-doc-examples  Assert README + guides output matches all verified Python/Rust snippets"
+	@echo "  examples-smoke    Run todo_app + cli_notes example CLIs (requires python-develop)"
 	@echo "  bench           Criterion benchmarks for typra-core (optional; not part of check-full)"
 
 venv:
@@ -43,9 +44,9 @@ venv:
 	@$(PYTHON) -m pip -q install -U pip >/dev/null
 
 install-tools: venv
-	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5" >/dev/null
+	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5" "pydantic>=2" >/dev/null
 
-check-full: check-python check-rust test verify-doc-examples docs-lint docs-check
+check-full: check-python check-rust test verify-doc-examples examples-smoke docs-lint docs-check
 
 # “1.0 readiness” suite (no version bump): contracts + docs + API surfaces.
 # - Runs the full cross-language check pipeline.
@@ -123,6 +124,21 @@ COVERAGE_CORE_DB_LINES ?= 83
 COVERAGE_CORE_QUERY_LINES ?= 90
 COVERAGE_CORE_INDEX_LINES ?= 94
 COVERAGE_CORE_VALIDATION_LINES ?= 96
+
+examples-smoke: python-develop
+	@rm -f examples/todo_app/tasks.typra examples/cli_notes/notes.typra
+	@rm -rf examples/desktop_app/.smoke-data
+	$(PYTHON) examples/todo_app/main.py add "docs smoke"
+	$(PYTHON) examples/todo_app/main.py list | grep -q "docs smoke"
+	$(PYTHON) examples/todo_app/main.py done 1
+	$(PYTHON) examples/todo_app/main.py open
+	$(PYTHON) examples/cli_notes/main.py add "cli smoke"
+	$(PYTHON) examples/cli_notes/main.py list | grep -q "cli smoke"
+	@TYPRA_EXAMPLE_DATA_DIR="$(CURDIR)/examples/desktop_app/.smoke-data" \
+		$(PYTHON) examples/desktop_app/main.py | grep -q "initialized theme=dark"
+	@TYPRA_EXAMPLE_DATA_DIR="$(CURDIR)/examples/desktop_app/.smoke-data" \
+		$(PYTHON) examples/desktop_app/main.py | grep -q "loaded theme="
+	@echo "examples-smoke: OK (todo, cli, desktop)"
 
 coverage-rust:
 	@mkdir -p target/coverage

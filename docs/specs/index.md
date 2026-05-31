@@ -1,6 +1,8 @@
 # Specifications
 
-Design and format documents for the Typra engine. These are **authoritative for implementers**; application developers usually start with [Guides](../guides/quickstart.md) and [Reference](../reference/types.md).
+**Audience:** advanced (engine contributors, format tooling)
+
+Design and format documents for the Typra engine. Application developers should start with [Why Typra](../guides/why_typra.md), [Quickstart](../guides/quickstart.md), and [Reference](../reference/types.md) — use this section when you need **on-disk layout, encodings, or planner semantics**.
 
 !!! note "Legacy copies"
     Numbered files at the repo root (e.g. `docs/01_full_architecture_spec.md`) are excluded from this site; the **`specs/`** copies below are what we publish.

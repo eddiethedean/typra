@@ -39,7 +39,9 @@ Primary design references:
 - [`docs/05_query_planner_and_execution_spec.md`](docs/05_query_planner_and_execution_spec.md)
 - [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md) (record payload v1, 0.5.0+)
 - [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md) (record payload v2, 0.6.0+)
+- [`docs/guides/why_typra.md`](docs/guides/why_typra.md) (positioning) · [`docs/comparisons/`](docs/comparisons/index.md) (vs SQLite, JSON, TinyDB, DuckDB)
 - [`docs/guides/python.md`](docs/guides/python.md) (Python API: registration, **indexes**, **queries**, subset rows)
+- [`docs/guides/pydantic.md`](docs/guides/pydantic.md) · [`docs/guides/fastapi.md`](docs/guides/fastapi.md) · [`examples/`](examples/README.md) (runnable samples)
 - [`docs/typed_embedded_db_spec.md`](docs/typed_embedded_db_spec.md)
 - **Planned (1.1+):** [`docs/specs/sql_iso9075_mapping.md`](docs/specs/sql_iso9075_mapping.md) · [`docs/reference/sql_dialect.md`](docs/reference/sql_dialect.md) · [`docs/guides/sqlalchemy.md`](docs/guides/sqlalchemy.md) (**1.9+**)
 

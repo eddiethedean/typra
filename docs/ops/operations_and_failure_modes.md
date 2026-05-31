@@ -1,9 +1,12 @@
 # Operations runbook
 
-Running Typra safely: durability, locking, compaction, backup/restore, and recovery from corruption.
+**Audience:** intermediate (production)
+
+You chose Typra to **deploy as a single file** — this runbook covers running it safely: durability, locking, compaction, backup/restore, and recovery from corruption.
 
 | Related | Link |
 |---------|------|
+| Why single-file embed | [Why Typra](../guides/why_typra.md) · [Storage modes](../guides/storage_modes.md) |
 | First steps | [Quickstart](../guides/quickstart.md) |
 | Python API | [Python guide](../guides/python.md) |
 | Format contract | [Compatibility](../reference/compatibility.md) |

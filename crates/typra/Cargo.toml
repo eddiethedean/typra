@@ -1,6 +1,6 @@
 [package]
 name = "typra"
-description = "Typed embedded database for application data — user-facing facade over typra-core."
+description = "Application-focused embedded database for typed models — validation, migrations, nested objects, single-file deploy."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

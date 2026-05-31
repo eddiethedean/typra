@@ -1,6 +1,6 @@
 [package]
 name = "typra-core"
-description = "Core engine for Typra, a typed embedded database."
+description = "Core engine for Typra — application-focused embedded storage with model schemas, validation, and migrations."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

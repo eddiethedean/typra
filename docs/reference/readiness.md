@@ -1,6 +1,8 @@
 # 1.0 readiness checklist
 
-This checklist ties Typra’s 1.0 contract to concrete tests and documentation.
+**Audience:** advanced (release engineering)
+
+This checklist ties Typra’s 1.0 contract to concrete tests and documentation. Application developers: [Compatibility](compatibility.md) · [Why Typra](../guides/why_typra.md).
 
 ## File format + recovery
 

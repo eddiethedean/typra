@@ -4,19 +4,17 @@
 [![crates.io](https://img.shields.io/crates/v/typra-core.svg)](https://crates.io/crates/typra-core)
 [![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/)
 
-Core engine for Typra: typed, embedded, single-file storage with schema catalog and record encoding (v1–v3).
+Core engine for **Typra** — an application-focused embedded database: model-driven schemas, validation on write, indexes, migrations, and single-file storage.
 
-Most applications should use **[`typra`](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)** instead.
+Most applications should use the **[`typra`](https://github.com/eddiethedean/typra/blob/main/crates/typra/README.md)** facade instead.
 
 **Documentation:** **[typra.readthedocs.io](https://typra.readthedocs.io/en/latest/)** · rustdoc: [docs.rs/typra-core](https://docs.rs/typra-core)
 
 | | |
 |--|--|
-| [On-disk format](https://typra.readthedocs.io/en/latest/specs/on_disk_file_format/) | File layout |
-| [Record encoding v3](https://typra.readthedocs.io/en/latest/specs/record_encoding_v3/) | Multi-segment paths |
-| [Rust crate layout](https://typra.readthedocs.io/en/latest/specs/rust_crate_layout/) | Module boundaries |
-| [Compatibility](https://typra.readthedocs.io/en/latest/reference/compatibility/) · [Types](https://typra.readthedocs.io/en/latest/reference/types/) | Contracts |
-| [Debugging & tracing](https://typra.readthedocs.io/en/latest/ops/debugging/) | `tracing` feature |
+| [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) | Product positioning |
+| [On-disk format](https://typra.readthedocs.io/en/latest/specs/on_disk_file_format/) | File layout (advanced) |
+| [Compatibility](https://typra.readthedocs.io/en/latest/reference/compatibility/) | Format contracts |
 
 ## Install
 

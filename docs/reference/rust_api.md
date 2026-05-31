@@ -1,6 +1,8 @@
 # Rust API
 
-What to import and what’s stable in Typra’s Rust crates.
+Application-focused embedded database for Rust — model-driven schemas, validation, migrations, and single-file deploy.
+
+What to import and what’s stable in Typra’s Rust crates. Product context: [Why Typra](../guides/why_typra.md) · [Quickstart](../guides/quickstart.md).
 
 | Crate | docs.rs |
 |-------|---------|

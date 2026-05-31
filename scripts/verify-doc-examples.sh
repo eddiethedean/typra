@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Verifies stdout from the minimal Rust and Python snippets shown in README / guides.
-# Covered: root README (Rust + Python), docs/guides/quickstart.md (Rust cmd + Python),
-# docs/guides/python.md (quick start + query + realistic workflow + fields_json example),
-# python/typra/README.md (quick start only; more examples live in the Python guide on readthedocs).
+# Covered: root README (Rust + Pydantic Python), docs/guides/quickstart.md (Rust cmd + Python),
+# docs/guides/python.md (quick start + query + realistic workflow + fields example),
+# python/typra/README.md (Pydantic quick start).
 # When outputs change intentionally, update the expected heredocs here and the matching ```text blocks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -84,38 +84,24 @@ PY
   exit 1
 }
 
-# --- Python: root README.md (Python section) ---
+# --- Python: root README.md (Pydantic 60-second example) ---
 read -r -d '' EXPECT_PY_ROOT <<'EOF' || true
-Book(title='Hello', year=2020, rating=4.5)
+title='Hello' year=2020
 1.0.0
 
 EOF
 ACTUAL_PY_ROOT=$("$PYTHON" <<'PY' | strip_cr
-# Setup: class-defined schema + in-memory DB.
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Annotated, Optional
-
+from pydantic import BaseModel
 import typra
 
-
-@dataclass
-class Book:
+class Book(BaseModel):
     __typra_primary_key__ = "title"
-    __typra_indexes__ = [
-        typra.models.index("year"),
-        typra.models.unique("title"),
-    ]
-
     title: str
-    year: Annotated[int, typra.models.constrained(min_i64=0)]
-    rating: Optional[float] = None
-
+    year: int
 
 db = typra.Database.open_in_memory()
 books = typra.models.collection(db, Book)
-books.insert(Book(title="Hello", year=2020, rating=4.5))
+books.insert(Book(title="Hello", year=2020))
 print(books.get("Hello"))
 print(typra.__version__)
 PY
@@ -126,38 +112,24 @@ PY
   exit 1
 }
 
-# --- Python: python/typra/README.md quick start ---
+# --- Python: python/typra/README.md quick start (Pydantic) ---
 read -r -d '' EXPECT_PY_PKG <<'EOF' || true
-Book(title='Typra', year=2020, rating=4.5)
+title='Typra' year=2020
 1.0.0
 
 EOF
 ACTUAL_PY_PKG=$("$PYTHON" <<'PY' | strip_cr
-# Setup: class-defined schema + in-memory DB.
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Annotated, Optional
-
+from pydantic import BaseModel
 import typra
 
-
-@dataclass
-class Book:
+class Book(BaseModel):
     __typra_primary_key__ = "title"
-    __typra_indexes__ = [
-        typra.models.index("year"),
-        typra.models.unique("title"),
-    ]
-
     title: str
-    year: Annotated[int, typra.models.constrained(min_i64=0)]
-    rating: Optional[float] = None
-
+    year: int
 
 db = typra.Database.open_in_memory()
 books = typra.models.collection(db, Book)
-books.insert(Book(title="Typra", year=2020, rating=4.5))
+books.insert(Book(title="Typra", year=2020))
 print(books.get("Typra"))
 print(typra.__version__)
 PY
@@ -292,81 +264,6 @@ PY
   exit 1
 }
 
-# --- Python: python/typra/README.md "Indexed query (sketch)" ---
-read -r -d '' EXPECT_PY_PKG_INDEXED <<'EOF' || true
-[{'id': 1, 'sku': 'abc'}]
-
-EOF
-ACTUAL_PY_PKG_INDEXED=$("$PYTHON" <<'PY' | strip_cr
-# Setup: in-memory DB, indexed collection, one row.
-import typra
-
-db = typra.Database.open_in_memory()
-fields = '[{"path": ["id"], "type": "int64"}, {"path": ["sku"], "type": "string"}]'
-indexes = '[{"name": "sku_idx", "path": ["sku"], "kind": "index"}]'
-db.register_collection("items", fields, "id", indexes)
-db.insert("items", {"id": 1, "sku": "abc"})
-# Example: equality query on indexed `sku`.
-print(db.collection("items").where("sku", "abc").all())
-PY
-)
-[[ "$ACTUAL_PY_PKG_INDEXED" == "$EXPECT_PY_PKG_INDEXED" ]] || {
-  echo "Python (python/typra/README indexed sketch) output mismatch." >&2
-  diff -u <(printf '%s' "$EXPECT_PY_PKG_INDEXED") <(printf '%s' "$ACTUAL_PY_PKG_INDEXED") >&2 || true
-  exit 1
-}
-
-# --- Python: python/typra/README.md "Example (nested)" ---
-read -r -d '' EXPECT_PY_PKG_FIELDS_NESTED <<'EOF' || true
-nested: ['items']
-
-EOF
-ACTUAL_PY_PKG_FIELDS_NESTED=$("$PYTHON" <<'PY' | strip_cr
-# Setup: in-memory DB and a collection whose PK uses an optional int field.
-import typra
-
-db = typra.Database.open_in_memory()
-db.register_collection(
-    "items",
-    '[{"path": ["x"], "type": {"optional": "int64"}}]',
-    "x",
-)
-# Example: confirm registration.
-print("nested:", db.collection_names())
-PY
-)
-[[ "$ACTUAL_PY_PKG_FIELDS_NESTED" == "$EXPECT_PY_PKG_FIELDS_NESTED" ]] || {
-  echo "Python (python/typra/README fields nested) output mismatch." >&2
-  diff -u <(printf '%s' "$EXPECT_PY_PKG_FIELDS_NESTED") <(printf '%s' "$ACTUAL_PY_PKG_FIELDS_NESTED") >&2 || true
-  exit 1
-}
-
-# --- Python: python/typra/README.md "Example (multiple fields)" ---
-read -r -d '' EXPECT_PY_PKG_FIELDS_MULTI <<'EOF' || true
-multi: ['books']
-
-EOF
-ACTUAL_PY_PKG_FIELDS_MULTI=$("$PYTHON" <<'PY' | strip_cr
-# Setup: in-memory DB and a multi-field `books` schema (PK `title`).
-import typra
-
-db = typra.Database.open_in_memory()
-schema = """[
-  {"path": ["title"], "type": "string"},
-  {"path": ["year"], "type": "int64"},
-  {"path": ["tags"], "type": {"list": "string"}}
-]"""
-db.register_collection("books", schema, "title")
-# Example: confirm registration.
-print("multi:", db.collection_names())
-PY
-)
-[[ "$ACTUAL_PY_PKG_FIELDS_MULTI" == "$EXPECT_PY_PKG_FIELDS_MULTI" ]] || {
-  echo "Python (python/typra/README fields multi) output mismatch." >&2
-  diff -u <(printf '%s' "$EXPECT_PY_PKG_FIELDS_MULTI") <(printf '%s' "$ACTUAL_PY_PKG_FIELDS_MULTI") >&2 || true
-  exit 1
-}
-
 # --- Python: docs/guides/python.md "Example: multiple top-level fields" ---
 read -r -d '' EXPECT_PY_GUIDE_FIELDS <<'EOF' || true
 collection_id: 1 schema_version: 1
@@ -418,4 +315,4 @@ PY
   exit 1
 }
 
-echo "verify-doc-examples: OK (Rust open + 11 Python snippets)"
+echo "verify-doc-examples: OK (Rust open + 8 Python snippets)"

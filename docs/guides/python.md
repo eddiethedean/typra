@@ -1,13 +1,17 @@
 # Python guide
 
-Everything you need to build with the **`typra`** PyPI package: install, **`Database`**, **`typra.models`**, queries, schema JSON, DB-API, and local development.
+Build with the **`typra`** PyPI package: store **dataclasses and Pydantic models** with validation, indexes, and single-file deployment.
+
+!!! tip "Start here"
+    New to Typra? Read [Why Typra](why_typra.md) and the [Pydantic guide](pydantic.md). Building an API? See [FastAPI](fastapi.md). Runnable samples: [Examples](../examples/index.md).
 
 !!! tip "Recommended path"
     Prefer **`typra.models`** with dataclasses or Pydantic over hand-written `fields_json`. See [Models & collections](models_and_collections.md).
 
 | Resource | Link |
 |----------|------|
-| Roadmap | [ROADMAP on GitHub](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+| Why Typra | [Why Typra](why_typra.md) · [Comparisons](../comparisons/index.md) |
+| Examples | [Examples](../examples/index.md) · [todo_app on GitHub](https://github.com/eddiethedean/typra/tree/main/examples/todo_app) |
 | Compatibility | [Compatibility matrix](../reference/compatibility.md) |
 | Rust usage | [Quickstart](quickstart.md) |
 
@@ -21,7 +25,9 @@ pip install "typra>=1.0.0,<2"
 
 Pin the major range you test against. Typra 1.x follows SemVer (breaking changes require 2.0).
 
-## Quick start
+## Quick start (low-level API)
+
+The snippets below use **`register_collection`** + JSON field definitions — useful for dynamic schemas and tests. For application code, prefer **[`typra.models`](#define-schemas-with-classes)** or the [Pydantic guide](pydantic.md).
 
 In-memory (repeatable; no file). For a file, use `Database.open("/path/to/app.typra")`.
 

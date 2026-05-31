@@ -1,5 +1,7 @@
 # Core concepts
 
+For *why* Typra exists and how it compares to SQLite or JSON files, start with [Why Typra](why_typra.md) and [Comparisons](../comparisons/index.md).
+
 Typra’s model in six ideas. For implementation detail, see [Specifications](../specs/index.md). For release status, see the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 
 ## 1. Database — one embedded unit

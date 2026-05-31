@@ -1,6 +1,8 @@
 # Storage modes
 
-Typra feels SQLite-like in ergonomics with stronger typing and validation. This page explains **on-disk**, **in-memory**, and the planned **hybrid/streaming** modes.
+**Deploy as a single file** (or run in memory for tests) — SQLite-like ergonomics with model-first typing and validation. This page explains **on-disk**, **in-memory**, and the planned **hybrid/streaming** modes.
+
+Positioning: [Why Typra](why_typra.md) · Comparisons: [vs JSON files](../comparisons/json.md)
 
 ## Current status (1.0)
 

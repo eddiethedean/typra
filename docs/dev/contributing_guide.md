@@ -66,6 +66,20 @@ make docs-serve    # local preview (if target exists)
 
 Covered sources: root README, `docs/guides/quickstart.md`, `docs/guides/python.md`, `python/typra/README.md`, `docs/ops/operations_and_failure_modes.md`.
 
+### Runnable examples
+
+Under **`examples/`** (todo app, CLI notes, FastAPI). Smoke test:
+
+```bash
+make examples-smoke   # todo, cli_notes, desktop (isolated data dir)
+```
+
+When adding examples, include a README with **problem → solution → run commands → result**, and keep `*.typra` files gitignored (see `examples/.gitignore`). Desktop smoke uses `TYPRA_EXAMPLE_DATA_DIR` — do not write into the user's real app-data folder in CI.
+
+Blog drafts live under **`blog/`** — see [typra-for-application-models.md](https://github.com/eddiethedean/typra/blob/main/blog/typra-for-application-models.md).
+
+Positioning docs: [Why Typra](../guides/why_typra.md), [Comparisons](../comparisons/index.md). Page levels and checklist: [Documentation map](documentation_map.md). Full editorial plan: `docs/TYPRA_DOCUMENTATION_POSITIONING_MASTER_PLAN.md` on GitHub.
+
 ## Fuzzing
 
 ```bash

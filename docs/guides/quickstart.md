@@ -1,6 +1,11 @@
 # Quickstart
 
-Get Typra running in a few minutes. This page covers **install**, a **minimal Rust example**, and a **minimal Python example** using `typra.models`.
+**Audience:** beginner — get your first model stored in about five minutes.
+
+Install, open a database, define a schema, insert a row. Covers **Python** (`typra.models`) and a **minimal Rust** registration example.
+
+!!! tip "New here?"
+    Read [Why Typra](why_typra.md) for positioning, or [Comparisons](../comparisons/index.md) vs SQLite and JSON. Prefer Pydantic? See the [Pydantic guide](pydantic.md).
 
 !!! tip "Already know embedded DBs?"
     Typra is **schema-first**: you declare types and constraints up front; invalid writes fail at the boundary. See [Core concepts](concepts.md) for the full picture.
@@ -137,10 +142,13 @@ On disk, swap `open_in_memory()` for `Database.open("app.typra")`.
 
 | Topic | Guide |
 |-------|-------|
+| Why Typra exists | [Why Typra](why_typra.md) |
+| Pydantic & FastAPI | [Pydantic](pydantic.md) · [FastAPI](fastapi.md) |
 | Mental model | [Core concepts](concepts.md) |
 | Python in depth | [Python guide](python.md) |
 | Class schemas & projections | [Models & collections](models_and_collections.md) |
 | Disk vs memory | [Storage modes](storage_modes.md) |
+| Compare alternatives | [Comparisons](../comparisons/index.md) |
 | Design specs | [Specifications](../specs/index.md) |
 
 ## Contributors

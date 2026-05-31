@@ -1,6 +1,10 @@
 # CLI reference
 
-The **`typra`** CLI inspects, verifies, checkpoints, compacts, and migrates `.typra` files. Built for operators and support — not application hot paths.
+**Audience:** intermediate (operators)
+
+The **`typra`** CLI inspects, verifies, checkpoints, compacts, and migrates `.typra` files you ship with desktop, CLI, or server apps — built for support and ops, not application hot paths.
+
+Backups and recovery: [Operations runbook](../ops/operations_and_failure_modes.md)
 
 ## Install / run
 

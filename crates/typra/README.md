@@ -4,19 +4,24 @@
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
 [![Docs](https://readthedocs.org/projects/typra/badge/?version=latest)](https://typra.readthedocs.io/en/latest/)
 
-> **SQLite simplicity, with real types.**
+## Application-focused embedded database
 
-Recommended Rust crate for Typra: typed embedded storage, schema catalog, validation, indexes, and queries.
+**SQLite simplicity, with real types.** The recommended Rust crate for Typra — **the database for application models**.
+
+- **Model-driven schemas** — collections from field definitions or `#[derive(DbModel)]`
+- **Validation on write** — types and constraints enforced before persistence
+- **Migrations** — schema catalog versioning and compatibility helpers
+- **Nested objects** — typed multi-segment field paths
+- **Single-file deploy** — on-disk `.typra` or in-memory for tests
 
 **Documentation:** **[typra.readthedocs.io](https://typra.readthedocs.io/en/latest/)** · rustdoc: [docs.rs/typra](https://docs.rs/typra)
 
 | | |
 |--|--|
-| [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | Install and first collection |
-| [Rust API reference](https://typra.readthedocs.io/en/latest/reference/rust_api/) | Imports and stability |
-| [Core concepts](https://typra.readthedocs.io/en/latest/guides/concepts/) | Mental model |
-| [Compatibility](https://typra.readthedocs.io/en/latest/reference/compatibility/) · [Types](https://typra.readthedocs.io/en/latest/reference/types/) | Contracts |
-| [Python bindings](https://typra.readthedocs.io/en/latest/guides/python/) | CPython package |
+| [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) | When to choose Typra |
+| [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | First collection |
+| [Comparisons](https://typra.readthedocs.io/en/latest/comparisons/) | vs SQLite, JSON, DuckDB |
+| [Python bindings](https://typra.readthedocs.io/en/latest/guides/python/) | Pydantic / dataclass path |
 
 ## Install
 
@@ -70,7 +75,7 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-`DbModel` attributes and nested schemas: **[Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/)** · **[Models & collections](https://typra.readthedocs.io/en/latest/guides/models_and_collections/)**
+`DbModel` and nested schemas: **[Models & collections](https://typra.readthedocs.io/en/latest/guides/models_and_collections/)**
 
 ## Related crates
 
