@@ -79,13 +79,14 @@ fn write_1_0_representative(path: &Path) {
     assert_eq!(h.format_minor, FORMAT_MINOR_V6);
 }
 
+#[cfg(coverage)]
 fn assert_semantic_fixture_matches_fresh(fixture: &Path, fresh: &Path) {
     let fixture_db = Database::open(fixture).expect("open fixture");
     let fresh_db = Database::open(fresh).expect("open fresh encoder output");
     for name in ["books", "users"] {
         assert_eq!(
-            fixture_db.collection_id_named(name),
-            fresh_db.collection_id_named(name),
+            fixture_db.collection_id_named(name).expect("fixture collection"),
+            fresh_db.collection_id_named(name).expect("fresh collection"),
             "collection {name}"
         );
     }
@@ -197,7 +198,6 @@ fn committed_1_0_fixture_opens_and_matches_live_encoder() {
 
     // File header and append-only segment bytes must match exactly. Superblock slots may differ
     // only in generation/checksum (publish count), which is not part of the on-disk format spec.
-    let segment_start = FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE;
     assert_eq!(
         &committed[..FILE_HEADER_SIZE],
         &fresh_bytes[..FILE_HEADER_SIZE],
@@ -205,6 +205,7 @@ fn committed_1_0_fixture_opens_and_matches_live_encoder() {
     );
     #[cfg(not(coverage))]
     {
+        let segment_start = FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE;
         assert_eq!(
             committed.len(),
             fresh_bytes.len(),
