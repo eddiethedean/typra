@@ -54,7 +54,7 @@ Output:
 
 ```text
 title='Hello' year=2020
-0.15.0
+0.15.1
 ```
 
 Also works with **dataclasses** — see the [Pydantic guide](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) and [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/).

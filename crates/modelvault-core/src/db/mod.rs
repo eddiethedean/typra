@@ -471,10 +471,9 @@ impl<S: Store> Database<S> {
         &'a self,
     ) -> Result<Collection<'a, S, T>, DbError> {
         let cid = self.collection_id_named(T::collection_name())?;
-        let col = self
-            .catalog_for_read()
-            .get(cid)
-            .expect("collection id from name lookup must exist in catalog");
+        let col = self.catalog_for_read().get(cid).ok_or(DbError::Schema(
+            SchemaError::UnknownCollection { id: cid.0 },
+        ))?;
         validate_subset_model::<T>(col)?;
         Ok(Collection {
             db: self,
@@ -1192,6 +1191,12 @@ impl<S: Store> Database<S> {
         poison: fn(ScalarValue) -> ScalarValue,
     ) {
         self.test_poison_delete_encode_scalar = Some(poison);
+    }
+
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub(crate) fn test_catalog_mut(&mut self) -> &mut Catalog {
+        &mut self.catalog
     }
 
     /// Test helper: overwrite one cell in [`Self::latest`] without validation.

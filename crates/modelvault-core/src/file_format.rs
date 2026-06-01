@@ -22,6 +22,19 @@ pub const FORMAT_MINOR_V3: u16 = 3;
 
 pub const FILE_HEADER_SIZE: usize = 32;
 
+/// Maximum number of entries in a single decoded segment payload (spill, index, etc.).
+pub const MAX_SEGMENT_DECODE_ENTRIES: usize = 1_048_576;
+
+/// Rejects corrupt or hostile payloads that claim an excessive entry count.
+pub fn check_decode_entry_count(n: usize) -> Result<(), DbError> {
+    if n > MAX_SEGMENT_DECODE_ENTRIES {
+        return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+            message: format!("decode entry count {n} exceeds maximum {MAX_SEGMENT_DECODE_ENTRIES}"),
+        }));
+    }
+    Ok(())
+}
+
 /// Parsed or constructed first [`FILE_HEADER_SIZE`] bytes of a ModelVault file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FileHeader {

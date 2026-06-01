@@ -260,6 +260,41 @@
     }
 
     #[test]
+    fn collection_returns_unknown_collection_when_catalog_name_id_mismatch() {
+        #[derive(Clone)]
+        struct Orphan;
+        impl crate::schema::DbModel for Orphan {
+            fn collection_name() -> &'static str {
+                "orphan_collection_test"
+            }
+            fn primary_field() -> &'static str {
+                "id"
+            }
+            fn fields() -> Vec<FieldDef> {
+                vec![FieldDef::new(
+                    crate::schema::FieldPath(vec![Cow::Borrowed("id")]),
+                    Type::Int64,
+                )]
+            }
+            fn indexes() -> Vec<crate::schema::IndexDef> {
+                vec![]
+            }
+        }
+
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        db.test_catalog_mut()
+            .test_orphan_name_lookup("orphan_collection_test", CollectionId(42));
+        let e = match db.collection::<Orphan>() {
+            Ok(_) => panic!("expected UnknownCollection"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            e,
+            DbError::Schema(SchemaError::UnknownCollection { id: 42 })
+        ));
+    }
+
+    #[test]
     fn plan_insert_row_multi_segment_and_index_missing_path_are_covered() {
         let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
         let fields = vec![

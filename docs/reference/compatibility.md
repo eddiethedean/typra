@@ -10,7 +10,7 @@ New to ModelVault? Start with [Why ModelVault](../guides/why_modelvault.md) and 
 
 | Name | Meaning |
 |------|---------|
-| **Package / crate version** | SemVer on [crates.io](https://crates.io/crates/modelvault) and [PyPI](https://pypi.org/project/modelvault/) (e.g. **`0.15.0`** today). |
+| **Package / crate version** | SemVer on [crates.io](https://crates.io/crates/modelvault) and [PyPI](https://pypi.org/project/modelvault/) (e.g. **`0.15.1`** today). |
 | **Product milestone** | Docs and marketing refer to the **1.0** feature set (stable engine, `modelvault.models`, format-compat pledge below). Package releases such as **`0.15.x`** ship that feature set under SemVer **0.15**, not **1.y.z**. |
 | **Pre-rebrand files** | Same `TDB0` on-disk layout as today; databases created before the 0.14.0 package rename open without conversion (any prior file extension). |
 

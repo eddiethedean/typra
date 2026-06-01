@@ -53,7 +53,7 @@ Output:
 
 ```text
 title='ModelVault' year=2020
-0.15.0
+0.15.1
 ```
 
 Dataclass example and indexed queries: **[Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/)** · **[Python guide](https://modelvault.readthedocs.io/en/latest/guides/python/)**

@@ -43,7 +43,11 @@ for pat in "${STALE_PATTERNS[@]}"; do
 done
 
 # No legacy product name in tracked sources (except guard patterns in this script).
-if git grep -ni typra -- . ':(exclude)scripts/docs-lint.sh' >/dev/null 2>&1; then
+if git grep -ni typra -- . \
+  ':(exclude)scripts/docs-lint.sh' \
+  ':(exclude)examples/.gitignore' \
+  ':(exclude)CHANGELOG.md' \
+  >/dev/null 2>&1; then
   echo "Found legacy 'typra' reference in tracked files:" >&2
   git grep -ni typra -- . ':(exclude)scripts/docs-lint.sh' >&2 || true
   exit 1

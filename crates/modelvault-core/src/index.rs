@@ -3,6 +3,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use crate::error::{DbError, FormatError, SchemaError};
+use crate::file_format::{check_decode_entry_count, MAX_SEGMENT_DECODE_ENTRIES};
 use crate::schema::IndexKind;
 
 pub const INDEX_PAYLOAD_VERSION_V1: u16 = 1;
@@ -178,7 +179,8 @@ pub fn decode_index_payload(bytes: &[u8]) -> Result<Vec<IndexEntry>, DbError> {
         }));
     }
     let n = cur.take_u32()? as usize;
-    let mut v = Vec::with_capacity(n.min(1024));
+    check_decode_entry_count(n)?;
+    let mut v = Vec::with_capacity(n.min(MAX_SEGMENT_DECODE_ENTRIES));
     for _ in 0..n {
         let collection_id = cur.take_u32()?;
         let kind_tag = cur.take_u8()?;

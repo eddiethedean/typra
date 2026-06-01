@@ -1170,7 +1170,7 @@ impl AsyncModelCollection {
         })
     }
 
-    fn get<'py>(&self, py: Python<'py>, pk: Py<PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    fn get<'py>(&self, py: Python<'py>, pk_or_obj: Py<PyAny>) -> PyResult<Bound<'py, PyAny>> {
         let inner = {
             let db = self.db.bind(py).borrow();
             Arc::clone(&db.inner)
@@ -1190,7 +1190,14 @@ impl AsyncModelCollection {
                 .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == pk_name)
                 .map(|f| &f.ty)
                 .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
-            let pk_val = row_values::scalar_from_py(py, pk.bind(py), pk_ty)?;
+            let cls = model_cls.bind(py);
+            let pk_bind = pk_or_obj.bind(py);
+            let pk_for_scalar = if pk_bind.is_instance(cls)? {
+                pk_bind.getattr(pk_name)?
+            } else {
+                pk_bind.clone()
+            };
+            let pk_val = row_values::scalar_from_py(py, &pk_for_scalar, pk_ty)?;
             Ok(move || {
                 let g = lock_inner_read(inner.as_ref())?;
                 let cid = g

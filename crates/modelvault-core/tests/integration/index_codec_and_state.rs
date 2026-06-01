@@ -1,9 +1,24 @@
 use modelvault_core::error::{DbError, FormatError, SchemaError};
+use modelvault_core::file_format::MAX_SEGMENT_DECODE_ENTRIES;
 use modelvault_core::index::{
     decode_index_payload, encode_index_payload, IndexEntry, IndexOp, IndexState,
+    INDEX_PAYLOAD_VERSION_V2,
 };
 use modelvault_core::schema::IndexKind;
 use modelvault_core::ScalarValue;
+
+#[test]
+fn decode_index_payload_rejects_excessive_entry_count() {
+    let n = (MAX_SEGMENT_DECODE_ENTRIES as u32).saturating_add(1);
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&INDEX_PAYLOAD_VERSION_V2.to_le_bytes());
+    buf.extend_from_slice(&n.to_le_bytes());
+    let err = decode_index_payload(&buf).unwrap_err();
+    assert!(matches!(
+        err,
+        DbError::Format(FormatError::InvalidCatalogPayload { .. })
+    ));
+}
 
 #[test]
 fn index_state_unique_insert_delete_branches() {

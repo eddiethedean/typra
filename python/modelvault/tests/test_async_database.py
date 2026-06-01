@@ -59,6 +59,10 @@ async def test_async_model_collection_roundtrip() -> None:
     got = await books.get("Myth")
     assert got is not None
     assert got.title == "Myth"
+    b = Book(title="Myth", year=1)
+    got_instance = await books.get(b)
+    assert got_instance is not None
+    assert got_instance.title == "Myth"
     rows = await books.where(Book.title, "Myth").all()
     assert len(rows) == 1
     assert rows[0].year == 1

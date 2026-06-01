@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::db::scalar_at_path;
 use crate::error::{DbError, QueryError};
+use crate::file_format::{check_decode_entry_count, MAX_SEGMENT_DECODE_ENTRIES};
 use crate::record::RowValue;
 use crate::schema::FieldPath;
 use crate::spill::TempSpillFile;
@@ -41,8 +42,9 @@ fn decode_entries(buf: &[u8]) -> Result<Vec<(i64, u64)>, DbError> {
         return Err(qerr("spill segment truncated"));
     }
     let n = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+    check_decode_entry_count(n)?;
     let mut pos = 4usize;
-    let mut out = Vec::with_capacity(n);
+    let mut out = Vec::with_capacity(n.min(MAX_SEGMENT_DECODE_ENTRIES));
     for _ in 0..n {
         if pos + 16 > buf.len() {
             return Err(qerr("spill segment truncated"));

@@ -74,6 +74,12 @@ impl Catalog {
         v
     }
 
+    /// Maps `name` to `id` without inserting into `by_id` (test-only catalog inconsistency).
+    #[cfg(test)]
+    pub(crate) fn test_orphan_name_lookup(&mut self, name: &str, id: CollectionId) {
+        self.by_name.insert(name.trim().to_string(), id);
+    }
+
     #[cfg(test)]
     pub(crate) fn test_insert_collection_info(&mut self, info: CollectionInfo) {
         // Test-only escape hatch for constructing deliberately inconsistent catalog states to

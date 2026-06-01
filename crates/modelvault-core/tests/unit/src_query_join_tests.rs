@@ -19,6 +19,15 @@
     }
 
     #[test]
+    fn decode_entries_rejects_excessive_entry_count() {
+        let n = (crate::file_format::MAX_SEGMENT_DECODE_ENTRIES as u32).saturating_add(1);
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&n.to_le_bytes());
+        let err = decode_entries(&buf).unwrap_err();
+        assert!(matches!(err, DbError::Format(FormatError::InvalidCatalogPayload { .. })));
+    }
+
+    #[test]
     fn decode_entries_truncated_errors() {
         let err = decode_entries(&[]).unwrap_err();
         assert!(matches!(err, DbError::Query(_)));

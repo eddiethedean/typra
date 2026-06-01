@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-06-01
+
+### Fixed
+
+- **Decode hardening:** cap spill and index payload entry counts (`MAX_SEGMENT_DECODE_ENTRIES`) so corrupt segments cannot force unbounded allocation or CPU during decode.
+- **`Database::collection`:** returns [`SchemaError::UnknownCollection`] instead of panicking when the catalog name maps to a missing collection id.
+- **`AsyncModelCollection.get`:** accepts a model instance (parity with sync `ModelCollection.get`).
+
+### Changed
+
+- **`examples/.gitignore`:** ignore legacy `*.typra` database artifacts from the pre-rename extension.
+
+### Notes
+
+- On-disk format unchanged; pin remains `modelvault>=0.15.0,<0.16` (Python) or `modelvault = "0.15"` (Rust).
+
 ## [0.15.0] - 2026-06-01
 
 ### Fixed
@@ -269,6 +285,7 @@ See the release notes above for details.
 [0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
 [0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
 [0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
+[0.15.1]: https://github.com/eddiethedean/modelvault/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.15.0
 [0.14.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.14.0
 [1.0.0]: https://github.com/eddiethedean/modelvault/releases/tag/v1.0.0
