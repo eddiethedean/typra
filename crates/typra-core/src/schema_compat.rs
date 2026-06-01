@@ -179,6 +179,16 @@ fn indexes_match(a: &[IndexDef], b: &[IndexDef]) -> bool {
     })
 }
 
+fn type_is_compatible(old: &Type, new: &Type) -> bool {
+    match (old, new) {
+        (Type::Enum(old_vars), Type::Enum(new_vars)) => {
+            // New must be a superset (no removals).
+            old_vars.iter().all(|v| new_vars.contains(v))
+        }
+        _ => old == new,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,15 +290,5 @@ mod tests {
             err2,
             DbError::Schema(SchemaError::IncompatibleSchemaChange { message }) if message.contains("does not match catalog")
         ));
-    }
-}
-
-fn type_is_compatible(old: &Type, new: &Type) -> bool {
-    match (old, new) {
-        (Type::Enum(old_vars), Type::Enum(new_vars)) => {
-            // New must be a superset (no removals).
-            old_vars.iter().all(|v| new_vars.contains(v))
-        }
-        _ => old == new,
     }
 }
