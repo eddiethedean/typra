@@ -64,8 +64,11 @@ fn replay_create_a_create_b_then_version_bump_a() {
         )
         .unwrap();
         assert_eq!(db.catalog().next_collection_id().0, 3);
-        db.register_schema_version(modelvault_core::schema::CollectionId(1), vec![title_field()])
-            .unwrap();
+        db.register_schema_version(
+            modelvault_core::schema::CollectionId(1),
+            vec![title_field()],
+        )
+        .unwrap();
     }
     let db = Database::open(&path).unwrap();
     let a = db
@@ -95,7 +98,10 @@ fn register_schema_version_v2_then_reopen() {
         db.register_collection("c", vec![title_field()], "title")
             .unwrap();
         let v = db
-            .register_schema_version(modelvault_core::schema::CollectionId(1), vec![title_field()])
+            .register_schema_version(
+                modelvault_core::schema::CollectionId(1),
+                vec![title_field()],
+            )
             .unwrap();
         assert_eq!(v.0, 2);
     }
@@ -130,7 +136,10 @@ fn lazy_header_bump_from_v0_3_to_v0_4_on_register() {
     let bytes = fs::read(&path).unwrap();
     let h2 = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
     // First catalog write runs the full header upgrade chain (through format minor 6 for txn framing).
-    assert_eq!(h2.format_minor, modelvault_core::file_format::FORMAT_MINOR_V6);
+    assert_eq!(
+        h2.format_minor,
+        modelvault_core::file_format::FORMAT_MINOR_V6
+    );
 }
 
 #[test]

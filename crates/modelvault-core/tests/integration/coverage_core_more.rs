@@ -5,7 +5,9 @@ use modelvault_core::index::{decode_index_payload, encode_index_payload, IndexEn
 use modelvault_core::query::{Predicate, Query};
 use modelvault_core::record::RowValue;
 use modelvault_core::schema::{Constraint, FieldDef, FieldPath, IndexDef, IndexKind, Type};
-use modelvault_core::validation::{ensure_pk_type_primitive, validate_top_level_row, validate_value};
+use modelvault_core::validation::{
+    ensure_pk_type_primitive, validate_top_level_row, validate_value,
+};
 use modelvault_core::{Database, ScalarValue};
 
 fn field(name: &str, ty: Type, constraints: Vec<Constraint>) -> FieldDef {

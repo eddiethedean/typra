@@ -2,12 +2,12 @@
 
 use std::sync::Mutex;
 
+use modelvault_core::catalog::CollectionInfo;
+use modelvault_core::Database as CoreDatabase;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 use std::sync::MutexGuard;
-use modelvault_core::catalog::CollectionInfo;
-use modelvault_core::Database as CoreDatabase;
 
 use crate::errors::db_error_to_py;
 use crate::fields_json;
@@ -15,7 +15,9 @@ use crate::inner_db::InnerDb;
 use crate::query as query_api;
 use crate::row_values;
 
-fn schema_change_to_str(change: &modelvault_core::schema::SchemaChange) -> (&'static str, Option<&str>) {
+fn schema_change_to_str(
+    change: &modelvault_core::schema::SchemaChange,
+) -> (&'static str, Option<&str>) {
     match change {
         modelvault_core::schema::SchemaChange::Safe => ("safe", None),
         modelvault_core::schema::SchemaChange::NeedsMigration { reason, .. } => {

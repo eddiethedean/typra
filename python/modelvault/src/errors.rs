@@ -1,10 +1,10 @@
 //! Maps [`modelvault_core::DbError`] to `OSError`, `ValueError`, or `RuntimeError` so Python callers get
 //! stable exception types from the C extension.
 
+use modelvault_core::DbError;
 use pyo3::create_exception;
 use pyo3::exceptions::{PyOSError, PyRuntimeError, PyValueError};
 use pyo3::PyErr;
-use modelvault_core::DbError;
 
 create_exception!(modelvault, ModelVaultFormatError, PyValueError);
 create_exception!(modelvault, ModelVaultSchemaError, PyValueError);

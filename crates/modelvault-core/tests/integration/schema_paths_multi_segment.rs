@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use tempfile::tempdir;
 use modelvault_core::query::{Predicate, Query};
 use modelvault_core::schema::{Constraint, FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use modelvault_core::{Database, DbError, RowValue, ScalarValue};
+use tempfile::tempdir;
 
 fn path(parts: &[&str]) -> FieldPath {
     FieldPath(parts.iter().map(|s| Cow::Owned(s.to_string())).collect())

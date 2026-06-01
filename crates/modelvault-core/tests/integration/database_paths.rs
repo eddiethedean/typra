@@ -34,7 +34,11 @@ fn open_directory_returns_io_error() {
 #[test]
 fn open_without_parent_fails() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("nope").join("missing").join("db.modelvault");
+    let path = dir
+        .path()
+        .join("nope")
+        .join("missing")
+        .join("db.modelvault");
     let res = Database::open(&path);
     assert!(matches!(res, Err(DbError::Io(_))));
 }

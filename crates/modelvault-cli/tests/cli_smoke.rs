@@ -13,7 +13,9 @@ fn inspect_and_verify_and_dump_catalog_work_on_new_db() {
             .register_collection(
                 "books",
                 vec![modelvault_core::FieldDef {
-                    path: modelvault_core::schema::FieldPath(vec![std::borrow::Cow::Borrowed("title")]),
+                    path: modelvault_core::schema::FieldPath(vec![std::borrow::Cow::Borrowed(
+                        "title",
+                    )]),
                     ty: modelvault_core::Type::String,
                     constraints: vec![],
                 }],
@@ -59,7 +61,9 @@ fn migrate_plan_then_apply_force_backfill_works() {
             .register_collection(
                 "books",
                 vec![modelvault_core::FieldDef {
-                    path: modelvault_core::schema::FieldPath(vec![std::borrow::Cow::Borrowed("id")]),
+                    path: modelvault_core::schema::FieldPath(vec![std::borrow::Cow::Borrowed(
+                        "id",
+                    )]),
                     ty: modelvault_core::Type::Int64,
                     constraints: vec![],
                 }],
@@ -119,7 +123,9 @@ fn migrate_plan_then_apply_force_backfill_works() {
     // Validate row contains the backfilled field.
     let db = modelvault_core::Database::open(&path).unwrap();
     let cid = db.collection_id_named("books").unwrap();
-    let got = db.get(cid, &modelvault_core::ScalarValue::Int64(1)).unwrap();
+    let got = db
+        .get(cid, &modelvault_core::ScalarValue::Int64(1))
+        .unwrap();
     let obj = got.unwrap();
     assert_eq!(
         obj.get("genre"),

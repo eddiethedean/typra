@@ -100,12 +100,12 @@ fn nested_transaction_errors() {
 
 #[test]
 fn open_strict_rejects_uncommitted_txn_tail_and_autotruncate_recovers() {
-    use std::fs::OpenOptions as FsOpenOptions;
     use modelvault_core::segments::header::{SegmentHeader, SegmentType};
     use modelvault_core::segments::writer::SegmentWriter;
     use modelvault_core::storage::FileStore;
     use modelvault_core::superblock::SUPERBLOCK_SIZE;
     use modelvault_core::{DbError, FormatError};
+    use std::fs::OpenOptions as FsOpenOptions;
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("unclean_txn.modelvault");

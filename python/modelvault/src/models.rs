@@ -137,9 +137,9 @@ fn primary_key_for(cls: &Bound<'_, PyAny>) -> PyResult<String> {
     let v = cls.getattr("__modelvault_primary_key__").map_err(|_| {
         PyValueError::new_err("model must define __modelvault_primary_key__ = \"field\"")
     })?;
-    let pk: String = v
-        .extract()
-        .map_err(|_| PyValueError::new_err("__modelvault_primary_key__ must be a string field name"))?;
+    let pk: String = v.extract().map_err(|_| {
+        PyValueError::new_err("__modelvault_primary_key__ must be a string field name")
+    })?;
     if pk.trim().is_empty() {
         return Err(PyValueError::new_err(
             "__modelvault_primary_key__ cannot be empty",
@@ -459,7 +459,9 @@ fn indexes_from_model(
         return Ok(out);
     }
     let list = v.cast::<PyList>().map_err(|_| {
-        PyValueError::new_err("__modelvault_indexes__ must be a list of modelvault.models.index/unique specs")
+        PyValueError::new_err(
+            "__modelvault_indexes__ must be a list of modelvault.models.index/unique specs",
+        )
     })?;
     for item in list.iter() {
         let spec: IndexSpec = item.extract().map_err(|_| {
@@ -929,8 +931,8 @@ pub fn apply(
 }
 
 fn schema_to_fields_json(_py: Python<'_>, fields: &[FieldDef]) -> PyResult<String> {
-    use serde_json::json;
     use modelvault_core::schema::Constraint;
+    use serde_json::json;
     fn ty_to_json(ty: &Type) -> serde_json::Value {
         match ty {
             Type::Bool => json!("bool"),

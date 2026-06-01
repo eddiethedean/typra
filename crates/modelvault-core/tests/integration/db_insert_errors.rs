@@ -127,7 +127,10 @@ fn lazy_header_v4_to_v5_on_first_record_write() {
             .unwrap();
         let bytes = fs::read(&path).unwrap();
         let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
-        assert_eq!(h.format_minor, modelvault_core::file_format::FORMAT_MINOR_V6);
+        assert_eq!(
+            h.format_minor,
+            modelvault_core::file_format::FORMAT_MINOR_V6
+        );
 
         let mut row = BTreeMap::new();
         row.insert("title".into(), RowValue::String("Rust".into()));
@@ -136,7 +139,10 @@ fn lazy_header_v4_to_v5_on_first_record_write() {
     }
     let bytes = fs::read(&path).unwrap();
     let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
-    assert_eq!(h.format_minor, modelvault_core::file_format::FORMAT_MINOR_V6);
+    assert_eq!(
+        h.format_minor,
+        modelvault_core::file_format::FORMAT_MINOR_V6
+    );
 }
 
 #[test]
@@ -146,5 +152,8 @@ fn new_database_starts_at_format_minor_6() {
     let _db = Database::open(&path).unwrap();
     let bytes = fs::read(&path).unwrap();
     let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
-    assert_eq!(h.format_minor, modelvault_core::file_format::FORMAT_MINOR_V6);
+    assert_eq!(
+        h.format_minor,
+        modelvault_core::file_format::FORMAT_MINOR_V6
+    );
 }

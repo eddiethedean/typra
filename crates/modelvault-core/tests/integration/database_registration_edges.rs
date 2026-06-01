@@ -87,10 +87,16 @@ fn schema_version_chain_through_v3_reopens_clean() {
         let mut db = Database::open(&path).unwrap();
         db.register_collection("t", vec![title_field()], "title")
             .unwrap();
-        db.register_schema_version(modelvault_core::schema::CollectionId(1), vec![title_field()])
-            .unwrap();
-        db.register_schema_version(modelvault_core::schema::CollectionId(1), vec![title_field()])
-            .unwrap();
+        db.register_schema_version(
+            modelvault_core::schema::CollectionId(1),
+            vec![title_field()],
+        )
+        .unwrap();
+        db.register_schema_version(
+            modelvault_core::schema::CollectionId(1),
+            vec![title_field()],
+        )
+        .unwrap();
         assert_eq!(
             db.catalog()
                 .get(modelvault_core::schema::CollectionId(1))

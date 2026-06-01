@@ -104,8 +104,8 @@ fn read_json_file(path: &PathBuf) -> Result<String, modelvault_core::DbError> {
 
 fn parse_fields_json(s: &str) -> Result<Vec<modelvault_core::FieldDef>, modelvault_core::DbError> {
     // Accept the same "fields_json" shape as the Python API: list of {"path","type",...}.
-    let v: serde_json::Value =
-        serde_json::from_str(s).map_err(|e| modelvault_core::DbError::Io(std::io::Error::other(e)))?;
+    let v: serde_json::Value = serde_json::from_str(s)
+        .map_err(|e| modelvault_core::DbError::Io(std::io::Error::other(e)))?;
     let arr = v.as_array().ok_or_else(|| {
         modelvault_core::DbError::Io(std::io::Error::other("schema_json must be a JSON array"))
     })?;
@@ -171,7 +171,9 @@ fn parse_fields_json(s: &str) -> Result<Vec<modelvault_core::FieldDef>, modelvau
                                 ))
                             })?;
                             let path_arr = path_v.as_array().ok_or_else(|| {
-                                modelvault_core::DbError::Io(std::io::Error::other("path must be array"))
+                                modelvault_core::DbError::Io(std::io::Error::other(
+                                    "path must be array",
+                                ))
                             })?;
                             let mut segs: Vec<std::borrow::Cow<'static, str>> =
                                 Vec::with_capacity(path_arr.len());
@@ -198,7 +200,9 @@ fn parse_fields_json(s: &str) -> Result<Vec<modelvault_core::FieldDef>, modelvau
                     }
                     if let Some(variants) = m.get("enum") {
                         let arr = variants.as_array().ok_or_else(|| {
-                            modelvault_core::DbError::Io(std::io::Error::other("enum must be array"))
+                            modelvault_core::DbError::Io(std::io::Error::other(
+                                "enum must be array",
+                            ))
                         })?;
                         let mut vs: Vec<String> = Vec::with_capacity(arr.len());
                         for v in arr {
@@ -306,9 +310,11 @@ fn parse_fields_json(s: &str) -> Result<Vec<modelvault_core::FieldDef>, modelvau
     Ok(out)
 }
 
-fn parse_indexes_json(s: &str) -> Result<Vec<modelvault_core::schema::IndexDef>, modelvault_core::DbError> {
-    let v: serde_json::Value =
-        serde_json::from_str(s).map_err(|e| modelvault_core::DbError::Io(std::io::Error::other(e)))?;
+fn parse_indexes_json(
+    s: &str,
+) -> Result<Vec<modelvault_core::schema::IndexDef>, modelvault_core::DbError> {
+    let v: serde_json::Value = serde_json::from_str(s)
+        .map_err(|e| modelvault_core::DbError::Io(std::io::Error::other(e)))?;
     let arr = v.as_array().ok_or_else(|| {
         modelvault_core::DbError::Io(std::io::Error::other("indexes_json must be a JSON array"))
     })?;
@@ -317,14 +323,12 @@ fn parse_indexes_json(s: &str) -> Result<Vec<modelvault_core::schema::IndexDef>,
         let obj = item.as_object().ok_or_else(|| {
             modelvault_core::DbError::Io(std::io::Error::other("index entry must be an object"))
         })?;
-        let name = obj
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| modelvault_core::DbError::Io(std::io::Error::other("index missing name")))?;
-        let kind = obj
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| modelvault_core::DbError::Io(std::io::Error::other("index missing kind")))?;
+        let name = obj.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
+            modelvault_core::DbError::Io(std::io::Error::other("index missing name"))
+        })?;
+        let kind = obj.get("kind").and_then(|v| v.as_str()).ok_or_else(|| {
+            modelvault_core::DbError::Io(std::io::Error::other("index missing kind"))
+        })?;
         let kind = match kind {
             "unique" => modelvault_core::schema::IndexKind::Unique,
             "index" | "non_unique" => modelvault_core::schema::IndexKind::NonUnique,
@@ -334,16 +338,18 @@ fn parse_indexes_json(s: &str) -> Result<Vec<modelvault_core::schema::IndexDef>,
                 )))
             }
         };
-        let path_v = obj
-            .get("path")
-            .ok_or_else(|| modelvault_core::DbError::Io(std::io::Error::other("index missing path")))?;
+        let path_v = obj.get("path").ok_or_else(|| {
+            modelvault_core::DbError::Io(std::io::Error::other("index missing path"))
+        })?;
         let path_arr = path_v.as_array().ok_or_else(|| {
             modelvault_core::DbError::Io(std::io::Error::other("index path must be an array"))
         })?;
         let mut segs: Vec<std::borrow::Cow<'static, str>> = Vec::with_capacity(path_arr.len());
         for seg in path_arr {
             let s = seg.as_str().ok_or_else(|| {
-                modelvault_core::DbError::Io(std::io::Error::other("index path segment must be string"))
+                modelvault_core::DbError::Io(std::io::Error::other(
+                    "index path segment must be string",
+                ))
             })?;
             segs.push(std::borrow::Cow::Owned(s.to_string()));
         }
@@ -647,7 +653,11 @@ fn checkpoint(path: PathBuf) -> Result<(), modelvault_core::DbError> {
     Ok(())
 }
 
-fn compact(path: PathBuf, in_place: bool, to: Option<PathBuf>) -> Result<(), modelvault_core::DbError> {
+fn compact(
+    path: PathBuf,
+    in_place: bool,
+    to: Option<PathBuf>,
+) -> Result<(), modelvault_core::DbError> {
     let mut db = modelvault_core::Database::open(&path)?;
     match (in_place, to) {
         (true, None) => {

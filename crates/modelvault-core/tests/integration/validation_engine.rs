@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 use modelvault_core::error::DbError;
 use modelvault_core::record::RowValue;
 use modelvault_core::schema::{Constraint, FieldDef, FieldPath, Type};
-use modelvault_core::validation::{ensure_pk_type_primitive, validate_top_level_row, validate_value};
+use modelvault_core::validation::{
+    ensure_pk_type_primitive, validate_top_level_row, validate_value,
+};
 
 fn path_seg(s: &str) -> FieldPath {
     FieldPath::new([Cow::Owned(s.to_string())]).unwrap()

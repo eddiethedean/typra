@@ -24,7 +24,11 @@ fn writer_lock_is_released_after_abrupt_child_exit() {
 
 #[test]
 fn _child_open_and_abort() {
-    if std::env::var("MODELVAULT_LOCKING_ABORT_CHILD").ok().as_deref() != Some("1") {
+    if std::env::var("MODELVAULT_LOCKING_ABORT_CHILD")
+        .ok()
+        .as_deref()
+        != Some("1")
+    {
         return;
     }
     let path = std::env::var("MODELVAULT_LOCK_PATH").unwrap();

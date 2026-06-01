@@ -8,11 +8,11 @@
 use std::collections::BTreeMap;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::borrow::Cow;
 use modelvault_core::query::{Predicate, Query};
 use modelvault_core::record::RowValue;
 use modelvault_core::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use modelvault_core::{Database, ScalarValue};
+use std::borrow::Cow;
 
 fn path_field(name: &str, ty: Type) -> FieldDef {
     FieldDef {

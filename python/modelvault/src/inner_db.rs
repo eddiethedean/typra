@@ -174,7 +174,10 @@ impl InnerDb {
         }
     }
 
-    pub(crate) fn query_iter(&self, q: &Query) -> Result<QueryRowIter<'_>, modelvault_core::DbError> {
+    pub(crate) fn query_iter(
+        &self,
+        q: &Query,
+    ) -> Result<QueryRowIter<'_>, modelvault_core::DbError> {
         match self {
             InnerDb::File(d) => d.query_iter(q),
             InnerDb::Mem(d) => d.query_iter(q),

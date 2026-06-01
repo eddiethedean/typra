@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use tempfile::tempdir;
 use modelvault_core::query::{OrderBy, OrderDirection, Predicate, Query};
 use modelvault_core::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use modelvault_core::storage::Store;
 use modelvault_core::{Database, RowValue, ScalarValue};
+use tempfile::tempdir;
 
 fn field(name: &'static str, ty: Type) -> FieldDef {
     FieldDef {

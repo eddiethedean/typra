@@ -3,8 +3,6 @@
 //! - record v2 row-value encode/decode error paths
 //! - record payload v2 decode error paths
 
-use std::borrow::Cow;
-use std::collections::BTreeMap;
 use modelvault_core::error::{DbError, FormatError};
 use modelvault_core::record::{
     decode_record_payload, encode_record_payload_v2, encode_row_value, encode_tagged_scalar,
@@ -12,6 +10,8 @@ use modelvault_core::record::{
 };
 use modelvault_core::schema::{Constraint, FieldDef, FieldPath, Type};
 use modelvault_core::validation::validate_value;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 fn seg(s: &str) -> FieldPath {
     FieldPath::new([Cow::Owned(s.to_string())]).unwrap()

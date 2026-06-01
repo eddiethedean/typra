@@ -2,12 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyBytes, PyDict, PyDictMethods, PyList, PyListMethods};
 use modelvault_core::catalog::CollectionInfo;
 use modelvault_core::record::{RowValue, ScalarValue};
 use modelvault_core::schema::{FieldDef, Type};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::{PyAnyMethods, PyBytes, PyDict, PyDictMethods, PyList, PyListMethods};
 
 /// Build a full row map from a Python `dict` using top-level field names from `col`.
 pub fn row_from_dict(

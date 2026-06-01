@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use std::io::Seek;
-use tempfile::tempdir;
 use modelvault_core::config::{OpenOptions, RecoveryMode};
 use modelvault_core::error::{DbError, FormatError};
 use modelvault_core::schema::{FieldDef, FieldPath, Type};
 use modelvault_core::{Database, RowValue, ScalarValue};
+use std::io::Seek;
+use tempfile::tempdir;
 
 fn field(name: &'static str, ty: Type) -> FieldDef {
     FieldDef {

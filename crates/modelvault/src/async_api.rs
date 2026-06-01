@@ -103,7 +103,13 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
         name: String,
         fields: Vec<modelvault_core::FieldDef>,
         primary_field: String,
-    ) -> Result<(modelvault_core::CollectionId, modelvault_core::SchemaVersion), DbError> {
+    ) -> Result<
+        (
+            modelvault_core::CollectionId,
+            modelvault_core::SchemaVersion,
+        ),
+        DbError,
+    > {
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
             let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;

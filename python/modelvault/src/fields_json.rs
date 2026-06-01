@@ -4,8 +4,8 @@
 
 use std::borrow::Cow;
 
-use serde_json::Value;
 use modelvault_core::schema::{Constraint, FieldDef, FieldPath, IndexDef, IndexKind, Type};
+use serde_json::Value;
 
 /// Parse the `fields_json` string passed to ``Database.register_collection`` into engine [`FieldDef`] values.
 ///
