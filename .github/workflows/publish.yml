@@ -6,6 +6,7 @@ on:
   push:
     tags:
       - "v[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -130,16 +131,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import hashlib, pathlib
-          dist = pathlib.Path('dist')
-          lines = []
-          for p in sorted(dist.glob('modelvault-*')):
-            h = hashlib.sha256(p.read_bytes()).hexdigest()
-            lines.append(f\"{h}  {p.name}\")
-          (dist / 'SHA256SUMS').write_text(\"\\n\".join(lines) + \"\\n\")
-          print((dist / 'SHA256SUMS').read_text())
-          PY
+          cd dist
+          sha256sum modelvault-* | tee SHA256SUMS
 
       - name: Publish to PyPI (twine)
         shell: bash
