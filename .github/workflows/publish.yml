@@ -127,21 +127,15 @@ jobs:
             -i python3.9
           manylinux: "2_17"
 
-      - name: Write SHA256SUMS
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd dist
-          sha256sum modelvault-* > SHA256SUMS
-          cat SHA256SUMS
-
       - name: Publish to PyPI (twine)
         shell: bash
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
+          sha256sum dist/modelvault-* || true
           python -m twine upload --skip-existing dist/modelvault-*.whl dist/modelvault-*.tar.gz
 
   publish-pypi-manylinux-aarch64:
