@@ -1,14 +1,14 @@
 # Quickstart
 
-**Audience:** beginner — get your first model stored in about five minutes.
+**Audience:** beginners — first model stored in about five minutes.
 
-Install, open a database, define a schema, insert a row. Covers **Python** (`modelvault.models`) and a **minimal Rust** registration example.
+This guide walks through install, open a database, define a schema, and read a row back. It mirrors the [project README](https://github.com/eddiethedean/modelvault/blob/main/README.md) examples so you can trust the same mental model everywhere.
 
-!!! tip "New here?"
-    Read [Why ModelVault](why_modelvault.md) for positioning, or [Comparisons](../comparisons/index.md) vs SQLite and JSON. Prefer Pydantic? See the [Pydantic guide](pydantic.md).
+!!! tip "Evaluating ModelVault?"
+    Read [Why ModelVault](why_modelvault.md) for positioning and the [comparison matrix](../comparisons/index.md) vs SQLite, JSON, and TinyDB.
 
-!!! tip "Already know embedded DBs?"
-    ModelVault is **schema-first**: you declare types and constraints up front; invalid writes fail at the boundary. See [Core concepts](concepts.md) for the full picture.
+!!! tip "Already use embedded databases?"
+    ModelVault is **schema-first**: types and constraints are declared before writes; the engine rejects invalid data at the boundary. See [Core concepts](concepts.md) for the full model.
 
 ## Install
 
@@ -29,52 +29,9 @@ Install, open a database, define a schema, insert a row. Covers **Python** (`mod
     modelvault = "0.14"
     ```
 
-## Rust: open and register a collection
+## Python: models, insert, get (recommended) {#python-models-insert-get}
 
-In-memory (no file left behind). For on-disk, use `Database::open("my.modelvault")?`.
-
-```rust
-use std::borrow::Cow;
-
-use modelvault::prelude::*;
-use modelvault::schema::FieldPath;
-use modelvault::FieldDef;
-use modelvault::Type;
-
-fn main() -> Result<(), DbError> {
-    let mut db = Database::open_in_memory()?;
-    println!("opened: {}", db.path().display());
-
-    let (id, ver) = db.register_collection(
-        "books",
-        vec![FieldDef {
-            path: FieldPath::new([Cow::Borrowed("title")])?,
-            ty: Type::String,
-            constraints: vec![],
-        }],
-        "title",
-    )?;
-    println!("registered collection id={} version={}", id.0, ver.0);
-    Ok(())
-}
-```
-
-### Run it (from this repo)
-
-```bash
-cargo run -q -p modelvault --example open
-```
-
-Output:
-
-```text
-opened: :memory:
-registered collection id=1 version=1
-```
-
-## Python: models, insert, get
-
-Recommended path: define a **dataclass** (or Pydantic model) and use **`modelvault.models.collection`**.
+The recommended path is a **dataclass** or **Pydantic** model plus **`modelvault.models.collection`**—your class is the schema.
 
 ```python
 # Setup: class-defined schema + in-memory DB.
@@ -121,19 +78,66 @@ get: Book(title='Hello', year=2020, rating=4.5)
 modelvault 0.14.0
 ```
 
-On disk, swap `open_in_memory()` for `Database.open("app.modelvault")`.
+For a durable file, use `Database.open("app.modelvault")` instead of `open_in_memory()`. Pydantic follows the same pattern—see the [Pydantic guide](pydantic.md).
 
-## What’s in 1.0
+## Rust: open and register a collection
 
-- Persisted **schema catalog**, **validation**, **indexes**, **queries** (including ranges and `order_by`)
-- **Transactions**, **migrations**, **compaction**, **checkpoints**
-- **Multi-segment nested field paths** (record payload v3)
-- Read-only **DB-API** (`modelvault.dbapi`) with a minimal `SELECT` subset
+Use the **`modelvault`** facade crate. This example is in-memory; for on-disk storage, use `Database::open("my.modelvault")?`.
 
-!!! info "Roadmap"
-    Full SQL and SQLAlchemy are planned post-1.0. See the [roadmap on GitHub](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md).
+```rust
+use std::borrow::Cow;
 
-## Contracts & matrices
+use modelvault::prelude::*;
+use modelvault::schema::FieldPath;
+use modelvault::FieldDef;
+use modelvault::Type;
+
+fn main() -> Result<(), DbError> {
+    let mut db = Database::open_in_memory()?;
+    println!("opened: {}", db.path().display());
+
+    let (id, ver) = db.register_collection(
+        "books",
+        vec![FieldDef {
+            path: FieldPath::new([Cow::Borrowed("title")])?,
+            ty: Type::String,
+            constraints: vec![],
+        }],
+        "title",
+    )?;
+    println!("registered collection id={} version={}", id.0, ver.0);
+    Ok(())
+}
+```
+
+### Run it (from this repo)
+
+```bash
+cargo run -q -p modelvault --example open
+```
+
+Output:
+
+```text
+opened: :memory:
+registered collection id=1 version=1
+```
+
+## What the current release includes
+
+| Capability | Notes |
+|------------|-------|
+| **Schema catalog** | Versioned collections, fields, constraints, indexes |
+| **Validation on write** | Types and engine constraints before append |
+| **Queries** | Equality, ranges, `AND`/`OR`, `order_by`, `limit` |
+| **Durability** | Transactions, checkpoints, compaction, recovery modes |
+| **Nested paths** | Multi-segment fields (e.g. `profile.timezone`) end-to-end |
+| **DB-API (read-only)** | Experimental `modelvault.dbapi` with a minimal `SELECT` subset |
+
+!!! info "SQL and SQLAlchemy"
+    ModelVault is **model-first**. Full ISO SQL and SQLAlchemy are planned post–current milestone. See the [roadmap on GitHub](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md).
+
+## Reference material
 
 - [Compatibility & recovery](../reference/compatibility.md)
 - [Types, constraints, indexes, queries](../reference/types.md)
@@ -149,7 +153,7 @@ On disk, swap `open_in_memory()` for `Database.open("app.modelvault")`.
 | Class schemas & projections | [Models & collections](models_and_collections.md) |
 | Disk vs memory | [Storage modes](storage_modes.md) |
 | Compare alternatives | [Comparisons](../comparisons/index.md) |
-| Design specs | [Specifications](../specs/index.md) |
+| Engine design | [Specifications](../specs/index.md) |
 
 ## Contributors
 
@@ -161,4 +165,4 @@ python3 -m venv .venv
 make check-full
 ```
 
-Runs Rust + Python checks, tests, and **`verify-doc-examples`** (stdout from snippets on this page, the root README, and the Python guide must match documented output).
+This runs Rust and Python checks, tests, and **`verify-doc-examples`** (stdout from snippets on this page, the root README, and selected guides must match documented output).

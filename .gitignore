@@ -34,4 +34,4 @@
 
 # ModelVault writer locks (examples, tests, local DBs)
 *.modelvault.writer.lock
-*.typra.writer.lock
+*.writer.lock

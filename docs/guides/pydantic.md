@@ -1,14 +1,16 @@
 # Pydantic and ModelVault
 
-**Goal:** ModelVault should feel like a natural extension of Pydantic — your models are your database schema.
+**Audience:** Python developers who already model domain data with Pydantic v2.
+
+ModelVault is **the database for application models**. If your FastAPI handlers and services already speak Pydantic, storage should not force a second schema in SQL or untyped JSON. This guide shows how to make **your `BaseModel` the source of truth** for what may be persisted.
 
 ## Problem
 
-You already define API and domain types with Pydantic. Duplicating that shape in SQL or JSON schema is error-prone.
+You define request bodies, settings, and domain objects with Pydantic. Copying that shape into SQL migrations, ORM models, or `data.json` invites drift—especially as fields and constraints evolve.
 
 ## Solution
 
-Add ModelVault markers to your `BaseModel` and use `modelvault.models.collection`:
+Add ModelVault markers to your `BaseModel` and open a typed collection with `modelvault.models.collection`:
 
 ```python
 from pydantic import BaseModel, Field

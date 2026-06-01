@@ -1,19 +1,21 @@
 # FastAPI and ModelVault
 
-**Goal:** make ModelVault the easiest database for **small FastAPI services** that should not require PostgreSQL for early deployments.
+**Audience:** developers building FastAPI services with Pydantic models.
+
+ModelVault is **the database for application models**—a natural fit when your API layer already uses Pydantic. You can persist the same types you validate on the wire, without standing up PostgreSQL for prototypes and small deployments.
 
 ## Problem
 
-You want:
+Typical FastAPI projects need:
 
-- Pydantic models for request/response bodies
-- Persistent storage on disk
-- No migration framework boilerplate for simple CRUD
-- Easy testing with an in-memory database
+- Pydantic models for request and response bodies
+- Durable storage on disk for domain data
+- Straightforward CRUD without heavy migration tooling
+- Fast tests via an in-memory database
 
 ## Solution
 
-Use a **single ModelVault file** per environment and inject a `Database` (or typed collections) via FastAPI dependencies.
+Use **one ModelVault file per environment** and inject a `Database` (or typed `modelvault.models` collections) through FastAPI dependencies. Request handlers stay thin; storage enforces types and constraints on write.
 
 ### Application setup
 

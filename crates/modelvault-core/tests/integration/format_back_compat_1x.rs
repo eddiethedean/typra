@@ -181,7 +181,7 @@ fn one_x_append_to_1_0_file_preserves_existing_rows() {
 
 #[test]
 fn committed_1_0_fixture_opens_and_matches_live_encoder() {
-    let fixture_path = fixture_dir().join("legacy_1_0_minor6.typra");
+    let fixture_path = fixture_dir().join("legacy_1_0_minor6.modelvault");
     assert!(
         fixture_path.is_file(),
         "missing {}; run scripts/generate-format-fixtures.sh from repo root",
@@ -226,7 +226,7 @@ fn committed_1_0_fixture_opens_and_matches_live_encoder() {
 #[ignore = "run via scripts/generate-format-fixtures.sh"]
 fn export_format_fixtures() {
     fs::create_dir_all(fixture_dir()).expect("mkdir fixtures");
-    let path = fixture_dir().join("legacy_1_0_minor6.typra");
+    let path = fixture_dir().join("legacy_1_0_minor6.modelvault");
     let _ = fs::remove_file(&path);
     let lock = PathBuf::from(format!("{}.writer.lock", path.display()));
     let _ = fs::remove_file(&lock);

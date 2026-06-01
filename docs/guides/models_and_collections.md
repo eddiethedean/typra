@@ -1,8 +1,10 @@
 # Models & collections
 
-**Store application models directly** — how dataclasses, Pydantic classes, and Rust structs map to ModelVault collections: naming, registration, compatibility, and **subset models** (read projections).
+**Audience:** developers using the model-first API in Python or Rust.
 
-For a first model, see [Pydantic](pydantic.md) or [Quickstart](quickstart.md). For a full app shape, see [Examples](../examples/index.md).
+This is the core ergonomics story for ModelVault: **your class or struct is the schema**. This guide covers how dataclasses, Pydantic models, and Rust types map to collections—naming, registration, compatibility checks, and **subset models** for read projections.
+
+New here? Start with [Why ModelVault](why_modelvault.md) or [Quickstart](quickstart.md). Full apps: [Examples](../examples/index.md).
 
 ## What ships in 1.0
 

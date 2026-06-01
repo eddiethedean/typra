@@ -34,15 +34,20 @@ DOC_PATHS=(
   crates/modelvault-core/README.md
   crates/modelvault-derive/README.md
 )
-DOC_EXCLUDE=(--exclude=MODELVAULT_REBRAND_PLAN.md)
-
 for pat in "${STALE_PATTERNS[@]}"; do
-  if grep -R --line-number -E "$pat" "${DOC_EXCLUDE[@]}" "${DOC_PATHS[@]}" >/dev/null 2>&1; then
+  if grep -R --line-number -E "$pat" "${DOC_PATHS[@]}" >/dev/null 2>&1; then
     echo "Found stale doc pattern: $pat" >&2
-    grep -R --line-number -E "$pat" "${DOC_EXCLUDE[@]}" "${DOC_PATHS[@]}" >&2 || true
+    grep -R --line-number -E "$pat" "${DOC_PATHS[@]}" >&2 || true
     exit 1
   fi
 done
+
+# No legacy product name in tracked sources (except guard patterns in this script).
+if git grep -ni typra -- . ':(exclude)scripts/docs-lint.sh' >/dev/null 2>&1; then
+  echo "Found legacy 'typra' reference in tracked files:" >&2
+  git grep -ni typra -- . ':(exclude)scripts/docs-lint.sh' >&2 || true
+  exit 1
+fi
 
 echo "docs-lint: OK"
 

@@ -1,5 +1,5 @@
 site_name: ModelVault
-site_description: The database for application models — SQLite simplicity with real types
+site_description: Schema-first embedded database for application models — validation, indexes, migrations, single-file deployment in Python and Rust
 site_url: https://modelvault.readthedocs.io/
 repo_url: https://github.com/eddiethedean/modelvault
 repo_name: eddiethedean/modelvault
@@ -68,6 +68,19 @@ plugins:
   - search
 
 exclude_docs: |
+  01_full_architecture_spec.md
+  02_on_disk_file_format.md
+  03_rust_crate_and_module_layout.md
+  04_schema_dsl_spec.md
+  05_query_planner_and_execution_spec.md
+  06_record_encoding_v1.md
+  07_record_encoding_v2.md
+  typed_embedded_db_spec.md
+  contributing.md
+  MODELVAULT_DOCUMENTATION_POSITIONING_MASTER_PLAN.md
+
+# Internal / duplicate specs — not listed in nav (see exclude_docs).
+not_in_nav: |
   01_full_architecture_spec.md
   02_on_disk_file_format.md
   03_rust_crate_and_module_layout.md

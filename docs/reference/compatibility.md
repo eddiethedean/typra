@@ -12,7 +12,7 @@ New to ModelVault? Start with [Why ModelVault](../guides/why_modelvault.md) and 
 |------|---------|
 | **Package / crate version** | SemVer on [crates.io](https://crates.io/crates/modelvault) and [PyPI](https://pypi.org/project/modelvault/) (e.g. **`0.14.0`** today). |
 | **Product milestone** | Docs and marketing refer to the **1.0** feature set (stable engine, `modelvault.models`, format-compat pledge below). |
-| **Pre-rebrand files** | Same `TDB0` on-disk layout as today; the legacy file suffix is still supported — see the [rebrand plan on GitHub](https://github.com/eddiethedean/modelvault/blob/main/docs/MODELVAULT_REBRAND_PLAN.md). |
+| **Pre-rebrand files** | Same `TDB0` on-disk layout as today; databases created before the 0.14.0 package rename open without conversion (any prior file extension). |
 
 ## 1.x on-disk backwards compatibility pledge
 

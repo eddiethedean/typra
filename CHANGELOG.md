@@ -13,18 +13,18 @@ _Nothing yet._
 
 ### Changed
 
-- **Rebrand:** Typra is now **ModelVault** — crates `modelvault`, `modelvault-core`, `modelvault-derive`, `modelvault-cli`; Python package `modelvault`; CLI binary `modelvault`.
-- **File extension:** default `.modelvault` (on-disk format and `TDB0` magic unchanged; Typra 1.x files remain readable).
-- **Python model hooks:** `__modelvault_primary_key__`, `__modelvault_indexes__`, etc. (replace `__typra_*__`).
+- **Package rename:** published as **ModelVault** — crates `modelvault`, `modelvault-core`, `modelvault-derive`, `modelvault-cli`; Python package `modelvault`; CLI binary `modelvault`.
+- **File extension:** default `.modelvault` (on-disk format and `TDB0` magic unchanged; legacy 1.x database files remain readable).
+- **Python model hooks:** `__modelvault_primary_key__`, `__modelvault_indexes__`, etc. (replace legacy double-underscore model attribute hooks from the prior release line).
 - **Exceptions:** `ModelVaultFormatError`, `ModelVaultSchemaError`, `ModelVaultValidationError`, `ModelVaultQueryError`, `ModelVaultTransactionError`.
 
 ### Notes
 
-- **Upgrading from Typra 1.x:** change imports and dependency names; existing database files open without conversion. See [`docs/MODELVAULT_REBRAND_PLAN.md`](docs/MODELVAULT_REBRAND_PLAN.md).
+- **Upgrading from the prior 1.x package name:** change imports and dependency names; existing database files open without conversion. See [Compatibility](docs/reference/compatibility.md#versioning-package-vs-product).
 
 ## [1.0.0] - 2026-05-31
 
-First **stable 1.x** product release (shipped on crates.io/PyPI as **Typra** `1.0.x`, later rebranded to **ModelVault** `0.14.x`): semver + on-disk compatibility policy, production-oriented operations, and **`modelvault.models`** as the primary Python API.
+First **stable 1.x** product release (published on crates.io/PyPI under the previous package name at `1.0.x`, rebranded to **ModelVault** `0.14.x`): semver + on-disk compatibility policy, production-oriented operations, and **`modelvault.models`** as the primary Python API.
 
 ### Added
 

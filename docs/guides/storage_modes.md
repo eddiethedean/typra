@@ -1,8 +1,10 @@
 # Storage modes
 
-**Deploy as a single file** (or run in memory for tests) — SQLite-like ergonomics with model-first typing and validation. This page explains **on-disk**, **in-memory**, and the planned **hybrid/streaming** modes.
+**Audience:** developers choosing how ModelVault persists data.
 
-Positioning: [Why ModelVault](why_modelvault.md) · Comparisons: [vs JSON files](../comparisons/json.md)
+ModelVault is an **embedded** database: you open it inside your process as either a **durable file** or an **in-memory** image. There is no separate server to configure. This page covers on-disk deployment (the default), in-memory testing, and the planned hybrid/streaming mode for very large queries.
+
+Background: [Why ModelVault](why_modelvault.md) · [vs JSON files](../comparisons/json.md)
 
 ## Current status (1.0)
 

@@ -1,12 +1,14 @@
 # Python guide
 
-Build with the **`modelvault`** PyPI package: store **dataclasses and Pydantic models** with validation, indexes, and single-file deployment.
+**Audience:** application developers using the `modelvault` package on PyPI.
 
-!!! tip "Start here"
-    New to ModelVault? Read [Why ModelVault](why_modelvault.md) and the [Pydantic guide](pydantic.md). Building an API? See [FastAPI](fastapi.md). Runnable samples: [Examples](../examples/index.md).
+ModelVault is **the database for application models**: store **dataclasses** and **Pydantic v2 models** with engine-level validation, secondary indexes, schema evolution, and single-file deployment—without maintaining a parallel SQL schema.
 
-!!! tip "Recommended path"
-    Prefer **`modelvault.models`** with dataclasses or Pydantic over hand-written `fields_json`. See [Models & collections](models_and_collections.md).
+!!! tip "New to ModelVault?"
+    Read [Why ModelVault](why_modelvault.md) for the same positioning as the [README](https://github.com/eddiethedean/modelvault/blob/main/README.md), then [Quickstart](quickstart.md). Building an API? See [FastAPI](fastapi.md). Runnable apps: [Examples](../examples/index.md).
+
+!!! tip "Recommended API"
+    Prefer **`modelvault.models.collection`** over hand-written `fields_json` unless you need dynamic schemas. Details: [Models & collections](models_and_collections.md).
 
 | Resource | Link |
 |----------|------|

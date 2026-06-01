@@ -110,7 +110,7 @@ docs-check: docs-install
 	@NO_MKDOCS_2_WARNING=1 $(PYTHON) -m mkdocs build --strict 2>&1 | tee /tmp/modelvault-mkdocs-build.log; \
 	status=$$?; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if grep -qE 'WARNING|excluded from the built site' /tmp/modelvault-mkdocs-build.log; then \
+	if grep -qE 'WARNING|excluded from the built site|not included in the .nav. configuration' /tmp/modelvault-mkdocs-build.log; then \
 	  echo "mkdocs build produced warnings (see above)" >&2; \
 	  exit 1; \
 	fi
