@@ -86,7 +86,7 @@ jobs:
           else
             VENV_PY="$(pwd)/.venv/bin/python"
           fi
-          "$VENV_PY" -m pip install -U pip "maturin>=1.5,<2" "pytest>=8"
+          "$VENV_PY" -m pip install -U pip "maturin>=1.5,<2" "pytest>=8" "pytest-asyncio>=0.24"
           cd python/modelvault
           "$VENV_PY" -m maturin develop --release
           "$VENV_PY" -m pytest -v

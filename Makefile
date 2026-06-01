@@ -47,7 +47,7 @@ venv:
 	@$(PYTHON) -m pip -q install -U pip >/dev/null
 
 install-tools: venv
-	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-cov>=5" "pydantic>=2" >/dev/null
+	@$(PYTHON) -m pip -q install -U "ruff>=0.8" "ty>=0.0.28" "maturin>=1.5,<2" "pytest>=8" "pytest-asyncio>=0.24" "pytest-cov>=5" "pydantic>=2" >/dev/null
 
 check-full: check-python check-rust test verify-doc-examples examples-smoke docs-lint docs-check
 
