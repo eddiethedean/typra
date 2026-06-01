@@ -4,7 +4,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! modelvault = "0.8"
+//! modelvault = "0.15"
 //! ```
 //!
 //! Use [`prelude`] for common imports. For full control over dependencies, depend on the

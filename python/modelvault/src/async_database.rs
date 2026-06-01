@@ -10,7 +10,9 @@ use pyo3::types::{PyBytes, PyDict};
 use crate::async_query::AsyncCollection;
 use crate::async_util::{future_into_blocking, future_into_gil_then_blocking, SharedInner};
 use crate::database::schema_change_to_str;
-use crate::db_handle::{collection_info, lock_inner_read, lock_inner_write, DbHandle};
+use crate::db_handle::{
+    collection_info, finish_transaction, lock_inner_read, lock_inner_write, DbHandle,
+};
 use crate::errors::db_error_to_py;
 use crate::fields_json;
 use crate::inner_db::InnerDb;
@@ -58,13 +60,13 @@ impl AsyncTransaction {
         };
         let had_exc = exc_type.is_some();
         future_into_blocking(py, move || {
-            let mut g = lock_inner_write(inner.as_ref())?;
-            if had_exc {
-                g.rollback_transaction();
-            } else {
-                g.commit_transaction().map_err(db_error_to_py)?;
-            }
-            inner.txn_exit();
+            let txn_active = inner.txn_depth_active();
+            let finish_result = match lock_inner_write(inner.as_ref()) {
+                Ok(mut g) => finish_transaction(&mut g, had_exc).map_err(db_error_to_py),
+                Err(e) => Err(e),
+            };
+            inner.txn_exit_if_active(txn_active);
+            finish_result?;
             Ok(false)
         })
     }

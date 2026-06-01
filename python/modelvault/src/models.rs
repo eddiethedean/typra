@@ -1332,12 +1332,20 @@ impl AsyncModelCollection {
 #[pymethods]
 impl AsyncModelQuery {
     fn select(&self, py: Python<'_>, fields: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let qb = self.inner.bind(py).call_method1("select", (fields,))?;
+        let fields = if let Ok(list) = fields.cast::<PyList>() {
+            let out = PyList::empty(py);
+            for item in list.iter() {
+                out.append(path_any_to_py(py, &item)?)?;
+            }
+            out.into_any().unbind()
+        } else {
+            path_any_to_py(py, fields)?.unbind()
+        };
         Ok(Self {
-            inner: qb.extract::<Py<AsyncQueryBuilder>>()?,
+            inner: self.inner.clone_ref(py),
             model_cls: self.model_cls.clone_ref(py),
             is_pydantic: self.is_pydantic,
-            selected_fields: Some(fields.clone().unbind()),
+            selected_fields: Some(fields),
         })
     }
 

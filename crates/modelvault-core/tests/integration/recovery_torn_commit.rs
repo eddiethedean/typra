@@ -80,3 +80,74 @@ fn strict_rejects_trailing_garbage_and_autotruncate_recovers() {
     let got = db.get(cid, &ScalarValue::String("k1".to_string())).unwrap();
     assert!(got.is_some());
 }
+
+#[test]
+fn autotruncate_recovers_from_orphan_txn_commit() {
+    use modelvault_core::segments::header::{SegmentHeader, SegmentType};
+    use modelvault_core::segments::writer::SegmentWriter;
+    use modelvault_core::storage::{FileStore, Store};
+    use modelvault_core::txn::encode_txn_payload_v0;
+    use std::fs::OpenOptions as FsOpenOptions;
+
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("orphan.modelvault");
+
+    {
+        let mut db = Database::open(&path).unwrap();
+        let fields = vec![field("id", Type::String), field("v", Type::Int64)];
+        let (cid, _) = db.register_collection("t", fields, "id").unwrap();
+        db.transaction(|tdb| {
+            let mut row = BTreeMap::new();
+            row.insert("id".to_string(), RowValue::String("k1".to_string()));
+            row.insert("v".to_string(), RowValue::Int64(1));
+            tdb.insert(cid, row)?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    let len_before = std::fs::metadata(&path).unwrap().len();
+    {
+        let file = FsOpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut store = FileStore::new(file);
+        let len = store.len().unwrap();
+        let mut w = SegmentWriter::new(&mut store, len);
+        let payload = encode_txn_payload_v0(99);
+        w.append(
+            SegmentHeader {
+                segment_type: SegmentType::TxnCommit,
+                payload_len: 0,
+                payload_crc32c: 0,
+            },
+            &payload,
+        )
+        .unwrap();
+        store.sync().unwrap();
+    }
+    assert!(std::fs::metadata(&path).unwrap().len() > len_before);
+
+    let strict = Database::open_with_options(
+        &path,
+        OpenOptions {
+            recovery: RecoveryMode::Strict,
+            ..OpenOptions::default()
+        },
+    );
+    assert!(strict.is_err());
+
+    let db = Database::open_with_options(
+        &path,
+        OpenOptions {
+            recovery: RecoveryMode::AutoTruncate,
+            ..OpenOptions::default()
+        },
+    )
+    .unwrap();
+    let cid = db.collection_id_named("t").unwrap();
+    let got = db.get(cid, &ScalarValue::String("k1".to_string())).unwrap();
+    assert!(got.is_some());
+}

@@ -40,6 +40,36 @@ impl DbHandle {
         debug_assert!(self.txn_depth.load(Ordering::Acquire) > 0);
         self.txn_depth.fetch_sub(1, Ordering::Release);
     }
+
+    pub(crate) fn txn_depth_active(&self) -> bool {
+        self.txn_depth.load(Ordering::Acquire) > 0
+    }
+
+    /// Decrement txn depth when [`Self::txn_enter`] ran and exit did not run yet.
+    pub(crate) fn txn_exit_if_active(&self, active: bool) {
+        if active {
+            self.txn_exit();
+        }
+    }
+}
+
+/// Finish a transaction: rollback on Python exception; on commit failure rollback then propagate.
+pub(crate) fn finish_transaction(
+    db: &mut InnerDb,
+    had_exception: bool,
+) -> Result<(), modelvault_core::DbError> {
+    if had_exception {
+        db.rollback_transaction();
+        Ok(())
+    } else {
+        match db.commit_transaction() {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                db.rollback_transaction();
+                Err(e)
+            }
+        }
+    }
 }
 
 pub(crate) type SharedDbHandle = Arc<DbHandle>;

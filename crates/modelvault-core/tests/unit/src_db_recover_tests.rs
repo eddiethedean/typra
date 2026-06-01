@@ -72,8 +72,9 @@
                 &pc,
             )
             .unwrap();
-        let err = truncate_end_for_recovery(&mut store2, 0, FORMAT_MINOR_V6).unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        let (safe_end, reason) = truncate_end_for_recovery(&mut store2, 0, FORMAT_MINOR_V6).unwrap();
+        assert_eq!(safe_end, 0);
+        assert_eq!(reason, Some("orphan_txn_commit"));
 
         // Commit id mismatch.
         let mut store3 = VecStore::new();

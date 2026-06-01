@@ -56,3 +56,33 @@ async def test_async_gather_gets_return_correct_rows() -> None:
 
     gathered = await asyncio.gather(*(one_get(k) for k in keys))
     assert gathered == list(range(200))
+
+
+def test_concurrent_reads_after_transaction_rollback(tmp_path) -> None:
+    """Rollback on exit must release txn_depth so reads use the shared lock again."""
+    path = tmp_path / "rollback.modelvault"
+    db = modelvault.Database.open(str(path))
+    db.register_collection(
+        "items",
+        '[{"path": ["id"], "type": "string"}, {"path": ["n"], "type": "int64"}]',
+        "id",
+    )
+    for i in range(50):
+        db.insert("items", {"id": f"k{i}", "n": i})
+
+    with pytest.raises(RuntimeError, match="abort"):
+        with db.transaction():
+            db.insert("items", {"id": "gone", "n": 99})
+            raise RuntimeError("abort")
+
+    keys = [f"k{i}" for i in range(50)]
+
+    def one_get(k: str) -> int:
+        row = db.get("items", k)
+        assert row is not None
+        return row["n"]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(one_get, keys))
+    assert results == list(range(50))
+    assert db.get("items", "gone") is None

@@ -221,17 +221,10 @@ impl<'a> Iterator for QueryRowIter<'a> {
                     Some(Ok(out))
                 }
             }
-            QueryRowIterState::Source { latest, source } => loop {
-                let rk = source.next_key()?;
-                match rk {
-                    Err(e) => return Some(Err(e)),
-                    Ok((cid, pk_key)) => {
-                        if let Some(row) = latest.get(&(cid.0, pk_key)).cloned() {
-                            return Some(Ok(row));
-                        }
-                        continue;
-                    }
-                }
+            QueryRowIterState::Source { latest, source } => match source.next_key() {
+                None => None,
+                Some(Err(e)) => Some(Err(e)),
+                Some(Ok((cid, pk_key))) => Some(row_for_index_pk(latest, cid.0, pk_key, "")),
             },
         }
     }

@@ -4,7 +4,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
-use crate::db_handle::{collection_info, lock_inner_read, lock_inner_write, DbHandle};
+use crate::db_handle::{
+    collection_info, finish_transaction, lock_inner_read, lock_inner_write, DbHandle,
+};
 use crate::errors::db_error_to_py;
 use crate::fields_json;
 use crate::inner_db::InnerDb;
@@ -57,16 +59,14 @@ impl PyTransaction {
         _exc_value: Option<&Bound<'_, PyAny>>,
         _traceback: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<bool> {
-        {
-            let db = self.db.bind(py).borrow();
-            let mut g = lock_inner_write(&db.inner)?;
-            if exc_type.is_none() {
-                g.commit_transaction().map_err(db_error_to_py)?;
-            } else {
-                g.rollback_transaction();
-            }
-            db.inner.txn_exit();
-        }
+        let db = self.db.bind(py).borrow();
+        let txn_active = db.inner.txn_depth_active();
+        let finish_result = match lock_inner_write(&db.inner) {
+            Ok(mut g) => finish_transaction(&mut g, exc_type.is_some()).map_err(db_error_to_py),
+            Err(e) => Err(e),
+        };
+        db.inner.txn_exit_if_active(txn_active);
+        finish_result?;
         Ok(false)
     }
 }

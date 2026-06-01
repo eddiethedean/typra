@@ -62,3 +62,23 @@ async def test_async_model_collection_roundtrip() -> None:
     rows = await books.where(Book.title, "Myth").all()
     assert len(rows) == 1
     assert rows[0].year == 1
+
+
+@dataclass
+class User:
+    __modelvault_collection__ = "users"
+    __modelvault_primary_key__ = "id"
+
+    id: int
+    name: str
+
+
+@pytest.mark.asyncio
+async def test_async_model_query_select() -> None:
+    db = await modelvault.AsyncDatabase.open_in_memory()
+    users = modelvault.models.async_collection(db, User)
+    await users.insert(User(id=1, name="Ada"))
+    rows = await users.where("id", 1).select(["id", "name"]).all()
+    assert len(rows) == 1
+    assert rows[0].id == 1
+    assert rows[0].name == "Ada"

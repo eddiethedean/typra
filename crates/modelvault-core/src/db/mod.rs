@@ -105,11 +105,7 @@ fn plan_insert_row(
 
     // `pk_cell` is already present (validated above), so remove must succeed.
     let pk_val = row.remove(pk_name).unwrap();
-    // PK type and value were validated as a primitive scalar.
-    let pk_scalar = pk_val
-        .clone()
-        .into_scalar()
-        .expect("validated primary key must be scalar");
+    let pk_scalar = pk_val.clone().into_scalar()?;
 
     // Build non-PK values in schema order.
     // - legacy v2: single-segment top-level field defs
@@ -131,8 +127,7 @@ fn plan_insert_row(
             &pk_scalar,
             pk_ty,
             &non_pk,
-        )
-        .expect("record payload encoding must succeed after validation")
+        )?
     } else {
         encode_record_payload_v2(
             collection_id.0,
@@ -140,8 +135,7 @@ fn plan_insert_row(
             &pk_scalar,
             pk_ty,
             &non_pk,
-        )
-        .expect("record payload encoding must succeed after validation")
+        )?
     };
 
     let mut full_map: BTreeMap<String, RowValue> = BTreeMap::new();

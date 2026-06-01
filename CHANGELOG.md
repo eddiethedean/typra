@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Python transactions**: `txn_exit` always runs on context-manager exit; failed commits roll back staging before releasing the read/write lock (fixes stuck exclusive mode after commit errors).
+- **`AsyncModelQuery.select`**: field projection matches sync `ModelQuery.select` (no longer calls a missing `AsyncQueryBuilder.select`).
+- **`plan_insert_row`**: record encode and PK scalar conversion propagate `DbError` instead of panicking via `expect`.
+- **`query_iter`**: stale index keys return `IndexRowMissing` like `query`, instead of being skipped silently.
+- **Recovery (`AutoTruncate`)**: orphan `TxnCommit` segments (no matching `TxnBegin`) are truncated at open so salvageable prefix data remains readable.
 
 ## [0.15.0] - 2026-06-02
 

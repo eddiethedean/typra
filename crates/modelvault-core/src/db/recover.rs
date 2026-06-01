@@ -97,9 +97,7 @@ pub(crate) fn truncate_end_for_recovery(
                 let payload = read_segment_payload(store, meta)?;
                 let id = decode_txn_payload_v0(&payload)?;
                 let Some(pt) = pending_txn_id else {
-                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
-                        message: "TxnCommit outside transaction".into(),
-                    }));
+                    return Ok((meta.offset, Some("orphan_txn_commit")));
                 };
                 if id != pt {
                     return Err(DbError::Format(FormatError::InvalidTxnPayload {

@@ -126,7 +126,7 @@ impl RowSource for OneMissingThenEnd {
 }
 
 #[test]
-fn query_row_iter_source_skips_missing_rows_until_source_exhausted() {
+fn query_row_iter_source_errors_on_missing_row() {
     let latest = LatestMap::default();
     let mut it = super::QueryRowIter {
         state: super::QueryRowIterState::Source {
@@ -138,6 +138,11 @@ fn query_row_iter_source_skips_missing_rows_until_source_exhausted() {
             }),
         },
     };
+    let err = it.next().unwrap().unwrap_err();
+    assert!(matches!(
+        err,
+        DbError::Schema(crate::SchemaError::IndexRowMissing { .. })
+    ));
     assert!(it.next().is_none());
 }
 
