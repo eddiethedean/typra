@@ -5,7 +5,9 @@ import pytest
 import modelvault
 
 
-def test_open_garbage_file_raises_modelvault_format_error(tmp_path: pathlib.Path) -> None:
+def test_open_garbage_file_raises_modelvault_format_error(
+    tmp_path: pathlib.Path,
+) -> None:
     p = tmp_path / "bad.modelvault"
     p.write_bytes(b"this is not a modelvault file")
     with pytest.raises(modelvault.ModelVaultFormatError) as e:
@@ -52,7 +54,9 @@ def test_nested_transaction_raises_modelvault_transaction_error(
         assert isinstance(e.value, RuntimeError)
 
 
-def test_dbapi_parse_error_raises_modelvault_query_error(tmp_path: pathlib.Path) -> None:
+def test_dbapi_parse_error_raises_modelvault_query_error(
+    tmp_path: pathlib.Path,
+) -> None:
     # parse_select runs before any DB access; this isolates the error mapping behavior.
     p = tmp_path / "t.modelvault"
     modelvault.Database.open(str(p))
