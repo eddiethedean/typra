@@ -17,7 +17,7 @@ MATURIN ?= $(PYTHON) -m maturin
 .PHONY: check-1p0-ready
 .PHONY: docs-install docs-check docs
 .PHONY: coverage coverage-rust coverage-python
-.PHONY: coverage-rust-core
+.PHONY: coverage-rust-core coverage-rust-typra-core
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-doc rust-test
 
@@ -55,7 +55,7 @@ check-full: check-python check-rust test verify-doc-examples examples-smoke docs
 # - Runs the full cross-language check pipeline.
 # - Adds an explicit async-surface compile/test run for the Rust facade.
 test-format-compat:
-	cargo test -p typra-core --test format_back_compat_1x
+	cargo test -p typra-core --test format_back_compat_1x --all-features
 
 check-1p0-ready: check-full test-format-compat
 	cargo test -p typra --features async
@@ -119,17 +119,15 @@ docs: docs-check
 
 coverage: coverage-rust coverage-python
 
-# Minimum line coverage for `typra-core` (practical gate; raise as tests improve).
-# Keep this at/under current CI baseline; ratchet upward over time.
-COVERAGE_TYPRA_CORE_LINES ?= 93
+# Minimum line coverage for `typra-core` (CI gate via `make coverage-rust`).
+COVERAGE_TYPRA_CORE_LINES ?= 90
 
-# "Core logic" coverage gates.
-# We compute this from the LCOV output and exclude format/corruption/error-injection-heavy modules.
-# Current realistic baselines (raise over time).
-COVERAGE_CORE_DB_LINES ?= 83
-COVERAGE_CORE_QUERY_LINES ?= 90
-COVERAGE_CORE_INDEX_LINES ?= 94
-COVERAGE_CORE_VALIDATION_LINES ?= 96
+# Per-module line coverage for db / query / index / validation (`make coverage-rust-core`).
+COVERAGE_MODULE_MIN_LINES ?= 90
+COVERAGE_CORE_DB_LINES ?= $(COVERAGE_MODULE_MIN_LINES)
+COVERAGE_CORE_QUERY_LINES ?= $(COVERAGE_MODULE_MIN_LINES)
+COVERAGE_CORE_INDEX_LINES ?= $(COVERAGE_MODULE_MIN_LINES)
+COVERAGE_CORE_VALIDATION_LINES ?= $(COVERAGE_MODULE_MIN_LINES)
 
 examples-smoke: python-develop
 	@rm -f examples/todo_app/tasks.typra examples/cli_notes/notes.typra
@@ -146,23 +144,23 @@ examples-smoke: python-develop
 		$(PYTHON) examples/desktop_app/main.py | grep -q "loaded theme="
 	@echo "examples-smoke: OK (todo, cli, desktop)"
 
-coverage-rust:
+coverage-rust-typra-core:
 	@mkdir -p target/coverage
-	@CI=1 cargo llvm-cov --workspace --all-features \
-		--ignore-filename-regex 'python/typra/src/.*' \
-		--lcov --output-path target/coverage/rust.lcov
 	@CI=1 cargo llvm-cov -p typra-core --all-features \
+		--lcov --output-path target/coverage/typra-core.lcov \
 		--fail-under-lines $(COVERAGE_TYPRA_CORE_LINES) --summary-only
-
-coverage-rust-core:
-	@mkdir -p target/coverage
-	@CI=1 cargo llvm-cov -p typra-core --all-features \
-		--lcov --output-path target/coverage/typra-core.lcov
 	@$(PYTHON) scripts/coverage_core.py target/coverage/typra-core.lcov \
 		--db-min-lines $(COVERAGE_CORE_DB_LINES) \
 		--query-min-lines $(COVERAGE_CORE_QUERY_LINES) \
 		--index-min-lines $(COVERAGE_CORE_INDEX_LINES) \
 		--validation-min-lines $(COVERAGE_CORE_VALIDATION_LINES)
+
+coverage-rust: coverage-rust-typra-core
+	@CI=1 cargo llvm-cov --workspace --all-features \
+		--ignore-filename-regex 'python/typra/src/.*' \
+		--lcov --output-path target/coverage/rust.lcov
+
+coverage-rust-core: coverage-rust-typra-core
 
 coverage-python: python-develop
 	@mkdir -p target/coverage

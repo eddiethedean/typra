@@ -7,7 +7,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use typra_core::file_format::{decode_header, FORMAT_MAJOR, FORMAT_MINOR_V6};
+use typra_core::file_format::{decode_header, FileHeader, FORMAT_MAJOR, FORMAT_MINOR_V6, FILE_HEADER_SIZE};
+use typra_core::superblock::SUPERBLOCK_SIZE;
 use typra_core::record::RowValue;
 use typra_core::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use typra_core::{Database, ScalarValue};
@@ -146,29 +147,46 @@ fn committed_1_0_fixture_opens_and_matches_live_encoder() {
         fixture_path.display()
     );
 
-    let db = Database::open(&fixture_path).expect("open committed fixture");
+    let dir = tempfile::tempdir().unwrap();
+    let fresh = dir.path().join("fresh.typra");
+    write_1_0_representative(&fresh);
+    let fresh_bytes = fs::read(&fresh).expect("read fresh encoder output");
+    let committed = fs::read(&fixture_path).expect("read committed fixture");
+    assert_eq!(
+        committed.len(),
+        fresh_bytes.len(),
+        "fixture size drift — run scripts/generate-format-fixtures.sh if the format change was intentional"
+    );
+
+    // File header and append-only segment bytes must match exactly. Superblock slots may differ
+    // only in generation/checksum (publish count), which is not part of the on-disk format spec.
+    let segment_start = FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE;
+    assert_eq!(
+        &committed[..FILE_HEADER_SIZE],
+        &fresh_bytes[..FILE_HEADER_SIZE],
+        "file header drift — run scripts/generate-format-fixtures.sh if intentional"
+    );
+    assert_eq!(
+        &committed[segment_start..],
+        &fresh_bytes[segment_start..],
+        "segment log drift — run scripts/generate-format-fixtures.sh if intentional"
+    );
+    let committed_h = decode_header(&committed[..FILE_HEADER_SIZE]).expect("fixture header");
+    let fresh_h = decode_header(&fresh_bytes[..FILE_HEADER_SIZE]).expect("fresh header");
+    assert_eq!(committed_h.format_major, fresh_h.format_major);
+    assert_eq!(committed_h.format_minor, fresh_h.format_minor);
+    assert_eq!(committed_h, FileHeader::new_v0_8()); // representative uses current minor 6
+
+    // Open a copy so this test never mutates the committed golden on disk.
+    let copy = dir.path().join("fixture_copy.typra");
+    fs::copy(&fixture_path, &copy).expect("copy fixture for open");
+    let db = Database::open(&copy).expect("open committed fixture");
     let books = db.collection_id_named("books").unwrap();
     let got = db
         .get(books, &ScalarValue::String("alpha".into()))
         .unwrap()
         .expect("fixture book");
     assert_eq!(got.get("year"), Some(&RowValue::Int64(2020)));
-
-    // Regenerate in memory and require byte-identical file image (detect accidental format drift).
-    let dir = tempfile::tempdir().unwrap();
-    let fresh = dir.path().join("fresh.typra");
-    write_1_0_representative(&fresh);
-    let committed = fs::read(&fixture_path).unwrap();
-    let fresh_bytes = fs::read(&fresh).unwrap();
-    assert_eq!(
-        committed.len(),
-        fresh_bytes.len(),
-        "fixture size drift — run scripts/generate-format-fixtures.sh if the format change was intentional"
-    );
-    assert_eq!(
-        committed, fresh_bytes,
-        "fixture bytes drift — run scripts/generate-format-fixtures.sh if intentional"
-    );
 }
 
 /// Regenerate golden fixtures after an intentional on-disk format change.
@@ -176,5 +194,9 @@ fn committed_1_0_fixture_opens_and_matches_live_encoder() {
 #[ignore = "run via scripts/generate-format-fixtures.sh"]
 fn export_format_fixtures() {
     fs::create_dir_all(fixture_dir()).expect("mkdir fixtures");
-    write_1_0_representative(&fixture_dir().join("typra_1_0_minor6.typra"));
+    let path = fixture_dir().join("typra_1_0_minor6.typra");
+    let _ = fs::remove_file(&path);
+    let lock = path.with_extension("typra.writer.lock");
+    let _ = fs::remove_file(&lock);
+    write_1_0_representative(&path);
 }

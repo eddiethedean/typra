@@ -82,6 +82,10 @@ name = "coverage_more"
 path = "tests/integration/coverage_more.rs"
 
 [[test]]
+name = "coverage_real_misses"
+path = "tests/integration/coverage_real_misses.rs"
+
+[[test]]
 name = "database_paths"
 path = "tests/integration/database_paths.rs"
 

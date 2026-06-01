@@ -57,5 +57,6 @@ jobs:
           name: coverage
           path: |
             target/coverage/rust.lcov
+            target/coverage/typra-core.lcov
             target/coverage/python.xml
 

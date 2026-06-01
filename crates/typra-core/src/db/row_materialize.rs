@@ -45,3 +45,31 @@ pub(crate) fn build_non_pk_values_in_schema_order(
     }
     Ok(non_pk)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::borrow::Cow;
+
+    use crate::error::DbError;
+    use crate::schema::{FieldDef, FieldPath, Type};
+
+    #[test]
+    fn build_non_pk_values_errors_when_required_path_missing() {
+        let row = BTreeMap::from([("id".to_string(), RowValue::Int64(1))]);
+        let defs = [FieldDef {
+            path: FieldPath(vec![
+                Cow::Borrowed("meta"),
+                Cow::Borrowed("tag"),
+            ]),
+            ty: Type::String,
+            constraints: vec![],
+        }];
+        let refs: Vec<&FieldDef> = defs.iter().collect();
+        let err = build_non_pk_values_in_schema_order(&row, &refs).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(crate::error::SchemaError::RowMissingField { name }) if name == "meta.tag"
+        ));
+    }
+}

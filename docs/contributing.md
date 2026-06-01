@@ -88,7 +88,16 @@ We aim for **practical 100%** test coverage over first-party code, with an expli
 - **Python**: coverage is computed via `pytest-cov` (coverage.py).
   - Virtual environments, `site-packages`, and vendored dependencies are omitted via `.coveragerc`.
 
-The **coverage** CI job runs `cargo llvm-cov` for the workspace, then enforces a **minimum line coverage for `typra-core`** via `COVERAGE_TYPRA_CORE_LINES` (see [`Makefile`](../Makefile)). Adjust the threshold only when intentionally changing test scope.
+The **coverage** CI job runs `make coverage-rust`, which enforces **90%** line coverage for `typra-core` overall (`COVERAGE_TYPRA_CORE_LINES`) and per module bucket (`db`, `query`, `index`, `validation` via `COVERAGE_MODULE_MIN_LINES` and [`scripts/coverage_core.py`](../scripts/coverage_core.py)), then emits workspace `rust.lcov`. Adjust thresholds only when intentionally changing test scope.
+
+### Coverage checklist
+
+Before pushing changes that affect tests or on-disk format:
+
+1. Run **`make coverage`** from the repo root (after `make install-tools` and a `.venv`, same as CI).
+2. For format compatibility only: **`make test-format-compat`** (or the full `format_back_compat_1x` test binary).
+3. If format golden bytes drift intentionally, regenerate with **`./scripts/generate-format-fixtures.sh`**, document the change in `CHANGELOG.md` and `docs/reference/compatibility.md`, then commit the updated `typra_1_0_minor6.typra`.
+4. Optional gap debugging: [`scripts/coverage_typra_core_gap_rank.py`](../scripts/coverage_typra_core_gap_rank.py) (from `target/coverage/typra-core.lcov`), [`scripts/typra_core_coverage_real_misses.py`](../scripts/typra_core_coverage_real_misses.py).
 
 To list uncovered lines by source file from an existing `target/coverage/typra-core.lcov`, run [`scripts/coverage_typra_core_gap_rank.py`](../scripts/coverage_typra_core_gap_rank.py) (writes `target/coverage/typra-core-gaps.txt`).
 

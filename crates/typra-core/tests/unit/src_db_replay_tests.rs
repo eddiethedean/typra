@@ -258,6 +258,62 @@
         let err = replay_tail_into(&mut store5, segment_start(), crate::file_format::FORMAT_MINOR_V6, &mut cat5, &mut latest5, &mut idx5)
             .unwrap_err();
         assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+
+        // After any txn marker, autocommit schema/index/record segments are rejected (v6 native log).
+        let fields = vec![
+            FieldDef::new(FieldPath::new([Cow::Borrowed("id")]).unwrap(), Type::String),
+        ];
+        let wire = CatalogRecordWire::CreateCollection {
+            collection_id: 1,
+            name: "t".into(),
+            schema_version: 1,
+            fields,
+            indexes: vec![],
+            primary_field: Some("id".into()),
+        };
+        let schema_payload = encode_catalog_payload(&wire);
+
+        let assert_unframed = |store: &mut VecStore, ty: SegmentType, payload: &[u8]| {
+            append_segment(store, SegmentType::TxnBegin, &encode_txn_payload_v0(1));
+            append_segment(store, SegmentType::TxnCommit, &encode_txn_payload_v0(1));
+            append_segment(store, ty, payload);
+            let err = if ty == SegmentType::Schema {
+                load_catalog_latest_and_indexes(
+                    store,
+                    segment_start(),
+                    crate::file_format::FORMAT_MINOR_V6,
+                )
+                .map(|_| ())
+                .unwrap_err()
+            } else {
+                replay_tail_into(
+                    store,
+                    segment_start(),
+                    crate::file_format::FORMAT_MINOR_V6,
+                    &mut Catalog::default(),
+                    &mut super::LatestMap::new(),
+                    &mut IndexState::default(),
+                )
+                .unwrap_err()
+            };
+            assert!(
+                matches!(err, DbError::Format(FormatError::InvalidTxnPayload { ref message }) if message.contains("unframed data segment")),
+                "segment {:?}: got {err:?}",
+                ty
+            );
+        };
+
+        let mut store_schema = VecStore::new();
+        seed_store_v0_8(&mut store_schema);
+        assert_unframed(&mut store_schema, SegmentType::Schema, &schema_payload);
+
+        let mut store_index = VecStore::new();
+        seed_store_v0_8(&mut store_index);
+        assert_unframed(&mut store_index, SegmentType::Index, &[]);
+
+        let mut store_record = VecStore::new();
+        seed_store_v0_8(&mut store_record);
+        assert_unframed(&mut store_record, SegmentType::Record, &[]);
     }
 
     #[test]

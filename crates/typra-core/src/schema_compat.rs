@@ -179,6 +179,110 @@ fn indexes_match(a: &[IndexDef], b: &[IndexDef]) -> bool {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::borrow::Cow;
+
+    use crate::catalog::CollectionInfo;
+    use crate::error::{DbError, SchemaError};
+    use crate::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
+    use crate::schema::SchemaVersion;
+    use crate::CollectionId;
+
+    fn field(name: &str, ty: Type) -> FieldDef {
+        FieldDef {
+            path: FieldPath(vec![Cow::Owned(name.to_string())]),
+            ty,
+            constraints: vec![],
+        }
+    }
+
+    fn path(segs: &[&str]) -> FieldPath {
+        FieldPath(segs.iter().map(|s| Cow::Owned((*s).to_string())).collect())
+    }
+
+    #[test]
+    fn validate_model_fields_rejects_full_schema_index_mismatch() {
+        let col = CollectionInfo {
+            id: CollectionId(1),
+            name: "t".into(),
+            current_version: SchemaVersion(1),
+            fields: vec![field("id", Type::Int64), field("x", Type::Int64)],
+            indexes: vec![IndexDef {
+                name: "x_idx".into(),
+                path: path(&["x"]),
+                kind: IndexKind::NonUnique,
+            }],
+            primary_field: Some("id".into()),
+        };
+        let err = validate_model_fields_against_catalog(
+            &col,
+            "id",
+            &col.fields,
+            &[IndexDef {
+                name: "other".into(),
+                path: path(&["x"]),
+                kind: IndexKind::NonUnique,
+            }],
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(SchemaError::IncompatibleSchemaChange { .. })
+        ));
+    }
+
+    #[test]
+    fn validate_model_fields_subset_index_errors() {
+        let col = CollectionInfo {
+            id: CollectionId(1),
+            name: "t".into(),
+            current_version: SchemaVersion(1),
+            fields: vec![field("id", Type::Int64), field("note", Type::String)],
+            indexes: vec![IndexDef {
+                name: "id_idx".into(),
+                path: path(&["id"]),
+                kind: IndexKind::NonUnique,
+            }],
+            primary_field: Some("id".into()),
+        };
+        let subset = vec![field("id", Type::Int64)];
+
+        let err = validate_model_fields_against_catalog(
+            &col,
+            "id",
+            &subset,
+            &[IndexDef {
+                name: "missing".into(),
+                path: path(&["id"]),
+                kind: IndexKind::NonUnique,
+            }],
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Schema(SchemaError::IncompatibleSchemaChange { message }) if message.contains("unknown index")
+        ));
+
+        let err2 = validate_model_fields_against_catalog(
+            &col,
+            "id",
+            &subset,
+            &[IndexDef {
+                name: "id_idx".into(),
+                path: path(&["id"]),
+                kind: IndexKind::Unique,
+            }],
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err2,
+            DbError::Schema(SchemaError::IncompatibleSchemaChange { message }) if message.contains("does not match catalog")
+        ));
+    }
+}
+
 fn type_is_compatible(old: &Type, new: &Type) -> bool {
     match (old, new) {
         (Type::Enum(old_vars), Type::Enum(new_vars)) => {

@@ -17,3 +17,5 @@ Commit updated binaries only when an on-disk change is **intentional** and docum
 | File | Contents |
 |------|----------|
 | `typra_1_0_minor6.typra` | Format minor 6; flat collection (record v2) + multi-segment collection (record v3); checkpoint |
+
+The compatibility test compares the **file header** and **segment log** bytes to a live encoder output. **Superblock** slots may differ only in `generation` / checksum (publish count) without indicating a format change.
