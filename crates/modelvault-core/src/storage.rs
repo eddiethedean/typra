@@ -233,10 +233,21 @@ impl FileStore {
                     .ok()
                     .and_then(|g| g.get(&lock_path).map(|_| ()))
                     .is_some();
+                // Same-process writer already holds the lock file; avoid a second fs2 lock
+                // (which can downgrade on some platforms). Reads use the existing writer handle.
                 if already_writer {
-                    return Err(DbError::Io(std::io::Error::other(
-                        "cannot open read-only while holding writer lock in the same process",
-                    )));
+                    return Ok(Self {
+                        inner: crate::pager::PagedStore::new(
+                            RawFileStore::new(file),
+                            crate::pager::DEFAULT_PAGE_SIZE,
+                        ),
+                        _writer_lock: None,
+                        _reader_lock: None,
+                        #[cfg(test)]
+                        test_write_counter: None,
+                        #[cfg(test)]
+                        test_write_budget_remaining: None,
+                    });
                 }
 
                 let lock_file = std::fs::OpenOptions::new()

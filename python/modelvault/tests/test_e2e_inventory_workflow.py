@@ -103,6 +103,7 @@ def test_e2e_inventory_like_workflow_txn_query_reopen_compact_snapshot(
         )
 
     # Range + order_by + limit via DB-API.
+    del db
     conn = modelvault.dbapi.connect(str(path))
     cur = conn.cursor()
     cur.execute(
@@ -110,6 +111,11 @@ def test_e2e_inventory_like_workflow_txn_query_reopen_compact_snapshot(
         (100, 400),
     )
     assert cur.fetchall() == [("sku2", 20), ("sku1", 10)]
+    cur.close()
+    conn.close()
+    import gc
+
+    gc.collect()
 
     # Reopen and run a category query.
     db2 = modelvault.Database.open(str(path))
@@ -129,13 +135,12 @@ def test_e2e_inventory_like_workflow_txn_query_reopen_compact_snapshot(
     assert got3["name"] == "Book"
 
     db2.compact()
-    db4 = modelvault.Database.open(str(path))
-    got2 = db4.get("products", "sku2")
+    got2 = db2.get("products", "sku2")
     assert got2 is not None
     assert got2["name"] == "Gadget"
 
     # Snapshot export/import.
-    db4.export_snapshot(str(snap))
+    db2.export_snapshot(str(snap))
     snap_db = modelvault.Database.open_snapshot(str(snap))
     got4 = snap_db.get("products", "sku4")
     assert got4 is not None

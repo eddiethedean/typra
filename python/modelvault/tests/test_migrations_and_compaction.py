@@ -86,7 +86,6 @@ def test_compaction_apis(tmp_path) -> None:
     assert got2["tag"] == "b"
 
     db.compact()
-    db3 = modelvault.Database.open(str(src))
-    got3 = db3.get("t", 1)
+    got3 = db.get("t", 1)
     assert got3 is not None
     assert got3["tag"] == "a"

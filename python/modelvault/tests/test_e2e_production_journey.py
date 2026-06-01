@@ -43,15 +43,14 @@ def test_production_journey_models_reopen_plan_apply_compact_snapshot(
     # are consistent with the current catalog version.
     db.compact()
 
-    # Reopen and read back.
-    db2 = modelvault.Database.open(str(path))
-    items2 = modelvault.models.collection(db2, Item)
+    # Handle refreshed in place after compact.
+    items2 = modelvault.models.collection(db, Item)
     got = items2.get(2)
     assert got is not None
     assert got.tag == "b"
 
     # Snapshot export.
-    db2.export_snapshot(str(snap))
+    db.export_snapshot(str(snap))
     mem = modelvault.Database.open_snapshot(str(snap))
     items3 = modelvault.models.collection(mem, Item)
     assert items3.get(1) is not None

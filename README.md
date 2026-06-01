@@ -85,7 +85,7 @@ modelvault = "0.15"
 |------------|------------|
 | Understand why ModelVault exists | [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_modelvault/) |
 | Store my first model in 5 minutes | [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/) |
-| Use Pydantic or FastAPI | [Pydantic](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) · [FastAPI](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) |
+| Use Pydantic or FastAPI | [Pydantic](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) · [FastAPI](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) (`AsyncDatabase`, async routes) |
 | Run sample apps | [Examples](https://modelvault.readthedocs.io/en/latest/examples/) · [examples/](https://github.com/eddiethedean/modelvault/tree/main/examples) |
 | Build with Python or Rust | [Python guide](https://modelvault.readthedocs.io/en/latest/guides/python/) · [Rust API](https://modelvault.readthedocs.io/en/latest/reference/rust_api/) |
 | Run backups and recovery | [Operations runbook](https://modelvault.readthedocs.io/en/latest/ops/operations_and_failure_modes/) |

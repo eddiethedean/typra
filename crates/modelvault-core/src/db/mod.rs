@@ -9,6 +9,7 @@ mod open;
 mod recover;
 mod replay;
 pub(crate) mod row_materialize;
+mod writer_registry;
 pub(crate) use row_materialize::{build_non_pk_values_in_schema_order, row_value_at_path};
 mod row_merge;
 pub(crate) mod row_paths;
@@ -218,6 +219,9 @@ pub struct Database<S: Store = FileStore> {
     txn_seq: u64,
     /// When set, [`insert`] / [`register_collection`] append to this batch instead of autocommit.
     txn_staging: Option<TxnStaging>,
+    /// Present for writable on-disk databases (process-wide single-writer registry).
+    #[allow(dead_code)]
+    writer_registry: Option<writer_registry::WriterRegistryGuard>,
     /// Covers replace-path record encoding error branches in tests (misaligned validated row maps).
     #[cfg(test)]
     #[doc(hidden)]
@@ -311,10 +315,13 @@ impl<S: Store> Database<S> {
     ) -> Result<R, DbError> {
         self.begin_transaction()?;
         match f(self) {
-            Ok(v) => {
-                self.commit_transaction()?;
-                Ok(v)
-            }
+            Ok(v) => match self.commit_transaction() {
+                Ok(()) => Ok(v),
+                Err(e) => {
+                    self.rollback_transaction();
+                    Err(e)
+                }
+            },
             Err(e) => {
                 self.rollback_transaction();
                 Err(e)
@@ -351,7 +358,7 @@ impl<S: Store> Database<S> {
 
     fn commit_txn_staging(&mut self) -> Result<(), DbError> {
         let Some(st) = self.txn_staging.take() else {
-            return Ok(());
+            return Err(DbError::Transaction(TransactionError::NoActiveTransaction));
         };
         if st.pending.is_empty() {
             self.catalog = st.shadow_catalog;
@@ -1108,7 +1115,9 @@ impl<S: Store> Database<S> {
                 name: pk_name.to_string(),
             }))?;
         if !pk.ty_matches(pk_ty) {
-            return Err(DbError::Format(FormatError::RecordPayloadTypeMismatch));
+            return Err(DbError::Schema(SchemaError::PrimaryKeyTypeMismatch {
+                collection_id: collection_id.0,
+            }));
         }
         let key = (collection_id.0, pk.canonical_key_bytes());
         Ok(self.latest_for_read().get(&key).cloned())
@@ -1309,8 +1318,25 @@ impl Database<FileStore> {
 
         let _ = fs.remove_file(&bak_path);
 
-        // 3) Refresh in-memory state by reopening.
-        let reopened = Database::open_with_options(live_path, OpenOptions::default())?;
+        // 3) Refresh in-memory state by reopening (bypass writer registry; re-register after replace).
+        self.writer_registry = None;
+        let reopened = match (|| {
+            let store = FileStore::open_locked(&live_path, OpenMode::ReadWrite)?;
+            Self::open_with_store(live_path.clone(), store, OpenOptions::default())
+        })() {
+            Ok(db) => db,
+            Err(e) => {
+                let _ = fs.rename(&bak_path, &live_path);
+                self.writer_registry = Some(writer_registry::WriterRegistryGuard::new(
+                    live_path.clone(),
+                )?);
+                return Err(e);
+            }
+        };
+        let mut reopened = reopened;
+        reopened.writer_registry = Some(writer_registry::WriterRegistryGuard::new(
+            live_path.clone(),
+        )?);
         *self = reopened;
         #[cfg(feature = "tracing")]
         tracing::info!(bytes = bytes.len(), "database_compact_in_place_ok");
@@ -1623,7 +1649,11 @@ impl Database<FileStore> {
     ) -> Result<Self, DbError> {
         let path = path.as_ref().to_path_buf();
         let store = FileStore::open_locked(&path, opts.mode)?;
-        Self::open_with_store(path, store, opts)
+        let mut db = Self::open_with_store(path.clone(), store, opts)?;
+        if opts.mode == OpenMode::ReadWrite {
+            db.writer_registry = Some(writer_registry::WriterRegistryGuard::new(path)?);
+        }
+        Ok(db)
     }
 }
 

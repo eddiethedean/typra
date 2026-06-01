@@ -118,3 +118,49 @@ pub fn decode_superblock(bytes: &[u8]) -> Result<Superblock, DbError> {
         checksum_kind,
     })
 }
+
+/// Generation field from a superblock slot when magic/version look valid (checksum not verified).
+pub fn peek_superblock_generation(bytes: &[u8]) -> Option<u64> {
+    if bytes.len() < SUPERBLOCK_SIZE || bytes[0..4] != SUPERBLOCK_MAGIC {
+        return None;
+    }
+    let version = u16::from_le_bytes([bytes[4], bytes[5]]);
+    if version != SUPERBLOCK_VERSION_V0 && version != SUPERBLOCK_VERSION_V1 {
+        return None;
+    }
+    Some(u64::from_le_bytes(bytes[8..16].try_into().ok()?))
+}
+
+/// Pick the authoritative superblock from two redundant slots.
+///
+/// If the higher-generation slot fails checksum validation, returns
+/// [`FormatError::BadSuperblockChecksum`] instead of silently using the older copy.
+pub fn select_superblock_from_pair(
+    decode_a: Result<Superblock, DbError>,
+    decode_b: Result<Superblock, DbError>,
+    peek_a: Option<u64>,
+    peek_b: Option<u64>,
+) -> Result<Superblock, DbError> {
+    match (decode_a, decode_b) {
+        (Ok(sa), Ok(sb)) => Ok(if sa.generation >= sb.generation {
+            sa
+        } else {
+            sb
+        }),
+        (Ok(sa), Err(_)) => {
+            if peek_b.is_some_and(|g| g > sa.generation) {
+                Err(DbError::Format(FormatError::BadSuperblockChecksum))
+            } else {
+                Ok(sa)
+            }
+        }
+        (Err(_), Ok(sb)) => {
+            if peek_a.is_some_and(|g| g > sb.generation) {
+                Err(DbError::Format(FormatError::BadSuperblockChecksum))
+            } else {
+                Ok(sb)
+            }
+        }
+        (Err(_), Err(_)) => Err(DbError::Format(FormatError::BadSuperblockChecksum)),
+    }
+}

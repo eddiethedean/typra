@@ -253,6 +253,8 @@ with tempfile.TemporaryDirectory() as d:
         key=lambda r: r["id"],
     )
     print("subset:", short)
+    del q
+    del db
     db2 = modelvault.Database.open(str(path))
     row = db2.get("order_lines", 1)
     print("reopen_qty:", row["qty"] if row else None)

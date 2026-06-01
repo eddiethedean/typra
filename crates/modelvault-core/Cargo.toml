@@ -227,6 +227,14 @@ name = "recovery_torn_commit"
 path = "tests/integration/recovery_torn_commit.rs"
 
 [[test]]
+name = "recovery_txn_mismatch"
+path = "tests/integration/recovery_txn_mismatch.rs"
+
+[[test]]
+name = "writer_registry_dual_open"
+path = "tests/integration/writer_registry_dual_open.rs"
+
+[[test]]
 name = "row_subset_edges"
 path = "tests/integration/row_subset_edges.rs"
 

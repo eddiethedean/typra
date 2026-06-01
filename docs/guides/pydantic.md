@@ -2,7 +2,7 @@
 
 **Audience:** Python developers who already model domain data with Pydantic v2.
 
-ModelVault is **the database for application models**. If your FastAPI handlers and services already speak Pydantic, storage should not force a second schema in SQL or untyped JSON. This guide shows how to make **your `BaseModel` the source of truth** for what may be persisted.
+ModelVault is **the database for application models**. If your **FastAPI** handlers and services already speak Pydantic, storage should not force a second schema in SQL or untyped JSON. This guide shows how to make **your `BaseModel` the source of truth** for what may be persisted. For **`async def` routes**, pair models with [`AsyncDatabase`](fastapi.md) and `modelvault.models.async_collection`.
 
 ## Problem
 
@@ -67,6 +67,19 @@ Nested Pydantic models map to **object** fields in the catalog (multi-segment pa
 
 For advanced path control, see [Models & collections](models_and_collections.md) and [Python guide](python.md).
 
+## Async apps (FastAPI, Starlette)
+
+For asyncio web frameworks, use the same Pydantic model with **`async_collection`** and **`await`** on each call:
+
+```python
+db = await modelvault.AsyncDatabase.open("app.modelvault")
+users = modelvault.models.async_collection(db, User)
+await users.insert(User(id=1, email="ada@example.com", age=30))
+row = await users.where(User.email, "ada@example.com").all()
+```
+
+Wire `db` and collections through FastAPI lifespan and `Depends` — see the [FastAPI guide](fastapi.md) and [`examples/fastapi_app/main.py`](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app/main.py).
+
 ## Queries
 
 Use field names or model attributes on the query builder:
@@ -110,6 +123,7 @@ If registration fails with `issubclass()` errors, simplify optional fields or us
 3. **Use on-disk paths in production** — `Database.open("app.modelvault")` with backups from the [operations runbook](../ops/operations_and_failure_modes.md).
 4. **Keep Pydantic as API validation** — ModelVault adds storage validation; both layers are complementary.
 5. **Prefer `modelvault.models` over raw `fields_json`** unless you are generating schemas dynamically.
+6. **FastAPI and Starlette** — use `AsyncDatabase` + `async_collection` so route handlers do not block the event loop ([FastAPI guide](fastapi.md)).
 
 ## Dataclasses
 
@@ -117,6 +131,6 @@ The same `modelvault.models` API works with `@dataclass` if you prefer no Pydant
 
 ## Next steps
 
-- [FastAPI](fastapi.md) — wire collections into dependencies
+- [FastAPI](fastapi.md) — `AsyncDatabase`, lifespan, and `async def` dependencies
 - [Models & collections](models_and_collections.md) — projections and patches
 - [Types matrix](../reference/types.md)

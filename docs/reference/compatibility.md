@@ -11,7 +11,7 @@ New to ModelVault? Start with [Why ModelVault](../guides/why_modelvault.md) and 
 | Name | Meaning |
 |------|---------|
 | **Package / crate version** | SemVer on [crates.io](https://crates.io/crates/modelvault) and [PyPI](https://pypi.org/project/modelvault/) (e.g. **`0.15.0`** today). |
-| **Product milestone** | Docs and marketing refer to the **1.0** feature set (stable engine, `modelvault.models`, format-compat pledge below). |
+| **Product milestone** | Docs and marketing refer to the **1.0** feature set (stable engine, `modelvault.models`, format-compat pledge below). Package releases such as **`0.15.x`** ship that feature set under SemVer **0.15**, not **1.y.z**. |
 | **Pre-rebrand files** | Same `TDB0` on-disk layout as today; databases created before the 0.14.0 package rename open without conversion (any prior file extension). |
 
 ## 1.x on-disk backwards compatibility pledge
@@ -68,7 +68,7 @@ ModelVault database files have a **format major** and **format minor** (see [On-
 
 ### Recovery modes (contract)
 
-Recovery behavior is controlled by `OpenOptions.recovery` / `RecoveryMode`.
+Recovery behavior is controlled by `OpenOptions.recovery` / `RecoveryMode` (Rust) or `Database.open(..., recovery="strict"|"auto_truncate")` (Python).
 
 - **`AutoTruncate`** (default)
   - Open succeeds if a valid committed prefix can be identified.
@@ -80,6 +80,18 @@ Recovery behavior is controlled by `OpenOptions.recovery` / `RecoveryMode`.
 
 Note: `Database::open_read_only(...)` uses **`Strict`** recovery by default (read-only opens never
 truncate the underlying file).
+
+### In-process concurrency (0.15+)
+
+Since **0.15.0**, at most **one writable** `Database` or `AsyncDatabase` handle may exist per on-disk path **within a single OS process**. A second read-write `open` returns an I/O error (`writable database already open in this process`). This blocks unsafe interleaved writes that the cross-process advisory lock cannot see.
+
+| Rule | Behavior |
+|------|----------|
+| **Cross-process** | Unchanged: one writer per file via `*.writer.lock`; extra processes use `open_read_only`. |
+| **Same-process read-only** | Allowed while a writer handle is held (e.g. DB-API `connect` alongside an open `Database`). |
+| **Re-open after close** | Drop all writable handles (and any query objects that retain them) before opening the path again. |
+
+Rust: `crates/modelvault-core/tests/integration/writer_registry_dual_open.rs`. Policy detail: [Async vs sync](async_policy.md).
 
 ### Forward compatibility (contract)
 
@@ -93,7 +105,7 @@ ModelVault prefers **explicit compatibility** over “best guess” parsing.
 
 - New **optional** segment types (must be documented; default is refuse unknown types).
 - New **record/catalog/index payload versions** (old versions still replay).
-- New **format minor** values (older minors **3–6** remain readable; matrix updated in this doc).
+- New **format minor** values (supported read minors **2–6** remain readable; matrix updated in this doc).
 - Engine features (SQL, planner, compaction) that only **append** new segments or add decode paths.
 
 See [Format evolution (1.x)](../specs/format_evolution.md).
@@ -127,7 +139,8 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
 ### Python package (`modelvault` on PyPI)
 
 - The Python surface mirrors the engine where feasible.
-- DB-API (`modelvault.dbapi`) is a read-only subset of PEP 249 for a minimal `SELECT` grammar (see [Python guide](../guides/python.md)).
+- **`Database.open(..., recovery="strict"|"auto_truncate")`** and **`AsyncDatabase.open(..., recovery=...)`** match Rust `RecoveryMode` (see [Recovery modes](#recovery-modes-contract) above).
+- DB-API (`modelvault.dbapi`): read-only subset of PEP 249; **`connect(..., strict_read_only=True)`** disables writable fallback when a read-only open fails (see [Python guide](../guides/python.md)).
 
 ## DB-API + SQL subset guarantees (current)
 

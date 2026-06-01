@@ -12,6 +12,7 @@ New here? Start with [Why ModelVault](why_modelvault.md) or [Quickstart](quickst
 |---------|------------|
 | **Rust** | `register_model::<T>()`, `collection::<T>()`, subset models as compatible catalog subsets |
 | **Python** | `modelvault.models.collection(db, Model)` — auto-register on first use; reopen validates against catalog |
+| **Python (asyncio)** | `modelvault.models.async_collection(db, Model)` with `AsyncDatabase` — same schema markers; use with `await` ([FastAPI guide](fastapi.md)) |
 | **Projections** | `ModelQuery.select([...])` / `all(fields=[...])` (Python); subset `QueryBuilder::all()` (Rust) |
 | **Naming** | Rust `#[db(collection = "...")]`; Python `__modelvault_collection__` or pluralized snake_case |
 
@@ -54,6 +55,7 @@ Rename a Python class or Rust struct without touching stored data by keeping the
 |----------|---------|
 | **Rust** | `db.register_model::<Book>()` then `db.collection::<Book>()` |
 | **Python** | `modelvault.models.collection(db, Book)` |
+| **Python (asyncio)** | `await`-able: `books = modelvault.models.async_collection(db, Book)` |
 
 ### Compatibility on reopen
 

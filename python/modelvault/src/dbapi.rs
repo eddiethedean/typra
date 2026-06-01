@@ -22,13 +22,14 @@ fn open_read_only_fallback_to_writable(err: &DbError) -> bool {
 }
 
 #[pyfunction]
-pub fn connect(py: Python<'_>, path: String) -> PyResult<Connection> {
+#[pyo3(signature = (path, *, strict_read_only=false))]
+pub fn connect(py: Python<'_>, path: String, strict_read_only: bool) -> PyResult<Connection> {
     // Prefer a read-only engine handle when no writer lock is held in this process.
     // Fall back to a writable open only when this process already holds the writer lock
     // (e.g. after `Database.open` in the same interpreter). SQL execution remains SELECT-only.
     let db = match modelvault_core::Database::open_read_only(&path) {
         Ok(db) => db,
-        Err(e) if open_read_only_fallback_to_writable(&e) => {
+        Err(e) if !strict_read_only && open_read_only_fallback_to_writable(&e) => {
             modelvault_core::Database::open(&path).map_err(db_error_to_py)?
         }
         Err(e) => return Err(db_error_to_py(e)),
@@ -65,7 +66,8 @@ impl Connection {
             conn: Some(db.clone_ref(py)),
             planned: None,
             buffer: Vec::new(),
-            offset: 0,
+            cached_rows: None,
+            cache_pos: 0,
             description: None,
             closed: false,
         })
@@ -90,11 +92,11 @@ impl Connection {
 #[pyclass]
 pub struct Cursor {
     conn: Option<Py<Database>>,
-    // Streaming-ish DB-API cursor: re-run the underlying iterator and skip `offset`
-    // to fetch the next chunk. Avoids materializing full result sets in Rust.
     planned: Option<PlannedSelect>,
     buffer: Vec<Py<PyTuple>>,
-    offset: usize,
+    /// Full result tuples built on first refill (one `query_iter` pass); avoids O(n²) re-scans.
+    cached_rows: Option<Vec<Py<PyTuple>>>,
+    cache_pos: usize,
     description: Option<Py<PyAny>>,
     closed: bool,
 }
@@ -261,21 +263,18 @@ impl Cursor {
         self.conn = None;
         self.planned = None;
         self.buffer.clear();
-        self.offset = 0;
+        self.cached_rows = None;
+        self.cache_pos = 0;
         self.description = None;
     }
 
-    fn refill(&mut self, py: Python<'_>, want: usize) -> PyResult<()> {
-        if want == 0 || self.buffer.len() >= want {
+    fn ensure_cached_rows(&mut self, py: Python<'_>) -> PyResult<()> {
+        if self.cached_rows.is_some() {
             return Ok(());
         }
         let Some(plan) = self.planned.clone() else {
             return Ok(());
         };
-
-        let start = self.offset;
-        let take = want - self.buffer.len();
-
         let conn = self
             .conn
             .as_ref()
@@ -284,7 +283,8 @@ impl Cursor {
         let g = super::db_handle::lock_inner_read(&db_ref.inner)?;
         let it = g.query_iter(&plan.query).map_err(db_error_to_py)?;
 
-        for r in it.skip(start).take(take) {
+        let mut cached = Vec::new();
+        for r in it {
             let r = r.map_err(db_error_to_py)?;
             let projected = match &plan.allow_defs {
                 None => r,
@@ -297,8 +297,24 @@ impl Cursor {
                 let v = py_get_at_path(py, d.clone().into_any(), &parts)?;
                 items.push(v);
             }
-            self.buffer.push(PyTuple::new(py, items)?.unbind());
-            self.offset += 1;
+            cached.push(PyTuple::new(py, items)?.unbind());
+        }
+        self.cached_rows = Some(cached);
+        self.cache_pos = 0;
+        Ok(())
+    }
+
+    fn refill(&mut self, py: Python<'_>, want: usize) -> PyResult<()> {
+        if want == 0 || self.buffer.len() >= want {
+            return Ok(());
+        }
+        self.ensure_cached_rows(py)?;
+        let Some(cache) = self.cached_rows.as_ref() else {
+            return Ok(());
+        };
+        while self.buffer.len() < want && self.cache_pos < cache.len() {
+            self.buffer.push(cache[self.cache_pos].clone_ref(py));
+            self.cache_pos += 1;
         }
         Ok(())
     }
@@ -390,7 +406,8 @@ impl Cursor {
             allow_defs,
         });
         self.buffer.clear();
-        self.offset = 0;
+        self.cached_rows = None;
+        self.cache_pos = 0;
 
         Ok(())
     }

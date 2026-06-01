@@ -35,6 +35,7 @@ def test_fields_json_multi_segment_paths_roundtrip_and_index_query(tmp_path) -> 
     assert rows[0]["id"] == "u1"
 
     # Reopen should preserve nested structure.
+    del db
     db2 = modelvault.Database.open(str(p))
     got2 = db2.get("users", "u1")
     assert got2 is not None

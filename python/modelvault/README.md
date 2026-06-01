@@ -18,7 +18,7 @@ Store dataclasses and **Pydantic v2** models with validation, indexes, migration
 |--|--|
 | [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_modelvault/) | Positioning and tradeoffs |
 | [Pydantic guide](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) | Model-first schemas |
-| [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) | Sync + async API services |
+| [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) | Async API services with `AsyncDatabase` |
 | [Async policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/) | `AsyncDatabase`, concurrent reads |
 | [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/) | First insert in minutes |
 | [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_modelvault/) | Positioning and design goals |
@@ -57,6 +57,8 @@ title='ModelVault' year=2020
 ```
 
 Dataclass example and indexed queries: **[Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/)** · **[Python guide](https://modelvault.readthedocs.io/en/latest/guides/python/)**
+
+**FastAPI:** open with `await AsyncDatabase.open(...)`, use `modelvault.models.async_collection`, and `async def` route handlers — **[FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/)** · runnable [`examples/fastapi_app`](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app).
 
 ## Build from source
 

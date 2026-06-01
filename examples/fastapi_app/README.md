@@ -2,7 +2,7 @@
 
 **Problem:** A small API needs persistence without PostgreSQL for early deployments.
 
-**Solution:** ModelVault file on disk + Pydantic models shared between HTTP bodies and storage.
+**Solution:** ModelVault file on disk + Pydantic models shared between HTTP bodies and storage, with **`AsyncDatabase`** so handlers do not block the event loop.
 
 ## Setup
 
@@ -15,16 +15,8 @@ make python-develop
 
 ## Run
 
-**Sync routes** (default):
-
 ```bash
 .venv/bin/uvicorn examples.fastapi_app.main:app --reload
-```
-
-**Async routes** (`AsyncDatabase`, concurrent reads on one handle):
-
-```bash
-.venv/bin/uvicorn examples.fastapi_app.main_async:app --reload
 ```
 
 Try:
@@ -41,9 +33,10 @@ curl -s localhost:8000/items/search/widget
 
 ## What it demonstrates
 
-- Lifespan hook opens ModelVault once per process
+- Lifespan opens **`AsyncDatabase`** once per process
+- **`async def`** route handlers with **`modelvault.models.async_collection`**
 - FastAPI `Depends` injects the model collection
 - Indexed lookup via `where(Item.name, ...)`
-- **`main_async.py`**: `async def` handlers, `AsyncDatabase`, optional `asyncio.gather` for parallel reads
+- Optional parallel reads: `await asyncio.gather(*(items.get(i) for i in ids))`
 
 Docs: [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) · [Async policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/)

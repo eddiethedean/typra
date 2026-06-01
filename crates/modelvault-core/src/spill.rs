@@ -2,7 +2,7 @@
 //!
 //! v0 implementation: append ephemeral `Temp` segments to the store and truncate them away on drop.
 
-use crate::error::DbError;
+use crate::error::{DbError, QueryError};
 use crate::segments::header::{SegmentHeader, SegmentType, SEGMENT_HEADER_LEN};
 use crate::segments::writer::SegmentWriter;
 use crate::storage::Store;
@@ -24,12 +24,16 @@ impl<S: Store> TempSpillFile<S> {
         })
     }
 
-    pub fn store_mut(&mut self) -> &mut S {
-        self.store.as_mut().expect("spill store already taken")
+    fn store_mut(&mut self) -> Result<&mut S, DbError> {
+        self.store.as_mut().ok_or_else(|| {
+            DbError::Query(QueryError {
+                message: "spill store unavailable".into(),
+            })
+        })
     }
 
     pub fn append_temp_segment(&mut self, payload: &[u8]) -> Result<u64, DbError> {
-        let store = self.store_mut();
+        let store = self.store_mut()?;
         let file_len = store.len()?;
         let mut writer = SegmentWriter::new(store, file_len);
         let off = writer.offset();
@@ -44,14 +48,18 @@ impl<S: Store> TempSpillFile<S> {
 
     pub fn read_temp_payload(&mut self, offset: u64, len: u64) -> Result<Vec<u8>, DbError> {
         let mut buf = vec![0u8; len as usize];
-        self.store_mut()
+        self.store_mut()?
             .read_exact_at(offset + SEGMENT_HEADER_LEN as u64, &mut buf)?;
         Ok(buf)
     }
 
     /// Explicitly truncate away all temp spill data and return the inner store.
     pub fn finish(mut self) -> Result<S, DbError> {
-        let mut store = self.store.take().expect("spill store already taken");
+        let mut store = self.store.take().ok_or_else(|| {
+            DbError::Query(QueryError {
+                message: "spill store unavailable".into(),
+            })
+        })?;
         store.truncate(self.base_len)?;
         store.sync()?;
         Ok(store)

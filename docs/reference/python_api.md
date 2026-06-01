@@ -2,7 +2,7 @@
 
 Curated reference for the **`modelvault`** PyPI package — **store Pydantic and dataclass models** via `modelvault.models`.
 
-Tutorials: [Pydantic guide](../guides/pydantic.md) · [Python guide](../guides/python.md) · [Examples](../examples/index.md)
+Tutorials: [Pydantic guide](../guides/pydantic.md) · [FastAPI guide](../guides/fastapi.md) (async) · [Python guide](../guides/python.md) · [Examples](../examples/index.md)
 
 ## Install
 
@@ -15,6 +15,7 @@ pip install "modelvault>=0.15.0,<0.16"
 Recommended for applications: define schemas with dataclasses or Pydantic, then use typed collections.
 
 - **`modelvault.models.collection(db, ModelClass) -> ModelCollection`**
+- **`modelvault.models.async_collection(db, ModelClass) -> AsyncCollection`** — use with `AsyncDatabase` and `await` ([FastAPI guide](../guides/fastapi.md))
 - **`modelvault.models.index(path)`**, **`modelvault.models.unique(path)`**, **`modelvault.models.constrained(...)`**
 - **`ModelCollection.insert`**, **`get`**, **`delete`**, query builder via **`ModelCollection.where`**
 - **`modelvault.models.plan`**, **`modelvault.models.apply`** for migration workflows
@@ -49,13 +50,15 @@ See the [Python guide → Models](../guides/python.md) and the package README on
 
 On one handle, **reads** take a shared lock and may overlap across threads; **writes** and **open transactions** take an exclusive lock. This matches the on-disk **single-writer-per-file** policy (advisory locks across processes are separate). Details: [Async policy](async_policy.md#concurrency) (same rules apply to sync handles).
 
-## `AsyncDatabase` (experimental)
+## `AsyncDatabase` (asyncio / FastAPI)
 
-Parallel asyncio surface — `await AsyncDatabase.open(...)`, `await db.get(...)`, `async with db.transaction():`, plus `modelvault.models.async_collection` and `AsyncCollection` / `AsyncQuery`.
+Recommended for **FastAPI**, **Starlette**, and other asyncio apps — `await AsyncDatabase.open(...)`, `await db.get(...)`, `async with db.transaction():`, plus `modelvault.models.async_collection` and `AsyncCollection` / `AsyncQuery`.
 
 - Same method names as `Database` where applicable (returns awaitables).
+- `open(path, *, read_only=False, recovery=None)` — same `recovery=` strings as sync (`"strict"`, `"auto_truncate"`).
 - Engine work runs on a **thread pool**; **concurrent read** `await`s overlap; writes serialize.
-- Policy and limits: [Async policy](async_policy.md).
+- Runnable sample: [`examples/fastapi_app/main.py`](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app/main.py).
+- Policy and limits: [Async policy](async_policy.md) · [FastAPI guide](../guides/fastapi.md).
 
 ## Errors
 

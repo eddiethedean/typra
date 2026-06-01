@@ -38,7 +38,10 @@ jobs:
         run: python -m pip install --upgrade "pip==26.0" "pip-audit>=2,<3"
       - name: Audit python/modelvault environment
         run: |
-          python -m pip install -e python/modelvault
-          python -m pip install -r docs/requirements.txt
-          python -m pip install -U "maturin>=1.5,<2" "pytest>=8" "ruff>=0.8" "ty>=0.0.28"
-          python -m pip_audit --ignore-vuln CVE-2026-3219
+          python -m pip install -U "maturin>=1.5,<2" "pip-audit>=2,<3"
+          python -m venv .venv-audit
+          .venv-audit/bin/pip install -U pip
+          .venv-audit/bin/maturin develop --release -m python/modelvault
+          .venv-audit/bin/pip install -r docs/requirements.txt
+          # CVE-2026-3219: transitive doc/build tooling; review on 2026-09-01
+          .venv-audit/bin/pip-audit --ignore-vuln CVE-2026-3219

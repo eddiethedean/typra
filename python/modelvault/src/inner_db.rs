@@ -4,6 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::BTreeMap;
 
+use modelvault_core::config::{OpenMode, OpenOptions, RecoveryMode};
 use modelvault_core::query::Query;
 use modelvault_core::query::QueryRowIter;
 use modelvault_core::record::{RowValue, ScalarValue};
@@ -20,13 +21,38 @@ pub(crate) enum InnerDb {
 }
 
 impl InnerDb {
-    pub(crate) fn open_path(path: &str, read_only: bool) -> Result<Self, PyErr> {
-        let db = if read_only {
-            CoreDatabase::open_read_only(path)
-        } else {
-            CoreDatabase::open(path)
+    pub(crate) fn parse_recovery_mode(recovery: Option<&str>) -> Result<RecoveryMode, PyErr> {
+        match recovery {
+            None | Some("strict") => Ok(RecoveryMode::Strict),
+            Some("auto_truncate") => Ok(RecoveryMode::AutoTruncate),
+            Some(other) => Err(PyValueError::new_err(format!(
+                "recovery must be 'strict' or 'auto_truncate', got {other:?}"
+            ))),
         }
-        .map_err(db_error_to_py)?;
+    }
+
+    pub(crate) fn open_path(
+        path: &str,
+        read_only: bool,
+        recovery: Option<&str>,
+    ) -> Result<Self, PyErr> {
+        Self::open_path_with_recovery(path, read_only, Self::parse_recovery_mode(recovery)?)
+    }
+
+    pub(crate) fn open_path_with_recovery(
+        path: &str,
+        read_only: bool,
+        recovery: RecoveryMode,
+    ) -> Result<Self, PyErr> {
+        let opts = OpenOptions {
+            mode: if read_only {
+                OpenMode::ReadOnly
+            } else {
+                OpenMode::ReadWrite
+            },
+            recovery,
+        };
+        let db = CoreDatabase::open_with_options(path, opts).map_err(db_error_to_py)?;
         Ok(InnerDb::File(db))
     }
 

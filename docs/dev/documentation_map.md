@@ -29,7 +29,7 @@ Every major guide should open with **outcomes** (problem → solution), not impl
 | Page | Level |
 |------|-------|
 | [Pydantic](../guides/pydantic.md) | Beginner |
-| [FastAPI](../guides/fastapi.md) | Intermediate |
+| [FastAPI](../guides/fastapi.md) (`AsyncDatabase`, async routes) | Intermediate |
 | [Python guide](../guides/python.md) | Intermediate |
 | [Models & collections](../guides/models_and_collections.md) | Intermediate |
 | [Core concepts](../guides/concepts.md) | Beginner |
@@ -71,7 +71,7 @@ Every major guide should open with **outcomes** (problem → solution), not impl
 |---------|-------|------|
 | Todo app | Beginner | `examples/todo_app/` |
 | CLI notes | Beginner | `examples/cli_notes/` |
-| FastAPI | Intermediate | `examples/fastapi_app/` |
+| FastAPI (async) | Intermediate | `examples/fastapi_app/` |
 | Desktop data dir | Intermediate | `examples/desktop_app/` |
 
 CI: `make examples-smoke` (todo + CLI + desktop with isolated `MODELVAULT_EXAMPLE_DATA_DIR`).

@@ -7,9 +7,11 @@
 - Rust: `modelvault::Database` (re-exported from `modelvault-core`)
 - Python: `modelvault.Database`
 
-Getting-started guides, most examples, and operational runbooks assume sync open → insert → query → transaction → checkpoint → compact.
+Getting-started guides, CLI/desktop examples, and operational runbooks assume sync open → insert → query → transaction → checkpoint → compact.
 
-## Python asyncio API (experimental)
+**Exception:** the [FastAPI guide](../guides/fastapi.md) and [`examples/fastapi_app/`](../examples/index.md) use **`AsyncDatabase`** and `async def` handlers — that is the recommended path for asyncio web apps.
+
+## Python asyncio API
 
 Python exposes a **parallel** asyncio surface that does not change the sync `Database` type:
 
@@ -59,7 +61,7 @@ Additional rules:
 
 ### Example
 
-See [`examples/fastapi_app/main_async.py`](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app/main_async.py) for an async FastAPI service.
+See [`examples/fastapi_app/main.py`](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app/main.py) for a FastAPI service using `AsyncDatabase`.
 
 ## Optional Rust async facade
 

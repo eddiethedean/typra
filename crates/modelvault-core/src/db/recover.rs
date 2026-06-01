@@ -1,6 +1,6 @@
 //! Compute a safe committed prefix end offset for crash recovery (format minor 6+).
 
-use crate::error::{DbError, FormatError};
+use crate::error::DbError;
 use crate::file_format::FORMAT_MINOR_V6;
 use crate::segments::header::{SegmentType, SEGMENT_HEADER_LEN};
 use crate::segments::reader::{read_segment_header_at, read_segment_payload, SegmentMeta};
@@ -100,9 +100,8 @@ pub(crate) fn truncate_end_for_recovery(
                     return Ok((meta.offset, Some("orphan_txn_commit")));
                 };
                 if id != pt {
-                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
-                        message: "TxnCommit txn_id does not match TxnBegin".into(),
-                    }));
+                    let truncate_at = txn_base.unwrap_or(meta.offset);
+                    return Ok((truncate_at, Some("txn_id_mismatch")));
                 }
                 txn_base = None;
                 pending_txn_id = None;

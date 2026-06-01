@@ -82,7 +82,7 @@ fn modelvault(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_submodule(&models_mod)?;
     m.add("models", models_mod)?;
 
-    // DB-API 2.0 (PEP 249) read-only adapter (0.10.0+).
+    // DB-API 2.0 (PEP 249) read-only adapter (since 0.10.0).
     let dbapi_mod = PyModule::new(m.py(), "dbapi")?;
     dbapi_mod.add_function(wrap_pyfunction!(dbapi::connect, &dbapi_mod)?)?;
     dbapi_mod.add_class::<dbapi::Connection>()?;

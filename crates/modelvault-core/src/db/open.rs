@@ -12,7 +12,10 @@ use crate::segments::header::SegmentType;
 use crate::segments::reader::read_segment_header_at;
 use crate::segments::reader::read_segment_payload;
 use crate::storage::Store;
-use crate::superblock::{decode_superblock, Superblock, SUPERBLOCK_SIZE};
+use crate::superblock::{
+    decode_superblock, peek_superblock_generation, select_superblock_from_pair, Superblock,
+    SUPERBLOCK_SIZE,
+};
 
 use super::recover;
 use super::replay;
@@ -28,14 +31,12 @@ pub(crate) fn read_and_select_superblock(store: &mut impl Store) -> Result<Super
     let mut a = [0u8; SUPERBLOCK_SIZE];
     let mut b = [0u8; SUPERBLOCK_SIZE];
     store.read_exact_at(FILE_HEADER_SIZE as u64, &mut a)?; store.read_exact_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &mut b)?;
-    let sa = decode_superblock(&a).ok();
-    let sb = decode_superblock(&b).ok();
-    match (sa, sb) {
-        (Some(sa), Some(sb)) => Ok(if sa.generation >= sb.generation { sa } else { sb }),
-        (Some(sa), None) => Ok(sa),
-        (None, Some(sb)) => Ok(sb),
-        (None, None) => Err(DbError::Format(FormatError::BadSuperblockChecksum)),
-    }
+    select_superblock_from_pair(
+        decode_superblock(&a),
+        decode_superblock(&b),
+        peek_superblock_generation(&a),
+        peek_superblock_generation(&b),
+    )
 }
 
 #[rustfmt::skip]
@@ -184,6 +185,7 @@ pub(crate) fn open_with_store<S: Store>(
         indexes,
         txn_seq: 0,
         txn_staging: None,
+        writer_registry: None,
         #[cfg(test)]
         test_poison_planned_replace_row: None,
         #[cfg(test)]

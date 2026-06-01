@@ -113,8 +113,10 @@ async fn async_open_on_disk_and_collection_names_work() {
     let db = modelvault::AsyncDatabase::open(path.clone()).await.unwrap();
     assert_eq!(db.collection_names().await.unwrap(), Vec::<String>::new());
 
-    // Re-open with explicit options to ensure the API stays available.
-    let _db2 = modelvault::AsyncDatabase::open_with_options(path, OpenOptions::default())
+    drop(db);
+    // Re-open with explicit options after releasing the in-process writer slot.
+    let db2 = modelvault::AsyncDatabase::open_with_options(path, OpenOptions::default())
         .await
         .unwrap();
+    assert_eq!(db2.collection_names().await.unwrap(), Vec::<String>::new());
 }

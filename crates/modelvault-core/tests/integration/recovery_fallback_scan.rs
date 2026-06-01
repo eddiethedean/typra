@@ -28,7 +28,9 @@ fn open_v0_3_header_only_is_truncated_superblock_error() {
 fn reopen_v0_3_db_reads_and_selects_superblock() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    {
+        let _db = Database::open(&path).unwrap();
+    }
     let _db2 = Database::open(&path).unwrap();
 }
 
@@ -59,7 +61,9 @@ fn open_v0_3_db_with_one_bad_superblock_still_opens() {
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    {
+        let _db = Database::open(&path).unwrap();
+    }
 
     // Corrupt superblock B magic.
     let sb_b_offset = (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64;
@@ -77,7 +81,9 @@ fn open_v0_3_db_with_only_superblock_b_valid_opens() {
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    {
+        let _db = Database::open(&path).unwrap();
+    }
 
     // Corrupt superblock A magic.
     let sb_a_offset = FILE_HEADER_SIZE as u64;
@@ -95,7 +101,9 @@ fn open_selects_superblock_with_highest_generation() {
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    {
+        let _db = Database::open(&path).unwrap();
+    }
 
     let sb_b_offset = (FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64;
     let mut bytes = std::fs::read(&path).unwrap();
@@ -165,6 +173,7 @@ fn open_twice_increases_superblock_generation() {
     );
     let max1 = gen_a1.max(gen_b1);
 
+    drop(_db);
     let _db2 = Database::open(&path).unwrap();
     let bytes2 = std::fs::read(&path).unwrap();
     let gen_a2 = u64::from_le_bytes(

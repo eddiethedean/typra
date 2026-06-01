@@ -50,7 +50,7 @@ The same engine is available in **Rust** (`modelvault` on crates.io) for native 
 
 ## Who it is for
 
-- **FastAPI developers** prototyping without standing up PostgreSQL
+- **FastAPI developers** prototyping without standing up PostgreSQL — use **`AsyncDatabase`** and `async def` handlers ([FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/))
 - **Desktop apps** that need offline settings and domain data in a user data directory
 - **CLI tools** that outgrew `config.json` but do not want ops overhead
 - **Local-first apps** that need schema evolution over months of releases
@@ -87,7 +87,7 @@ pip install "modelvault>=0.15.0,<0.16" pydantic
 
 Docs: [modelvault.readthedocs.io](https://modelvault.readthedocs.io/en/latest/)
 
-Runnable examples in the repo: [github.com/eddiethedean/modelvault/tree/main/examples](https://github.com/eddiethedean/modelvault/tree/main/examples) — todo app, CLI notes, FastAPI, desktop data directory.
+Runnable examples in the repo: [github.com/eddiethedean/modelvault/tree/main/examples](https://github.com/eddiethedean/modelvault/tree/main/examples) — todo app, CLI notes, [async FastAPI service](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app), desktop data directory.
 
 Rust:
 

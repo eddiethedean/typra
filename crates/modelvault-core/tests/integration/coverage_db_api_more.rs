@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use modelvault_core::error::{FormatError, TransactionError};
+use modelvault_core::error::{SchemaError, TransactionError};
 use modelvault_core::record::RowValue;
 use modelvault_core::schema::SchemaChange;
 use modelvault_core::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
@@ -341,7 +341,7 @@ fn get_rejects_primary_key_type_mismatch() {
     let e = db.get(cid, &ScalarValue::Int64(1)).unwrap_err();
     assert!(matches!(
         e,
-        DbError::Format(FormatError::RecordPayloadTypeMismatch)
+        DbError::Schema(SchemaError::PrimaryKeyTypeMismatch { .. })
     ));
 }
 

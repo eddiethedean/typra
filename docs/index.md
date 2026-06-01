@@ -29,7 +29,7 @@ ModelVault is a schema-first, typed embedded database for application data. Stor
 
     ---
 
-    Your API types and your storage schema stay aligned.
+    Your API types and your storage schema stay aligned. FastAPI apps use **`AsyncDatabase`** and `async def` handlers.
 
     [:octicons-arrow-right-24: Pydantic](guides/pydantic.md) · [FastAPI](guides/fastapi.md)
 
@@ -95,7 +95,7 @@ print(books.get("Hello"))
 
 | Persona | What you get |
 |---------|----------------|
-| **FastAPI developer** | Local persistence without PostgreSQL for prototypes and small services; models map straight to storage |
+| **FastAPI developer** | `AsyncDatabase` + Pydantic models in lifespan; `async def` CRUD without PostgreSQL for prototypes and small services |
 | **Desktop app** | Ship a `.modelvault` file; validation and indexes built in |
 | **CLI tool** | Durable, typed local data—better than ad-hoc JSON |
 | **Local-first app** | Offline storage with schema evolution—no database server |

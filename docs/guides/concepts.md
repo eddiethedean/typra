@@ -20,8 +20,10 @@ A **database** is the handle you open in your application:
 
 | Mode | API | Persistence |
 |------|-----|-------------|
-| **On-disk** | `Database.open("app.modelvault")` | Durable single file; ship with your app |
-| **In-memory** | `Database.open_in_memory()` | Fast tests; use snapshots to export/import |
+| **On-disk** | `Database.open("app.modelvault")` or `await AsyncDatabase.open(...)` | Durable single file; ship with your app |
+| **In-memory** | `Database.open_in_memory()` or `await AsyncDatabase.open_in_memory()` | Fast tests; use snapshots to export/import |
+
+Use **`AsyncDatabase`** for asyncio apps (FastAPI, Starlette) so handlers can `await` storage without blocking the event loop. Sync **`Database`** is the default for scripts, CLIs, and desktop apps — see [Async policy](../reference/async_policy.md).
 
 On open, ModelVault validates the file header, replays the **schema catalog**, reconstructs the latest row map from **record** segments, and restores **index** state. Recovery behavior depends on [`RecoveryMode`](../reference/compatibility.md).
 

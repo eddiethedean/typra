@@ -75,11 +75,21 @@ impl AsyncTransaction {
 #[pymethods]
 impl AsyncDatabase {
     #[staticmethod]
-    #[pyo3(signature = (path, *, read_only=false))]
-    fn open<'py>(py: Python<'py>, path: String, read_only: bool) -> PyResult<Bound<'py, PyAny>> {
+    #[pyo3(signature = (path, *, read_only=false, recovery=None))]
+    fn open<'py>(
+        py: Python<'py>,
+        path: String,
+        read_only: bool,
+        recovery: Option<&str>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let recovery_mode = InnerDb::parse_recovery_mode(recovery)?;
         future_into_blocking(py, move || {
             Ok(Self {
-                inner: Arc::new(DbHandle::new(InnerDb::open_path(&path, read_only)?)),
+                inner: Arc::new(DbHandle::new(InnerDb::open_path_with_recovery(
+                    &path,
+                    read_only,
+                    recovery_mode,
+                )?)),
             })
         })
     }

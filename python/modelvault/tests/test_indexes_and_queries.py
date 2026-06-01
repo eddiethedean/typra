@@ -45,6 +45,7 @@ def test_indexes_survive_reopen_on_disk() -> None:
         db.register_collection("books", fields, "title", indexes)
         db.insert("books", {"title": "X", "year": 1})
 
+        del db
         db2 = modelvault.Database.open(str(path))
         explain = db2.collection("books").where("title", "X").explain()
         assert "IndexLookup" in explain

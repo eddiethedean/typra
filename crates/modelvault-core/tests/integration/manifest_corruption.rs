@@ -7,7 +7,9 @@ use modelvault_core::{OpenOptions, RecoveryMode};
 fn corrupt_manifest_pointer_strict_fails_open_autotruncate_opens() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    {
+        let _db = Database::open(&path).unwrap();
+    }
 
     // Point the manifest at a bogus offset so manifest validation fails.
     let bytes = std::fs::read(&path).unwrap();

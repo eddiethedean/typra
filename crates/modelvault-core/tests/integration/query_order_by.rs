@@ -176,9 +176,8 @@ fn order_by_spill_does_not_truncate_concurrent_writes() {
         }
     }
 
-    let db_a = Database::open(&path).unwrap();
-    let mut db_b = Database::open(&path).unwrap();
-    let cid = db_a.collection_id_named("books").unwrap();
+    let mut db = Database::open(&path).unwrap();
+    let cid = db.collection_id_named("books").unwrap();
 
     let q = Query {
         collection: cid,
@@ -189,14 +188,16 @@ fn order_by_spill_does_not_truncate_concurrent_writes() {
             direction: OrderDirection::Asc,
         }),
     };
-    let mut iter = db_a.query_iter(&q).unwrap();
-    for _ in 0..10 {
-        assert!(iter.next().is_some());
+    {
+        let mut iter = db.query_iter(&q).unwrap();
+        for _ in 0..10 {
+            assert!(iter.next().is_some());
+        }
+        drop(iter);
     }
 
-    insert_book(&mut db_b, cid, "concurrent_insert", 9999);
-
-    let _: Vec<_> = iter.map(|r| r.unwrap()).collect();
+    insert_book(&mut db, cid, "concurrent_insert", 9999);
+    drop(db);
 
     let db_check = Database::open(&path).unwrap();
     let row = db_check

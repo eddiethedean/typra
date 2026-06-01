@@ -2,6 +2,9 @@
 //!
 //! See [`docs/07_record_encoding_v2.md`](../../docs/07_record_encoding_v2.md) and [`ROADMAP.md`](../../ROADMAP.md).
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use regex::Regex;
 
 use crate::error::{DbError, ValidationError};
@@ -13,6 +16,29 @@ fn err(path: &[String], msg: impl Into<String>) -> DbError {
         path: path.to_vec(),
         message: msg.into(),
     })
+}
+
+fn regex_cache() -> &'static Mutex<HashMap<String, Regex>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Regex>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn compiled_regex(pattern: &str, path: &[String]) -> Result<Regex, DbError> {
+    if let Ok(g) = regex_cache().lock() {
+        if let Some(re) = g.get(pattern) {
+            return Ok(re.clone());
+        }
+    }
+    let re = Regex::new(pattern).map_err(|e| {
+        DbError::Validation(ValidationError {
+            path: path.to_vec(),
+            message: format!("invalid regex in schema: {e}"),
+        })
+    })?;
+    if let Ok(mut g) = regex_cache().lock() {
+        g.entry(pattern.to_string()).or_insert_with(|| re.clone());
+    }
+    Ok(re)
 }
 
 /// Primary key types must be flat primitives (not optional/composite).
@@ -308,12 +334,7 @@ fn apply_constraints(
                 let RowValue::String(s) = v else {
                     return Err(err(path, "Regex constraint requires string"));
                 };
-                let re = Regex::new(pattern).map_err(|e| {
-                    DbError::Validation(ValidationError {
-                        path: path.to_vec(),
-                        message: format!("invalid regex in schema: {e}"),
-                    })
-                })?;
+                let re = compiled_regex(pattern, path)?;
                 if !re.is_match(s) {
                     return Err(err(path, "string does not match regex"));
                 }

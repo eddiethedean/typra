@@ -56,7 +56,7 @@ This is the same framing as the project README—use it when explaining ModelVau
 
 | Persona | Typical fit |
 |---------|-------------|
-| **FastAPI developer** | Prototypes and small services that should not require PostgreSQL on day one |
+| **FastAPI developer** | `AsyncDatabase` + `async_collection` in lifespan; prototypes and small services without PostgreSQL on day one |
 | **Desktop developer** | Offline-capable apps with a file users can back up or sync |
 | **CLI author** | Structured, durable state beyond `config.json` |
 | **Local-first builder** | Offline storage with indexes and schema evolution, no sync server in the box |

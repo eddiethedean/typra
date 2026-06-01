@@ -8,9 +8,8 @@ fn second_writer_fails_fast_and_read_only_shared_lock_blocks_while_writer_active
     // First writer opens and holds lock for the duration of the test.
     let _db = modelvault_core::Database::open(&path).unwrap();
 
-    // Same-process read-only fails explicitly while holding the writer lock (to avoid lock
-    // downgrades/overlaps).
-    assert!(modelvault_core::Database::open_read_only(&path).is_err());
+    // Same-process read-only is allowed while a writer handle is held (avoids fs2 downgrade).
+    let _ro = modelvault_core::Database::open_read_only(&path).unwrap();
 
     // A read-only open in another process should fail while a writer holds the lock.
     let exe = std::env::current_exe().unwrap();

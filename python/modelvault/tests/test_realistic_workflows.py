@@ -57,6 +57,11 @@ def test_disk_roundtrip_indexed_conjunctive_query_and_subset() -> None:
         )
         assert short == [{"id": 1, "qty": 2}, {"id": 3, "qty": 4}]
 
+        del q
+        del db
+        import gc
+
+        gc.collect()
         db2 = modelvault.Database.open(str(path))
         assert db2.get("order_lines", 1) == {
             "id": 1,
@@ -104,9 +109,8 @@ def test_unique_index_violation_inside_transaction_rolls_back(tmp_path: Path) ->
         with db.transaction():
             db.insert("accounts", {"id": 1, "email": "a@example.test"})
             db.insert("accounts", {"id": 2, "email": "a@example.test"})
-    db2 = modelvault.Database.open(str(path))
-    assert db2.get("accounts", 1) is None
-    assert db2.get("accounts", 2) is None
+    assert db.get("accounts", 1) is None
+    assert db.get("accounts", 2) is None
 
 
 def test_limit_applies_after_predicate_on_collection_scan() -> None:

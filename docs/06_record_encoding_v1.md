@@ -1,6 +1,6 @@
 # Record encoding v1 (0.5.x)
 
-This document specifies **record payloads** in `SegmentType::Record` segments and how they interact with the **schema catalog** and **file format minor 5**.
+This document specifies **record payloads** in `SegmentType::Record` segments and how they interact with the **schema catalog** and on-disk format minors. **New databases** today use **format minor 6** (see [On-disk file format](../02_on_disk_file_format.md)); record payload **v1** remains readable for the life of 1.x.
 
 ## Primary key (catalog)
 
@@ -10,8 +10,8 @@ This document specifies **record payloads** in `SegmentType::Record` segments an
 
 ## File format minor
 
-- **`FORMAT_MINOR = 5`** for databases that write records. New databases created under 0.5 use **0.5** headers.
-- Existing **0.4** files are upgraded **lazily** to **0.5** on first record write (same pattern as 0.3→0.4 for catalog).
+- **Record writes** require format minor **≥ 5**; **new** files use minor **6** (transaction framing).
+- Older minors are upgraded **lazily** when a write needs newer invariants (same pattern as 0.3→0.4 for catalog).
 
 ## Record segment payload (v1)
 

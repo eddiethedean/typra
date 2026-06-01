@@ -16,7 +16,7 @@ make python-develop   # builds the modelvault extension into .venv
 |-----------|-----|--------|
 | [todo_app/](todo_app/) | `.venv/bin/python examples/todo_app/main.py add "task"` | Pydantic, CRUD, indexes, queries |
 | [cli_notes/](cli_notes/) | `.venv/bin/python examples/cli_notes/main.py add "note"` | Dataclass, CLI persistence |
-| [fastapi_app/](fastapi_app/) | `uvicorn examples.fastapi_app.main:app` (sync) or `main_async:app` (async + parallel reads) | REST API, DI, validation |
+| [fastapi_app/](fastapi_app/) | `uvicorn examples.fastapi_app.main:app` | REST API, `AsyncDatabase`, async handlers |
 | [desktop_app/](desktop_app/) | `.venv/bin/python examples/desktop_app/main.py` | User data dir, offline settings |
 
 Rust facade demo: `cargo run -p modelvault --example open`
@@ -25,4 +25,4 @@ Rust facade demo: `cargo run -p modelvault --example open`
 
 Published catalog: **[Examples on Read the Docs](https://modelvault.readthedocs.io/en/latest/examples/)**
 
-Guides: [Pydantic](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) · [FastAPI](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) · [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/)
+Guides: [Pydantic](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) · [FastAPI](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) (async) · [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/)

@@ -116,6 +116,8 @@ pub enum FormatError {
 pub enum TransactionError {
     /// `Database::transaction` was called while a transaction is already active.
     NestedTransaction,
+    /// `commit_transaction` was called with no active transaction.
+    NoActiveTransaction,
 }
 
 /// Schema and row-level validation errors (catalog replay, registration, insert/get).
@@ -185,6 +187,10 @@ pub enum SchemaError {
         collection_id: u32,
         index_name: String,
     },
+    /// Primary key scalar type does not match the collection primary field type.
+    PrimaryKeyTypeMismatch {
+        collection_id: u32,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -220,6 +226,9 @@ impl fmt::Display for TransactionError {
         match self {
             TransactionError::NestedTransaction => {
                 write!(f, "nested transactions are not supported")
+            }
+            TransactionError::NoActiveTransaction => {
+                write!(f, "no active transaction")
             }
         }
     }
@@ -366,6 +375,12 @@ impl fmt::Display for SchemaError {
                 write!(
                     f,
                     "index {index_name:?} on collection {collection_id} references missing row"
+                )
+            }
+            SchemaError::PrimaryKeyTypeMismatch { collection_id } => {
+                write!(
+                    f,
+                    "primary key type mismatch for collection {collection_id}"
                 )
             }
         }

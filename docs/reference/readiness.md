@@ -15,10 +15,14 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
 - **Strict vs AutoTruncate recovery for torn tails**
   - Rust: `crates/modelvault-core/tests/integration/recovery_torn_commit.rs`
   - Rust: `crates/modelvault-core/tests/integration/transaction_recovery.rs`
+  - Rust: `crates/modelvault-core/tests/integration/recovery_txn_mismatch.rs` (txn id mismatch truncates under `AutoTruncate`)
+  - Python: `python/modelvault/tests/test_recovery_open.py`
 - **Writer locking is robust across crashes**
   - Rust: `crates/modelvault-core/tests/integration/file_locking_crash_release.rs`
 - **Cross-process file locking**
   - Rust: `crates/modelvault-core/tests/integration/file_locking.rs`
+- **In-process single writable handle per path (0.15+)**
+  - Rust: `crates/modelvault-core/tests/integration/writer_registry_dual_open.rs`
 - **Legacy format minor 5 segments replay after header upgrade to v6**
   - Rust: `crates/modelvault-core/tests/unit/src_db_replay_tests.rs` (`v6_replay_accepts_legacy_unframed_segments_after_header_upgrade`)
 
@@ -49,8 +53,10 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
 ## Transactions, compaction, checkpoints
 
 - **Transactions (Rust + Python)**
-  - Rust: `crates/modelvault-core/tests/integration/transaction_recovery.rs`
-  - Python: `python/modelvault/tests/test_modelvault.py`, `test_e2e_inventory_workflow.py`
+  - Rust: `crates/modelvault-core/tests/integration/transaction_recovery.rs`, `coverage_db_core_more.rs`
+  - Python: `python/modelvault/tests/test_modelvault.py`, `test_e2e_inventory_workflow.py`, `test_transaction_edges.py`
+- **ORDER BY + stale index (0.15+)**
+  - Rust: `crates/modelvault-core/tests/unit/src_query_planner_tests.rs` (`external_sort_source_new_errors_when_row_missing`)
 - **Compaction**
   - Rust: `crates/modelvault-core/tests/integration/compaction.rs`
   - Python: `python/modelvault/tests/test_migrations_and_compaction.py`
@@ -66,7 +72,10 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
 - **Exception mapping is stable and specific**
   - Python: `python/modelvault/tests/test_error_mapping.py`
 - **DB-API edge cases and SQL subset**
-  - Python: `python/modelvault/tests/test_dbapi_edge_cases.py`, `test_dbapi_sql.py`
+  - Python: `python/modelvault/tests/test_dbapi_edge_cases.py`, `test_dbapi_sql.py` (includes incremental `fetchmany` / perf regression)
+- **FastAPI / AsyncDatabase (0.15+)**
+  - Example: `examples/fastapi_app/main.py`
+  - Python: `python/modelvault/tests/test_async_database.py`, `test_concurrent_reads.py`
 - **Snapshot backup/restore**
   - Python: `python/modelvault/tests/test_snapshots.py`
 

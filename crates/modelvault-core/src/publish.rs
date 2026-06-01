@@ -6,7 +6,10 @@ use crate::segments::header::{SegmentHeader, SegmentType, SEGMENT_HEADER_LEN};
 use crate::segments::writer::SegmentWriter;
 use crate::storage::Store;
 use crate::superblock::{Superblock, SUPERBLOCK_SIZE};
-use crate::{file_format::FILE_HEADER_SIZE, superblock::decode_superblock};
+use crate::{
+    file_format::FILE_HEADER_SIZE,
+    superblock::{decode_superblock, peek_superblock_generation, select_superblock_from_pair},
+};
 
 pub fn append_manifest_and_publish(
     store: &mut impl Store,
@@ -38,15 +41,17 @@ pub fn append_manifest_and_publish_with_checkpoint(
     store.read_exact_at(FILE_HEADER_SIZE as u64, &mut a)?;
     store.read_exact_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &mut b)?;
 
-    let sa = decode_superblock(&a).ok();
-    let sb = decode_superblock(&b).ok();
-
-    let selected = match (sa, sb) {
-        (Some(sa), Some(sb)) => if sa.generation >= sb.generation { (sa, true) } else { (sb, false) },
-        (Some(sa), None) => (sa, true),
-        (None, Some(sb)) => (sb, false),
-        (None, None) => (Superblock::empty(), true) };
-    let (current, current_is_a) = selected;
+    let da = decode_superblock(&a);
+    let db = decode_superblock(&b);
+    let pa = peek_superblock_generation(&a);
+    let pb = peek_superblock_generation(&b);
+    let current_is_a = match (&da, &db) {
+        (Ok(sa), Ok(sb)) => sa.generation >= sb.generation,
+        (Ok(_), Err(_)) => true,
+        (Err(_), Ok(_)) => false,
+        (Err(_), Err(_)) => true,
+    };
+    let current = select_superblock_from_pair(da, db, pa, pb).unwrap_or(Superblock::empty());
     let next_generation = current.generation.saturating_add(1);
     let (checkpoint_offset, checkpoint_len) =
         checkpoint.unwrap_or((current.checkpoint_offset, current.checkpoint_len));

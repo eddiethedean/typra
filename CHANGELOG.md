@@ -7,21 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-06-01
+
 ### Fixed
 
 - **Python transactions**: `txn_exit` always runs on context-manager exit; failed commits roll back staging before releasing the read/write lock (fixes stuck exclusive mode after commit errors).
 - **`AsyncModelQuery.select`**: field projection matches sync `ModelQuery.select` (no longer calls a missing `AsyncQueryBuilder.select`).
 - **`plan_insert_row`**: record encode and PK scalar conversion propagate `DbError` instead of panicking via `expect`.
-- **`query_iter`**: stale index keys return `IndexRowMissing` like `query`, instead of being skipped silently.
-- **Recovery (`AutoTruncate`)**: orphan `TxnCommit` segments (no matching `TxnBegin`) are truncated at open so salvageable prefix data remains readable.
-
-## [0.15.0] - 2026-06-02
+- **`query_iter` / `ORDER BY` spill**: stale index keys return `IndexRowMissing` instead of being skipped silently.
+- **Recovery (`AutoTruncate`)**: orphan `TxnCommit` and txn id mismatch segments are truncated at open so salvageable prefix data remains readable.
+- **`commit_transaction` without an active transaction** returns `TransactionError::NoActiveTransaction` (was a silent no-op).
+- **`Database::transaction`**: rolls back staging when commit fails after a successful closure body.
+- **`get` primary-key type mismatch** surfaces as `SchemaError::PrimaryKeyTypeMismatch` (not a format error).
+- **Process-wide writer registry**: at most one writable `Database` handle per on-disk path per process.
+- **DB-API cursor**: one `query_iter` pass caches rows so repeated `fetchmany` is not O(n²).
+- **Python `Database.open`**: optional `recovery=` (`strict` / `auto_truncate`); **`dbapi.connect`**: `strict_read_only` to disable writable fallback.
+- **`ModelCollection.get`**: accepts a model instance (like `delete`); **`ModelQuery.order_by`** delegates to the collection query builder.
 
 ### Added
 
 - **Python `AsyncDatabase`** (experimental): asyncio surface (`await AsyncDatabase.open(...)`, `AsyncTransaction`, `AsyncCollection` / `AsyncQuery`, `modelvault.models.async_collection` / `async_plan` / `async_apply`) on a thread pool via Tokio `spawn_blocking`.
 - **Concurrent reads on one handle** (Python `Database` / `AsyncDatabase`, Rust `AsyncDatabase` with `async` feature): `get`, `query`, and other read paths use a shared lock; writes and open transactions remain exclusive.
-- **FastAPI async example**: [`examples/fastapi_app/main_async.py`](examples/fastapi_app/main_async.py).
+- **FastAPI example**: [`examples/fastapi_app/main.py`](examples/fastapi_app/main.py) uses `AsyncDatabase` and `async def` handlers.
 
 ### Changed
 

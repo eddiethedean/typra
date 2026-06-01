@@ -9,8 +9,8 @@
         let base_len = base.len().unwrap();
 
         let mut spill = TempSpillFile::new(base).unwrap();
-        spill.append_temp_segment(b"hello").unwrap();
-        assert!(spill.store_mut().len().unwrap() > base_len);
+        let off = spill.append_temp_segment(b"hello").unwrap();
+        assert!(off >= base_len);
 
         let base = spill.finish().unwrap();
         assert_eq!(base.len().unwrap(), base_len);

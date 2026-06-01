@@ -11,7 +11,7 @@ Background: [Why ModelVault](why_modelvault.md) · [vs JSON files](../comparison
 | Mode | Status |
 |------|--------|
 | **On-disk** | ✅ Open/create, superblocks, checksummed segments, schema catalog, indexes, typed queries, transactions |
-| **In-memory** | ✅ Same APIs (`open_in_memory` / `Database::open_in_memory`) + snapshot export/import |
+| **In-memory** | ✅ Same APIs (`open_in_memory` / `Database::open_in_memory`; `await AsyncDatabase.open_in_memory()` for asyncio) + snapshot export/import |
 | **Hybrid / streaming** | 🔜 Roadmap — buffer pool + bounded-memory query operators |
 
 Engine layout: [Rust crate layout](../specs/rust_crate_layout.md) · Plans: [ROADMAP](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md)
@@ -22,6 +22,8 @@ Engine layout: [Rust crate layout](../specs/rust_crate_layout.md) · Plans: [ROA
 
 ```python
 db = modelvault.Database.open("app.modelvault")
+# asyncio / FastAPI:
+# db = await modelvault.AsyncDatabase.open("app.modelvault")
 ```
 
 ```rust

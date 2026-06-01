@@ -592,8 +592,17 @@ pub fn execute_query_iter_with_spill_path<'a>(
     #[cfg(feature = "tracing")]
     tracing::debug!(spill_path = %path.display(), "execute_query_order_by_spill");
     let spill = crate::spill::TempSpillFile::new(spill_store)?;
+    let index_name_for_sort = match &plan {
+        Plan::IndexLookup { index_name, .. } => index_name.as_str(),
+        Plan::CollectionScan { .. } => "",
+    };
     let sort_source = Box::new(ExternalSortSource::new(
-        spill, latest, base, col.id.0, order_by,
+        spill,
+        latest,
+        base,
+        col.id.0,
+        order_by,
+        index_name_for_sort,
     )?);
 
     let mut source: Box<dyn RowSource + 'a> = sort_source;
@@ -614,18 +623,34 @@ struct SortItem {
     key: RowKey,
 }
 
+#[allow(dead_code)]
 fn sort_item_for(
     latest: &crate::db::LatestMap,
     key: &RowKey,
     order_by: &OrderBy,
 ) -> Option<SortItem> {
+    sort_item_for_result(latest, key, order_by, "").ok()
+}
+
+fn sort_item_for_result(
+    latest: &crate::db::LatestMap,
+    key: &RowKey,
+    order_by: &OrderBy,
+    index_name: &str,
+) -> Result<SortItem, DbError> {
     let (cid, pk) = key;
-    let row = latest.get(&(cid.0, pk.clone()))?;
+    let row =
+        latest
+            .get(&(cid.0, pk.clone()))
+            .ok_or(DbError::Schema(SchemaError::IndexRowMissing {
+                collection_id: cid.0,
+                index_name: index_name.to_string(),
+            }))?;
     let (none_flag, sort_key) = match scalar_at_path(row, &order_by.path) {
         None => (1u8, Vec::new()),
         Some(s) => (0u8, scalar_sort_key_bytes(&s)),
     };
-    Some(SortItem {
+    Ok(SortItem {
         none_flag,
         sort_key,
         key: (CollectionId(cid.0), pk.clone()),
@@ -803,6 +828,7 @@ impl<'a, S: Store> ExternalSortSource<'a, S> {
         mut input: Box<dyn RowSource + 'a>,
         collection_id: u32,
         order_by: OrderBy,
+        index_name: &str,
     ) -> Result<Self, DbError> {
         const RUN_KEYS: usize = 2048;
 
@@ -812,9 +838,8 @@ impl<'a, S: Store> ExternalSortSource<'a, S> {
 
         while let Some(rk) = input.next_key() {
             let rk = rk?;
-            if let Some(item) = sort_item_for(latest, &rk, &order_by) {
-                run.push(item);
-            }
+            let item = sort_item_for_result(latest, &rk, &order_by, index_name)?;
+            run.push(item);
             if run.len() >= RUN_KEYS {
                 Self::flush_sorted_run(&mut spill, &mut runs_meta, &mut run, dir)?;
             }

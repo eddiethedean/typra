@@ -80,10 +80,9 @@ fn production_journey_register_insert_index_query_txn_reopen_schema_bump_compact
     row.insert("note".to_string(), RowValue::String("hi".to_string()));
     db.insert(cid, row).unwrap();
 
-    // Compact + reopen.
+    // Compact refreshes the handle in place.
     db.compact_in_place().unwrap();
-    let db2 = Database::open(&path).unwrap();
-    let got2 = db2.get(cid, &ScalarValue::Int64(4)).unwrap().unwrap();
+    let got2 = db.get(cid, &ScalarValue::Int64(4)).unwrap().unwrap();
     assert_eq!(got2.get("note"), Some(&RowValue::String("hi".to_string())));
 
     // Verify segment scan succeeds (integrity-ish).

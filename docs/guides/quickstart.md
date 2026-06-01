@@ -147,7 +147,7 @@ registered collection id=1 version=1
 | Topic | Guide |
 |-------|-------|
 | Why ModelVault exists | [Why ModelVault](why_modelvault.md) |
-| Pydantic & FastAPI | [Pydantic](pydantic.md) · [FastAPI](fastapi.md) |
+| Pydantic & FastAPI | [Pydantic](pydantic.md) · [FastAPI](fastapi.md) (`AsyncDatabase`, async routes) |
 | Mental model | [Core concepts](concepts.md) |
 | Python in depth | [Python guide](python.md) |
 | Class schemas & projections | [Models & collections](models_and_collections.md) |

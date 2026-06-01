@@ -735,7 +735,14 @@ impl ModelCollection {
         Ok(())
     }
 
-    fn get(&self, py: Python<'_>, pk: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
+    fn get(&self, py: Python<'_>, pk_or_obj: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
+        let cls = self.model_cls.bind(py);
+        let pk = if pk_or_obj.is_instance(cls)? {
+            let pk_name = primary_key_for(cls)?;
+            pk_or_obj.getattr(&pk_name)?
+        } else {
+            pk_or_obj.clone()
+        };
         let db = self.db.bind(py);
         let row = db.call_method1("get", (&self.name, pk))?;
         if row.is_none() {
@@ -874,6 +881,23 @@ impl ModelQuery {
             .inner
             .bind(py)
             .call_method1("and_where", (path, value))?;
+        Ok(Self {
+            inner: qb.unbind(),
+            model_cls: self.model_cls.clone_ref(py),
+            is_pydantic: self.is_pydantic,
+            selected_fields: opt_pyany_clone_ref(py, &self.selected_fields),
+        })
+    }
+
+    #[pyo3(signature = (path, *, desc=false))]
+    fn order_by(&self, py: Python<'_>, path: &Bound<'_, PyAny>, desc: bool) -> PyResult<Self> {
+        let path = path_any_to_py(py, path)?;
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("desc", desc)?;
+        let qb = self
+            .inner
+            .bind(py)
+            .call_method("order_by", (path,), Some(&kwargs))?;
         Ok(Self {
             inner: qb.unbind(),
             model_cls: self.model_cls.clone_ref(py),
@@ -1360,6 +1384,23 @@ impl AsyncModelQuery {
             .inner
             .bind(py)
             .call_method1("and_where", (path, value))?;
+        Ok(Self {
+            inner: qb.extract::<Py<AsyncQueryBuilder>>()?,
+            model_cls: self.model_cls.clone_ref(py),
+            is_pydantic: self.is_pydantic,
+            selected_fields: opt_pyany_clone_ref(py, &self.selected_fields),
+        })
+    }
+
+    #[pyo3(signature = (path, *, desc=false))]
+    fn order_by(&self, py: Python<'_>, path: &Bound<'_, PyAny>, desc: bool) -> PyResult<Self> {
+        let path = path_any_to_py(py, path)?;
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("desc", desc)?;
+        let qb = self
+            .inner
+            .bind(py)
+            .call_method("order_by", (path,), Some(&kwargs))?;
         Ok(Self {
             inner: qb.extract::<Py<AsyncQueryBuilder>>()?,
             model_cls: self.model_cls.clone_ref(py),

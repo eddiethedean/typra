@@ -12,7 +12,7 @@ From the repo root after `make python-develop`:
 |---------|---------|---------------------|
 | **Todo app** | `python examples/todo_app/main.py add "Ship"` | Pydantic models, CRUD, indexed queries on disk |
 | **CLI notes** | `python examples/cli_notes/main.py add "note"` | Dataclasses, durable CLI persistence |
-| **FastAPI** | `uvicorn examples.fastapi_app.main:app` (sync) or `main_async:app` (async) | REST API, dependencies, `AsyncDatabase` + parallel reads |
+| **FastAPI** | `uvicorn examples.fastapi_app.main:app` | REST API, `async def` handlers, `AsyncDatabase`, dependencies |
 | **Desktop data dir** | `python examples/desktop_app/main.py` | Per-user `app.modelvault`, offline settings |
 
 Source and per-example READMEs: [examples on GitHub](https://github.com/eddiethedean/modelvault/tree/main/examples)
@@ -28,7 +28,7 @@ Source and per-example READMEs: [examples on GitHub](https://github.com/eddiethe
 |---------|-------|---------------------|
 | **Books (minimal)** | [Quickstart](../guides/quickstart.md) | Insert, get, in-memory |
 | **Inventory workflow** | [Python guide](../guides/python.md#realistic-workflow-indexed-queries-on-disk) | On-disk file, indexes, conjunctive queries |
-| **FastAPI patterns** | [FastAPI guide](../guides/fastapi.md) | Architecture without cloning a full service |
+| **FastAPI patterns** | [FastAPI guide](../guides/fastapi.md) | Lifespan, `AsyncDatabase`, `async_collection`, `async def` routes |
 
 ## Rust
 

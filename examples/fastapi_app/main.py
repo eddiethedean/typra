@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal FastAPI + ModelVault service.
+"""Minimal FastAPI + ModelVault service (async handlers + AsyncDatabase).
 
 Install extras once:
   .venv/bin/pip install fastapi uvicorn
@@ -30,8 +30,8 @@ class Item(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.db = modelvault.Database.open(str(DB_PATH))
-    app.state.items = modelvault.models.collection(app.state.db, Item)
+    app.state.db = await modelvault.AsyncDatabase.open(str(DB_PATH))
+    app.state.items = modelvault.models.async_collection(app.state.db, Item)
     yield
 
 
@@ -43,27 +43,27 @@ def get_items(request: Request) -> object:
 
 
 @app.post("/items", response_model=Item)
-def create_item(body: Item, items=Depends(get_items)):
-    existing = items.get(body.id)
+async def create_item(body: Item, items=Depends(get_items)):
+    existing = await items.get(body.id)
     if existing is not None:
         raise HTTPException(status_code=409, detail="id already exists")
-    items.insert(body)
+    await items.insert(body)
     return body
 
 
 @app.get("/items/{item_id}", response_model=Item)
-def read_item(item_id: int, items=Depends(get_items)):
-    row = items.get(item_id)
+async def read_item(item_id: int, items=Depends(get_items)):
+    row = await items.get(item_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
     return row
 
 
 @app.get("/items", response_model=list[Item])
-def list_items(items=Depends(get_items)):
-    return items.all()
+async def list_items(items=Depends(get_items)):
+    return await items.all()
 
 
 @app.get("/items/search/{name}", response_model=list[Item])
-def search_by_name(name: str, items=Depends(get_items)):
-    return items.where(Item.name, name).all()
+async def search_by_name(name: str, items=Depends(get_items)):
+    return await items.where(Item.name, name).all()

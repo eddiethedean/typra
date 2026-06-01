@@ -38,8 +38,11 @@
     fn transaction_api_nested_begin_and_commit_without_begin_are_ok() {
         let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
 
-        // Committing without a transaction is a no-op.
-        db.commit_transaction().unwrap();
+        let err = db.commit_transaction().unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Transaction(crate::error::TransactionError::NoActiveTransaction)
+        ));
 
         db.begin_transaction().unwrap();
         let e = db.begin_transaction().unwrap_err();
@@ -966,6 +969,7 @@
         let fs = FailFsOps::new(".tmp");
         let e = db.compact_in_place_with_fsops(&fs).unwrap_err();
         assert!(matches!(e, crate::DbError::Io(_)));
+        drop(db);
 
         // Live DB should still be readable (backup restored).
         let reopened = super::Database::open(&path).unwrap();
@@ -1106,6 +1110,39 @@
         assert!(matches!(
             res,
             Err(DbError::Format(FormatError::UnsupportedVersion { .. }))
+        ));
+    }
+
+    #[test]
+    fn read_and_select_superblock_errors_when_newer_slot_corrupt() {
+        let mut store = new_store();
+        store
+            .write_all_at(0, &FileHeader::new_v0_3().encode())
+            .unwrap();
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        store.write_all_at(segment_start - 1, &[0u8]).unwrap();
+
+        let sb_a = Superblock {
+            generation: 5,
+            ..Superblock::empty()
+        };
+        let sb_b = Superblock {
+            generation: 10,
+            ..Superblock::empty()
+        };
+        let mut corrupt_b = sb_b.encode();
+        corrupt_b[48] ^= 0xff;
+        store
+            .write_all_at(FILE_HEADER_SIZE as u64, &sb_a.encode())
+            .unwrap();
+        store
+            .write_all_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &corrupt_b)
+            .unwrap();
+
+        let res = open::read_and_select_superblock(&mut store);
+        assert!(matches!(
+            res,
+            Err(DbError::Format(FormatError::BadSuperblockChecksum))
         ));
     }
 

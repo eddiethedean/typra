@@ -24,7 +24,7 @@ You have chosen ModelVault (or are close) and need the right tutorial.
 | I use… | Start here |
 |--------|------------|
 | **Pydantic** | [Pydantic guide](guides/pydantic.md) → [Models & collections](guides/models_and_collections.md) |
-| **FastAPI** | [FastAPI guide](guides/fastapi.md) → [Python guide](guides/python.md) |
+| **FastAPI** | [FastAPI guide](guides/fastapi.md) (`AsyncDatabase`, `async def`) → [Python guide](guides/python.md) |
 | **Python (general)** | [Quickstart](guides/quickstart.md) → [Python guide](guides/python.md) |
 | **Rust** | [Quickstart](guides/quickstart.md) → [Rust API](reference/rust_api.md) |
 

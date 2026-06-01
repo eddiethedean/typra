@@ -5,7 +5,7 @@
 ModelVault is **the database for application models**: store **dataclasses** and **Pydantic v2 models** with engine-level validation, secondary indexes, schema evolution, and single-file deployment—without maintaining a parallel SQL schema.
 
 !!! tip "New to ModelVault?"
-    Read [Why ModelVault](why_modelvault.md) for the same positioning as the [README](https://github.com/eddiethedean/modelvault/blob/main/README.md), then [Quickstart](quickstart.md). Building an API? See [FastAPI](fastapi.md). Runnable apps: [Examples](../examples/index.md).
+    Read [Why ModelVault](why_modelvault.md) for the same positioning as the [README](https://github.com/eddiethedean/modelvault/blob/main/README.md), then [Quickstart](quickstart.md). Building a **FastAPI** service? Start with [FastAPI](fastapi.md) (`AsyncDatabase` + `async def`). Runnable apps: [Examples](../examples/index.md).
 
 !!! tip "Recommended API"
     Prefer **`modelvault.models.collection`** over hand-written `fields_json` unless you need dynamic schemas. Details: [Models & collections](models_and_collections.md).
@@ -136,7 +136,7 @@ books.update("Hello", {"rating": 5.0})
 
 ## Asyncio API (`AsyncDatabase`)
 
-For **FastAPI**, **Starlette**, and other asyncio apps, use the parallel **`modelvault.AsyncDatabase`** surface. Sync `Database` is unchanged.
+**Recommended for FastAPI and Starlette:** use **`modelvault.AsyncDatabase`** and **`modelvault.models.async_collection`** so route handlers can `await` storage without blocking the event loop. The sync **`Database`** API below is unchanged and remains the default for scripts, CLIs, and tests that are not asyncio-first.
 
 ```python
 db = await modelvault.AsyncDatabase.open_in_memory()
@@ -158,7 +158,7 @@ Operations run the sync engine on a **thread pool** (GIL released during work)�
 | **Writes** (`insert`, `delete`, schema changes, compaction, …) | **Exclusive** lock — one mutator at a time |
 | **Open transaction** | All operations on that handle serialize until commit/rollback (readers see staged state) |
 
-Cross-process rules are unchanged: one writer per `.modelvault` file; use `read_only=True` for additional reader processes. See [Async policy](../reference/async_policy.md) and [FastAPI (async)](fastapi.md#async-routes).
+Cross-process rules are unchanged: one writer per `.modelvault` file; use `read_only=True` for additional reader processes. See [Async policy](../reference/async_policy.md) and the [FastAPI guide](fastapi.md).
 
 ### Sync `Database` and threads
 

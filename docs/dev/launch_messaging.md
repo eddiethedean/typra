@@ -40,7 +40,7 @@ Full launch post (adapt for Dev.to, company blog, etc.):
 ## Talk outline (15 minutes)
 
 1. Problem: app models vs SQL vs JSON (3 min)
-2. Demo: Pydantic → `modelvault.models.collection` → query (5 min)
+2. Demo: Pydantic → `modelvault.models.collection` → query; optional FastAPI snippet with `AsyncDatabase` (5 min)
 3. Single-file ops: backup, CLI inspect (3 min)
 4. Comparisons and roadmap: SQL track post-1.0 (4 min)
 

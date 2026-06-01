@@ -1216,6 +1216,7 @@ fn external_sort_source_new_propagates_input_key_error() {
         Box::new(ErrSource::default()),
         1,
         order_by,
+        "",
     )
     {
         Ok(_) => panic!("expected Err"),
@@ -1285,13 +1286,20 @@ fn external_sort_source_new_surfaces_flush_error_on_run_limit() {
     };
 
     assert!(
-        super::ExternalSortSource::new(spill, &latest, Box::new(KeySource::default()), 1, order_by)
-            .is_err()
+        super::ExternalSortSource::new(
+            spill,
+            &latest,
+            Box::new(KeySource::default()),
+            1,
+            order_by,
+            "",
+        )
+        .is_err()
     );
 }
 
 #[test]
-fn external_sort_source_new_skips_sort_item_when_row_missing() {
+fn external_sort_source_new_errors_when_row_missing() {
     use crate::storage::VecStore;
 
     #[derive(Default)]
@@ -1310,16 +1318,26 @@ fn external_sort_source_new_skips_sort_item_when_row_missing() {
     }
 
     let spill = crate::spill::TempSpillFile::new(VecStore::new()).unwrap();
-    let latest = LatestMap::default(); // row missing => sort_item_for returns None
+    let latest = LatestMap::default();
     let order_by = OrderBy {
         path: FieldPath(vec![Cow::Borrowed("x")]),
         direction: OrderDirection::Asc,
     };
 
-    let mut src =
-        super::ExternalSortSource::new(spill, &latest, Box::new(OneKey::default()), 1, order_by)
-            .unwrap();
-    assert!(src.next_key().is_none());
+    match super::ExternalSortSource::new(
+        spill,
+        &latest,
+        Box::new(OneKey::default()),
+        1,
+        order_by,
+        "",
+    ) {
+        Ok(_) => panic!("expected IndexRowMissing"),
+        Err(e) => assert!(matches!(
+            e,
+            DbError::Schema(crate::SchemaError::IndexRowMissing { .. })
+        )),
+    }
 }
 
 #[test]
@@ -1381,8 +1399,15 @@ fn external_sort_source_new_tolerates_corrupt_run_payload_by_skipping_seed_item(
     };
 
     let mut src =
-        super::ExternalSortSource::new(spill, &latest, Box::new(OneKey::default()), 1, order_by)
-            .unwrap();
+        super::ExternalSortSource::new(
+            spill,
+            &latest,
+            Box::new(OneKey::default()),
+            1,
+            order_by,
+            "",
+        )
+        .unwrap();
     assert!(src.next_key().is_none());
 }
 
@@ -1445,6 +1470,7 @@ fn external_sort_source_new_surfaces_read_temp_payload_error() {
         Box::new(SingleKeySource::default()),
         1,
         order_by,
+        "",
     )
     {
         Ok(_) => panic!("expected Err"),
@@ -1626,7 +1652,7 @@ fn external_sort_source_spills_multiple_runs_and_merges() {
         path: FieldPath(vec![Cow::Borrowed("v")]),
         direction: OrderDirection::Asc,
     };
-    let mut src = super::ExternalSortSource::new(spill, &latest, input, 1, ob).unwrap();
+    let mut src = super::ExternalSortSource::new(spill, &latest, input, 1, ob, "").unwrap();
 
     // Pull a few keys; this drives heap pop + refill and run-reader decoding.
     let mut seen = 0usize;
@@ -1672,7 +1698,7 @@ fn external_sort_flushes_residual_run_without_full_batches() {
         path: FieldPath(vec![Cow::Borrowed("v")]),
         direction: OrderDirection::Asc,
     };
-    let mut src = super::ExternalSortSource::new(spill, &latest, input, 1, ob).unwrap();
+    let mut src = super::ExternalSortSource::new(spill, &latest, input, 1, ob, "").unwrap();
     for _ in 0..5 {
         assert!(src.next_key().unwrap().is_ok());
     }
@@ -1778,6 +1804,7 @@ fn external_sort_propagates_spill_segment_write_budget_exhaustion() {
             scan,
             1,
             order_by.clone(),
+            "",
         )
         .unwrap();
     }
@@ -1798,7 +1825,7 @@ fn external_sort_propagates_spill_segment_write_budget_exhaustion() {
         collection_id: 1,
         predicate: None,
     });
-    match super::ExternalSortSource::new(spill_b, &latest, scan_b, 1, order_by) {
+    match super::ExternalSortSource::new(spill_b, &latest, scan_b, 1, order_by, "") {
         Ok(_) => panic!("expected ExternalSortSource::new to fail when spill append budget exhausted"),
         Err(err) => assert!(
             matches!(err, DbError::Io(_)),

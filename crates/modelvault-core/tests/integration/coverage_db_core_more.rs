@@ -50,12 +50,17 @@ impl DbModel for OrdersSubset {
 }
 
 #[test]
-fn transaction_empty_commit_and_commit_without_begin_are_ok() {
+fn transaction_empty_commit_and_commit_without_begin() {
+    use modelvault_core::error::{DbError, TransactionError};
+
     let mut db = Database::open_in_memory().unwrap();
     db.register_model::<Orders>().unwrap();
 
-    // Commit without begin is a no-op.
-    db.commit_transaction().unwrap();
+    let err = db.commit_transaction().unwrap_err();
+    assert!(matches!(
+        err,
+        DbError::Transaction(TransactionError::NoActiveTransaction)
+    ));
 
     // Begin + commit with no staged segments is allowed.
     db.begin_transaction().unwrap();

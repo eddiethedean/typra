@@ -101,8 +101,10 @@
                 &pm,
             )
             .unwrap();
-        let err = truncate_end_for_recovery(&mut store3, 0, FORMAT_MINOR_V6).unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        let (safe_end, reason) =
+            truncate_end_for_recovery(&mut store3, 0, FORMAT_MINOR_V6).unwrap();
+        assert_eq!(safe_end, 0);
+        assert_eq!(reason, Some("txn_id_mismatch"));
     }
 
     #[test]

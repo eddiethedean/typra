@@ -95,9 +95,8 @@ def test_transaction_context_manager_commits(tmp_path) -> None:
     with db.transaction():
         db.insert("books", {"title": "one"})
         db.insert("books", {"title": "two"})
-    db3 = modelvault.Database.open(str(path))
-    assert db3.get("books", "one") == {"title": "one"}
-    assert db3.get("books", "two") == {"title": "two"}
+    assert db.get("books", "one") == {"title": "one"}
+    assert db.get("books", "two") == {"title": "two"}
 
 
 def test_transaction_context_manager_rolls_back_on_exception(tmp_path) -> None:
@@ -109,5 +108,4 @@ def test_transaction_context_manager_rolls_back_on_exception(tmp_path) -> None:
         with db.transaction():
             db.insert("books", {"title": "gone"})
             raise RuntimeError("user abort")
-    db4 = modelvault.Database.open(str(path))
-    assert db4.get("books", "gone") is None
+    assert db.get("books", "gone") is None

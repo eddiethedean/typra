@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs;
 
-use modelvault_core::error::{DbError, FormatError, SchemaError};
+use modelvault_core::error::{DbError, SchemaError};
 use modelvault_core::file_format::{decode_header, FILE_HEADER_SIZE};
 use modelvault_core::record::{RowValue, ScalarValue};
 use modelvault_core::schema::{FieldDef, FieldPath, Type};
@@ -85,7 +85,7 @@ fn get_pk_type_mismatch_errors() {
     let e = db.get(id, &ScalarValue::Int64(1)).unwrap_err();
     assert!(matches!(
         e,
-        DbError::Format(FormatError::RecordPayloadTypeMismatch)
+        DbError::Schema(SchemaError::PrimaryKeyTypeMismatch { .. })
     ));
 }
 

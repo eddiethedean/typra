@@ -71,7 +71,7 @@ python scripts/bench_compare.py --base target/criterion-old --new target/criteri
 
 CI runs benches weekly via [`.github/workflows/bench.yml`](../.github/workflows/bench.yml) as a **non-blocking** job (`continue-on-error: true`). Upload artifacts from that workflow when updating a stored baseline for manual comparison.
 
-The **1.0 readiness** gate (`make check-2p0-ready`) runs `check-full` plus async-surface Rust tests; see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+The **release readiness** gate (`make check-2p0-ready`) runs `check-full` plus async-surface Rust tests; see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 
 ## Versioning
 
@@ -85,8 +85,8 @@ We aim for **practical 100%** test coverage over first-party code, with an expli
   - Exclusions are explicit and justified. For example, the PyO3 module entrypoint under `python/modelvault/src/lib.rs` is executed by Python import, not by `cargo test`, so Rust-only coverage runs may exclude it.
   - We primarily track **line coverage** for “practical 100%”; region/branch coverage may remain <100% in cases where the only missed regions are OS-level IO failure paths that are not deterministic to test.
   - Prefer targeted harness tests (for example `FileStore` lock/ref-count patterns under `crates/modelvault-core/tests/unit/`) for IO edges we can reproduce; avoid widening `Makefile` `--ignore-filename-regex` for `modelvault-core` sources unless the exclusion is documented here with a concrete rationale (rename races, exotic `ErrorKind`, etc.).
-- **Python**: coverage is computed via `pytest-cov` (coverage.py).
-  - Virtual environments, `site-packages`, and vendored dependencies are omitted via `.coveragerc`.
+- **Python**: `make coverage-python` runs the pytest suite; extension code is exercised via import but line coverage is not gated (bindings are covered primarily through Rust `llvm-cov` and integration tests).
+  - Virtual environments, `site-packages`, and vendored dependencies are omitted via `.coveragerc` when you run `pytest --cov` locally.
 
 The **coverage** CI job runs `make coverage-rust`, which enforces **90%** line coverage for `modelvault-core` overall (`COVERAGE_MODELVAULT_CORE_LINES`) and per module bucket (`db`, `query`, `index`, `validation` via `COVERAGE_MODULE_MIN_LINES` and [`scripts/coverage_core.py`](../scripts/coverage_core.py)), then emits workspace `rust.lcov`. Adjust thresholds only when intentionally changing test scope.
 

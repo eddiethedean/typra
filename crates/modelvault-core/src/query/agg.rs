@@ -152,7 +152,8 @@ where
         return Ok(out);
     }
 
-    let spill = spill.expect("internal: spill segments exist but spill store missing");
+    let spill =
+        spill.ok_or_else(|| qerr("internal: spill segments exist but spill store missing"))?;
 
     // Merge partitions one at a time to bound memory.
     let mut by_part: [Vec<SpillSeg>; 64] = std::array::from_fn(|_| Vec::new());

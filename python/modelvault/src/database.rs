@@ -74,10 +74,10 @@ impl PyTransaction {
 #[pymethods]
 impl Database {
     #[staticmethod]
-    #[pyo3(signature = (path, *, read_only=false))]
-    fn open(path: &str, read_only: bool) -> PyResult<Self> {
+    #[pyo3(signature = (path, *, read_only=false, recovery=None))]
+    fn open(path: &str, read_only: bool, recovery: Option<&str>) -> PyResult<Self> {
         Ok(Self {
-            inner: DbHandle::new(InnerDb::open_path(path, read_only)?),
+            inner: DbHandle::new(InnerDb::open_path(path, read_only, recovery)?),
         })
     }
 

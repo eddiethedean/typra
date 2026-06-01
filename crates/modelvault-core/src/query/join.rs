@@ -129,7 +129,9 @@ where
         }
         return Ok(total);
     }
-    let spill = spill.expect("internal: spill segments exist but spill store missing");
+    let spill = spill.ok_or_else(|| {
+        qerr("internal: spill segments exist but spill store missing")
+    })?;
     // Merge each partition and compute matches.
     let mut by_part: [Vec<SpillSeg>; 64] = std::array::from_fn(|_| Vec::new());
     for s in segs {

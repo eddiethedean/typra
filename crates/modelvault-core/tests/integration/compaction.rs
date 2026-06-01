@@ -78,7 +78,6 @@ fn compact_in_place_roundtrips() {
     .unwrap();
 
     db.compact_in_place().unwrap();
-    let reopened = Database::open(&path).unwrap();
-    let row = reopened.get(cid, &ScalarValue::Int64(1)).unwrap().unwrap();
+    let row = db.get(cid, &ScalarValue::Int64(1)).unwrap().unwrap();
     assert_eq!(row.get("x"), Some(&RowValue::Int64(10)));
 }

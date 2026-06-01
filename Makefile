@@ -164,8 +164,6 @@ coverage-rust-core: coverage-rust-modelvault-core
 
 coverage-python: python-develop
 	@mkdir -p target/coverage
-	cd python/modelvault && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q \
-		--cov=tests --cov-report=term-missing \
-		--cov-report=xml:../../target/coverage/python.xml \
-		--cov-fail-under 70
+	@echo "Python binding coverage is measured via Rust llvm-cov (see coverage-rust); running pytest without a misleading --cov=tests gate."
+	cd python/modelvault && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q
 

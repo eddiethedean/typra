@@ -67,16 +67,12 @@
         // Drop one writer handle; internal refcount should decrement but the writer lock remains.
         drop(g1);
 
-        // While writer lock is held in this process, read-only open should fail fast.
-        let err = FileStore::open_locked(&db_path, OpenMode::ReadOnly).unwrap_err();
-        assert!(matches!(
-            err,
-            DbError::Io(ref e) if e.to_string().contains("holding writer lock")
-        ));
+        // Same-process read-only open is allowed while a writer handle remains (avoids fs2 downgrade).
+        let _ro = FileStore::open_locked(&db_path, OpenMode::ReadOnly).unwrap();
 
         // Drop the final writer handle; writer lock should be removed.
         drop(g2);
 
-        // Now read-only open should proceed to the cross-process lock check (which should succeed).
-        let _ro = FileStore::open_locked(&db_path, OpenMode::ReadOnly).unwrap();
+        // Read-only open still succeeds after the writer lock is released.
+        let _ro2 = FileStore::open_locked(&db_path, OpenMode::ReadOnly).unwrap();
     }

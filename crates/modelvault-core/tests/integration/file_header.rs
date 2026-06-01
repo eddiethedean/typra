@@ -19,7 +19,9 @@ fn open_validates_header_on_reopen() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("reopen.modelvault");
 
-    let _a = Database::open(&path).expect("open a");
+    {
+        let _a = Database::open(&path).expect("open a");
+    }
     let _b = Database::open(&path).expect("open b");
 }
 
@@ -79,14 +81,17 @@ fn open_does_not_overwrite_existing_header() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("no_overwrite.modelvault");
 
-    let _db = Database::open(&path).expect("open");
-    let mut bytes = fs::read(&path).expect("read");
-    assert!(bytes.len() >= 32);
+    let bytes = {
+        let _db = Database::open(&path).expect("open");
+        let mut bytes = fs::read(&path).expect("read");
+        assert!(bytes.len() >= 32);
 
-    // Mutate a byte in the header to simulate some future header field changes
-    // (while keeping the magic intact so open() continues to read/validate).
-    bytes[20] ^= 0b1010_1010;
-    fs::write(&path, &bytes).expect("write mutated header");
+        // Mutate a byte in the header to simulate some future header field changes
+        // (while keeping the magic intact so open() continues to read/validate).
+        bytes[20] ^= 0b1010_1010;
+        fs::write(&path, &bytes).expect("write mutated header");
+        bytes
+    };
 
     let _db2 = Database::open(&path).expect("open again");
     let bytes2 = fs::read(&path).expect("read again");
