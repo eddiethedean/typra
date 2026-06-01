@@ -192,7 +192,10 @@ impl Collection {
         path: &Bound<'_, PyAny>,
         value: &Bound<'_, PyAny>,
     ) -> PyResult<QueryBuilder> {
-        self.start_query_with_cmp(py, path, value, |path, value| Predicate::Gte { path, value })
+        self.start_query_with_cmp(py, path, value, |path, value| Predicate::Gte {
+            path,
+            value,
+        })
     }
 }
 
@@ -285,10 +288,7 @@ impl QueryBuilder {
         Ok(Self {
             db: self.db.clone_ref(py),
             collection_name: self.collection_name.clone(),
-            predicate: Some(merge_and(
-                self.predicate.clone(),
-                make(path_fp, scalar),
-            )),
+            predicate: Some(merge_and(self.predicate.clone(), make(path_fp, scalar))),
             limit: self.limit,
             order_by: self.order_by.clone(),
         })
@@ -331,7 +331,10 @@ impl QueryBuilder {
         path: &Bound<'_, PyAny>,
         value: &Bound<'_, PyAny>,
     ) -> PyResult<Self> {
-        self.with_cmp(py, path, value, |path, value| Predicate::Lte { path, value })
+        self.with_cmp(py, path, value, |path, value| Predicate::Lte {
+            path,
+            value,
+        })
     }
 
     fn gt_where(
@@ -349,7 +352,10 @@ impl QueryBuilder {
         path: &Bound<'_, PyAny>,
         value: &Bound<'_, PyAny>,
     ) -> PyResult<Self> {
-        self.with_cmp(py, path, value, |path, value| Predicate::Gte { path, value })
+        self.with_cmp(py, path, value, |path, value| Predicate::Gte {
+            path,
+            value,
+        })
     }
 
     fn or_where(&self, py: Python<'_>, other: &QueryBuilder) -> PyResult<Self> {
@@ -375,12 +381,7 @@ impl QueryBuilder {
     }
 
     #[pyo3(signature = (path, *, desc=false))]
-    fn order_by(
-        &self,
-        py: Python<'_>,
-        path: &Bound<'_, PyAny>,
-        desc: bool,
-    ) -> PyResult<Self> {
+    fn order_by(&self, py: Python<'_>, path: &Bound<'_, PyAny>, desc: bool) -> PyResult<Self> {
         let parts = parse_path_or_field_ref(path)?;
         Ok(Self {
             db: self.db.clone_ref(py),

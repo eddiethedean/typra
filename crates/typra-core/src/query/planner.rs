@@ -151,12 +151,7 @@ pub fn execute_query(
                 IndexKind::NonUnique => {
                     if let Some(pks) = indexes.non_unique_lookup(collection_id, &index_name, &key) {
                         for pk in pks {
-                            out.push(row_for_index_pk(
-                                latest,
-                                collection_id,
-                                pk,
-                                &index_name,
-                            )?);
+                            out.push(row_for_index_pk(latest, collection_id, pk, &index_name)?);
                         }
                     }
                 }

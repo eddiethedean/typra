@@ -244,11 +244,12 @@ impl<S: Store> Database<S> {
         let mut cols = self.catalog_for_read().collections();
         cols.sort_by_key(|c| c.id.0);
         for c in &cols {
-            let pk = c.primary_field.as_deref().ok_or(DbError::Schema(
-                SchemaError::NoPrimaryKey {
-                    collection_id: c.id.0,
-                },
-            ))?;
+            let pk =
+                c.primary_field
+                    .as_deref()
+                    .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                        collection_id: c.id.0,
+                    }))?;
             let (new_id, _v1) = out.register_collection_with_indexes(
                 &c.name,
                 c.fields.clone(),
@@ -637,8 +638,7 @@ impl<S: Store> Database<S> {
             .get(id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
         // Same infallibility contract as `register_schema_version_with_indexes` above.
-        let change =
-            classify_schema_update(&current.fields, &current.indexes, &fields, &indexes)?;
+        let change = classify_schema_update(&current.fields, &current.indexes, &fields, &indexes)?;
         let mut steps = Vec::new();
         match &change {
             SchemaChange::Safe => {}
