@@ -118,7 +118,7 @@ Output:
 
 ```text
 get: Book(title='Hello', year=2020, rating=4.5)
-modelvault 1.0.0
+modelvault 0.14.0
 ```
 
 On disk, swap `open_in_memory()` for `Database.open("app.modelvault")`.
