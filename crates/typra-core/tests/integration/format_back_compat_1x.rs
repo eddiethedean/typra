@@ -85,8 +85,12 @@ fn assert_semantic_fixture_matches_fresh(fixture: &Path, fresh: &Path) {
     let fresh_db = Database::open(fresh).expect("open fresh encoder output");
     for name in ["books", "users"] {
         assert_eq!(
-            fixture_db.collection_id_named(name).expect("fixture collection"),
-            fresh_db.collection_id_named(name).expect("fresh collection"),
+            fixture_db
+                .collection_id_named(name)
+                .expect("fixture collection"),
+            fresh_db
+                .collection_id_named(name)
+                .expect("fresh collection"),
             "collection {name}"
         );
     }
