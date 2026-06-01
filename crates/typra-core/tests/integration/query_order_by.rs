@@ -176,7 +176,7 @@ fn order_by_spill_does_not_truncate_concurrent_writes() {
         }
     }
 
-    let mut db_a = Database::open(&path).unwrap();
+    let db_a = Database::open(&path).unwrap();
     let mut db_b = Database::open(&path).unwrap();
     let cid = db_a.collection_id_named("books").unwrap();
 

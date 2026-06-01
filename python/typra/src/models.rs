@@ -720,7 +720,7 @@ impl ModelCollection {
     fn delete(&self, py: Python<'_>, pk_or_obj: &Bound<'_, PyAny>) -> PyResult<()> {
         let cls = self.model_cls.bind(py);
         let pk = if pk_or_obj.is_instance(cls)? {
-            let pk_name = primary_key_for(&cls)?;
+            let pk_name = primary_key_for(cls)?;
             pk_or_obj.getattr(&pk_name)?
         } else {
             pk_or_obj.clone()

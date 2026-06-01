@@ -139,18 +139,19 @@
     #[test]
     fn scan_segments_allow_tail_tear_rejects_bad_checksum_for_non_temp_non_checkpoint() {
         let mut store = VecStore::new();
-        let mut w = SegmentWriter::new(&mut store, 0);
-        let _off = w
-            .append(
-                SegmentHeader {
-                    segment_type: SegmentType::Schema,
-                    payload_len: 0,
-                    payload_crc32c: 0,
-                },
-                b"abc",
-            )
-            .unwrap();
-        drop(w);
+        {
+            let mut w = SegmentWriter::new(&mut store, 0);
+            let _off = w
+                .append(
+                    SegmentHeader {
+                        segment_type: SegmentType::Schema,
+                        payload_len: 0,
+                        payload_crc32c: 0,
+                    },
+                    b"abc",
+                )
+                .unwrap();
+        }
 
         let mut metas = scan_segments_allow_tail_tear(&mut store, 0).unwrap();
         assert_eq!(metas.len(), 1);
@@ -241,32 +242,34 @@
     #[test]
     fn scan_segments_allow_tail_tear_stops_at_bad_crc() {
         let mut store = VecStore::new();
-        let mut w = SegmentWriter::new(&mut store, 0);
-        let _ = w
-            .append(
-                SegmentHeader {
-                    segment_type: SegmentType::Temp,
-                    payload_len: 0,
-                    payload_crc32c: 0,
-                },
-                b"good",
-            )
-            .unwrap();
-        drop(w);
-        let good_end = store.len().unwrap();
+        let good_end = {
+            let mut w = SegmentWriter::new(&mut store, 0);
+            let _ = w
+                .append(
+                    SegmentHeader {
+                        segment_type: SegmentType::Temp,
+                        payload_len: 0,
+                        payload_crc32c: 0,
+                    },
+                    b"good",
+                )
+                .unwrap();
+            store.len().unwrap()
+        };
 
-        let mut w2 = SegmentWriter::new(&mut store, good_end);
-        let off = w2
-            .append(
-                SegmentHeader {
-                    segment_type: SegmentType::Manifest,
-                    payload_len: 0,
-                    payload_crc32c: 0,
-                },
-                b"bad!",
-            )
-            .unwrap();
-        drop(w2);
+        let off = {
+            let mut w2 = SegmentWriter::new(&mut store, good_end);
+            w2
+                .append(
+                    SegmentHeader {
+                        segment_type: SegmentType::Manifest,
+                        payload_len: 0,
+                        payload_crc32c: 0,
+                    },
+                    b"bad!",
+                )
+                .unwrap()
+        };
         let mut hdr = read_segment_header_at(&mut store, off).unwrap().1;
         hdr.payload_crc32c = hdr.payload_crc32c.wrapping_add(1);
         store.write_all_at(off, &hdr.encode()).unwrap();

@@ -82,9 +82,9 @@
             &payload[..2],
             CHECKPOINT_VERSION_V0.to_le_bytes().as_slice()
         );
-        let mut w = SegmentWriter::new(&mut store, segment_start);
-        let off = w
-            .append(
+        let off = {
+            let mut w = SegmentWriter::new(&mut store, segment_start);
+            w.append(
                 SegmentHeader {
                     segment_type: SegmentType::Checkpoint,
                     payload_len: 0,
@@ -92,8 +92,8 @@
                 },
                 &payload,
             )
-            .unwrap();
-        drop(w);
+            .unwrap()
+        };
 
         let mut sb = Superblock::empty();
         sb.checkpoint_offset = off;
