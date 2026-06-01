@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish ModelVault Rust workspace crates to crates.io (modelvault-core, modelvault-derive, modelvault, modelvault-python).
+# Publish ModelVault Rust workspace crates to crates.io (modelvault-core, modelvault-derive, modelvault, modelvault-cli, modelvault-python).
 # Requires CARGO_REGISTRY_TOKEN (or CRATES_IO_TOKEN). Idempotent: skips if version already exists.
 set -euo pipefail
 
@@ -37,6 +37,7 @@ echo "Publishing Rust crates to crates.io..."
 cargo_publish_allow_duplicate modelvault-core
 cargo_publish_allow_duplicate modelvault-derive
 cargo_publish_allow_duplicate modelvault
+cargo_publish_allow_duplicate modelvault-cli
 cargo_publish_allow_duplicate modelvault-python
 
 echo "Crates publish done."

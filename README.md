@@ -139,7 +139,7 @@ More: **[Rust API](https://modelvault.readthedocs.io/en/latest/reference/rust_ap
 | **`examples/`** | Runnable todo, CLI, FastAPI, and desktop samples |
 | **`blog/`** | [Launch essay](https://github.com/eddiethedean/modelvault/blob/main/blog/modelvault-for-application-models.md) |
 
-Local checks: `make check-full` · 1.0 gate: `make check-2p0-ready`
+Local checks: `make check-full` · Release gate: `make check-2p0-ready` (see [readiness checklist](docs/reference/readiness.md#release-cut-checklist))
 
 ## License
 

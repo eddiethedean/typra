@@ -141,11 +141,11 @@ Use this before tagging **`v0.14.0`** and publishing to crates.io / PyPI.
 
    Manual fallback: [Contributing → Publishing](../dev/contributing_guide.md#publishing) and `./scripts/publish-all.sh`.
 
-4. **GitHub release** — create a release from tag **`v0.14.0`** with notes from the **`[1.0.0]`** changelog section.
+4. **GitHub release** — create a release from tag **`v0.14.0`** using the **`[0.14.0]`** changelog section (package rename + upgrade notes). The **`[1.0.0]`** section documents the underlying stable feature milestone.
 
 ### Post-publish verification
 
-- **crates.io**: `modelvault`, `modelvault-core`, and `modelvault-derive` at **0.14.0**.
+- **crates.io**: `modelvault`, `modelvault-core`, `modelvault-derive`, and `modelvault-cli` at **0.14.0**.
 - **PyPI**: `pip index versions modelvault` shows **0.14.0**; `pip install "modelvault>=0.14.0,<0.15"` succeeds on your platform.
 - **Smoke test**:
 

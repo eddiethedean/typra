@@ -11,6 +11,8 @@ _Nothing yet._
 
 ## [0.14.0] - 2026-06-01
 
+Ships the stable **application-model database** feature set (see **[1.0.0]** below) under the **ModelVault** package name on crates.io and PyPI.
+
 ### Changed
 
 - **Package rename:** published as **ModelVault** — crates `modelvault`, `modelvault-core`, `modelvault-derive`, `modelvault-cli`; Python package `modelvault`; CLI binary `modelvault`.
