@@ -74,7 +74,7 @@ fn try_load_checkpoint_state(
     if crc != header.payload_crc32c { return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum)); }
     let checkpoint_end = sb.checkpoint_offset
         + crate::segments::header::SEGMENT_HEADER_LEN as u64
-        + header.payload_len as u64;
+        + header.payload_len;
     let (replay_from, catalog, latest, indexes) = crate::checkpoint::state_from_checkpoint_payload(&payload)?;
     if replay_from < checkpoint_end {
         return Err(DbError::Format(FormatError::InvalidCheckpointPayload {
