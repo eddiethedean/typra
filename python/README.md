@@ -13,6 +13,7 @@ Contributor guide for **PyPI packaging** in the ModelVault monorepo. The engine 
 | [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_modelvault/) | Positioning |
 | [Pydantic](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) · [FastAPI](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) | Application guides |
 | [Python guide](https://modelvault.readthedocs.io/en/latest/guides/python/) | Full application API |
+| [Async policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/) | `AsyncDatabase`, concurrent reads vs exclusive writes |
 | [Python API reference](https://modelvault.readthedocs.io/en/latest/reference/python_api/) | Curated surface |
 | [Contributing](https://modelvault.readthedocs.io/en/latest/dev/contributing_guide/) | Dev setup, CI, publish |
 | [Repository root](https://github.com/eddiethedean/modelvault/blob/main/README.md) | Project overview |

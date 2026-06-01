@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/modelvault-core.svg)](https://crates.io/crates/modelvault-core)
 [![Docs](https://readthedocs.org/projects/modelvault/badge/?version=latest)](https://modelvault.readthedocs.io/en/latest/)
 
-Core engine for **ModelVault** — an application-focused embedded database: model-driven schemas, validation on write, indexes, migrations, and single-file storage.
+Core engine for **ModelVault** — an application-focused embedded database: model-driven schemas, validation on write, indexes, migrations, and single-file storage. Read paths use `&self` on `Database`; **cross-thread** sharing is enforced in bindings (`RwLock` in Python / async facade), not inside this crate alone.
 
 Most applications should use the **[`modelvault`](https://github.com/eddiethedean/modelvault/blob/main/crates/modelvault/README.md)** facade instead.
 

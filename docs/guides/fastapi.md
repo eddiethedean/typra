@@ -139,6 +139,27 @@ Run pytest the same way as the rest of the repo (`make test` from root after `ma
 - Declare **indexes** for filter fields used in `where`
 - Review [Compatibility](../reference/compatibility.md) before upgrades
 
+## Async routes
+
+For `async def` handlers, use **`AsyncDatabase`** and **`modelvault.models.async_collection`** so database work does not block the event loop. **Reads** on one handle can run in parallel (e.g. `await asyncio.gather(*(items.get(id) for id in ids))`); **writes** remain exclusive.
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.db = await modelvault.AsyncDatabase.open(str(DB_PATH))
+    app.state.items = modelvault.models.async_collection(app.state.db, Item)
+    yield
+
+@app.post("/items", response_model=Item)
+async def create_item(body: Item, items=Depends(get_items)):
+    await items.insert(body)
+    return body
+```
+
+Runnable sample: [`examples/fastapi_app/main_async.py`](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app/main_async.py). Policy: [Async vs sync](../reference/async_policy.md).
+
+The sync example [`main.py`](https://github.com/eddiethedean/modelvault/tree/main/examples/fastapi_app/main.py) remains valid for sync route handlers.
+
 ## Next steps
 
 - [Pydantic guide](pydantic.md)

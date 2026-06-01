@@ -1,6 +1,7 @@
 //! Python model helpers: class-based schemas and typed-ish handles.
 
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -9,8 +10,13 @@ use pyo3::types::{PyAnyMethods, PyDict, PyList, PyModule, PyString, PyTuple};
 use modelvault_core::schema::{FieldPath, Type};
 use modelvault_core::{validate_model_fields_against_catalog, FieldDef};
 
-use crate::database::{lock_inner, Database};
+use crate::async_database::AsyncDatabase;
+use crate::async_query::AsyncQueryBuilder;
+use crate::async_util::future_into_gil_then_blocking;
+use crate::database::Database;
+use crate::db_handle::{collection_info, lock_inner_read, lock_inner_write};
 use crate::errors::db_error_to_py;
+use crate::row_values;
 
 #[pyclass(from_py_object)]
 #[derive(Clone)]
@@ -680,16 +686,16 @@ pub fn collection(
     // Register collection if missing; otherwise validate model against catalog.
     let db_ref = db.bind(py).borrow();
     let exists = {
-        let g = lock_inner(&db_ref.inner)?;
+        let g = lock_inner_read(&db_ref.inner)?;
         g.collection_id_named(&name).is_ok()
     };
     if !exists {
-        let mut g = lock_inner(&db_ref.inner)?;
+        let mut g = lock_inner_write(&db_ref.inner)?;
         let _ = g
             .register_collection_with_indexes(&name, fields, indexes, &pk)
             .map_err(db_error_to_py)?;
     } else {
-        let g = lock_inner(&db_ref.inner)?;
+        let g = lock_inner_read(&db_ref.inner)?;
         let cid = g.collection_id_named(&name).map_err(db_error_to_py)?;
         let col = g
             .catalog()
@@ -1037,4 +1043,419 @@ fn schema_to_indexes_json(
         })
         .collect();
     serde_json::to_string(&arr).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Async model-backed collection (see [`AsyncDatabase`]).
+#[pyclass]
+pub struct AsyncModelCollection {
+    db: Py<AsyncDatabase>,
+    name: String,
+    model_cls: Py<PyAny>,
+    is_pydantic: bool,
+}
+
+/// Async query builder returning model instances.
+#[pyclass]
+pub struct AsyncModelQuery {
+    inner: Py<AsyncQueryBuilder>,
+    model_cls: Py<PyAny>,
+    is_pydantic: bool,
+    selected_fields: Option<Py<PyAny>>,
+}
+
+#[pyfunction]
+pub fn async_collection(
+    py: Python<'_>,
+    db: Py<AsyncDatabase>,
+    model_cls: Bound<'_, PyAny>,
+) -> PyResult<AsyncModelCollection> {
+    let name = collection_name_for(py, &model_cls)?;
+    let pk = primary_key_for(&model_cls)?;
+
+    let is_pyd = pydantic_is_model(py, &model_cls)?;
+    let is_dc = is_dataclass(py, &model_cls)?;
+    if !is_pyd && !is_dc {
+        return Err(PyValueError::new_err(
+            "model must be a dataclass or a pydantic.BaseModel subclass",
+        ));
+    }
+
+    ensure_field_refs(py, &model_cls)?;
+
+    let fields = fields_from_model(py, &model_cls, 0)?;
+    let indexes = indexes_from_model(py, &model_cls)?;
+
+    let inner = {
+        let db_ref = db.bind(py).borrow();
+        Arc::clone(&db_ref.inner)
+    };
+    let exists = {
+        let g = lock_inner_read(inner.as_ref())?;
+        g.collection_id_named(&name).is_ok()
+    };
+    if !exists {
+        let mut g = lock_inner_write(inner.as_ref())?;
+        let _ = g
+            .register_collection_with_indexes(&name, fields, indexes, &pk)
+            .map_err(db_error_to_py)?;
+    } else {
+        let g = lock_inner_read(inner.as_ref())?;
+        let cid = g.collection_id_named(&name).map_err(db_error_to_py)?;
+        let col = g
+            .catalog()
+            .get(cid)
+            .ok_or_else(|| PyValueError::new_err("internal: collection missing from catalog"))?;
+        validate_model_fields_against_catalog(col, &pk, &fields, &indexes)
+            .map_err(db_error_to_py)?;
+    }
+
+    Ok(AsyncModelCollection {
+        db,
+        name,
+        model_cls: model_cls.unbind(),
+        is_pydantic: is_pyd,
+    })
+}
+
+#[pymethods]
+impl AsyncModelCollection {
+    #[getter]
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    fn insert<'py>(&self, py: Python<'py>, obj: Py<PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = {
+            let db = self.db.bind(py).borrow();
+            Arc::clone(&db.inner)
+        };
+        let collection_name = self.name.clone();
+        let is_pydantic = self.is_pydantic;
+        future_into_gil_then_blocking(py, move |py| {
+            let col = collection_info(inner.as_ref(), &collection_name)?;
+            let dict = obj_to_row_dict(py, obj.bind(py), is_pydantic)?;
+            let mapped = row_values::row_from_dict(py, dict.bind(py), &col)?;
+            Ok(move || {
+                let mut g = lock_inner_write(inner.as_ref())?;
+                let cid = g
+                    .collection_id_named(&collection_name)
+                    .map_err(db_error_to_py)?;
+                g.insert(cid, mapped).map_err(db_error_to_py)?;
+                Ok(())
+            })
+        })
+    }
+
+    fn get<'py>(&self, py: Python<'py>, pk: Py<PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = {
+            let db = self.db.bind(py).borrow();
+            Arc::clone(&db.inner)
+        };
+        let collection_name = self.name.clone();
+        let model_cls = self.model_cls.clone_ref(py);
+        let is_pydantic = self.is_pydantic;
+        future_into_gil_then_blocking(py, move |py| {
+            let col = collection_info(inner.as_ref(), &collection_name)?;
+            let pk_name = col
+                .primary_field
+                .as_deref()
+                .ok_or_else(|| PyValueError::new_err("collection has no primary key"))?;
+            let pk_ty = col
+                .fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == pk_name)
+                .map(|f| &f.ty)
+                .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
+            let pk_val = row_values::scalar_from_py(py, pk.bind(py), pk_ty)?;
+            Ok(move || {
+                let g = lock_inner_read(inner.as_ref())?;
+                let cid = g
+                    .collection_id_named(&collection_name)
+                    .map_err(db_error_to_py)?;
+                let row = g.get(cid, &pk_val).map_err(db_error_to_py)?;
+                Python::attach(|py| match row {
+                    None => Ok(None::<Py<PyAny>>),
+                    Some(r) => {
+                        let d = row_values::row_to_dict(py, &r)?;
+                        let cls = model_cls.bind(py);
+                        let obj = dict_to_obj(py, cls, &d, is_pydantic, false)?;
+                        Ok(Some(obj))
+                    }
+                })
+            })
+        })
+    }
+
+    fn delete<'py>(&self, py: Python<'py>, pk_or_obj: Py<PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = {
+            let db = self.db.bind(py).borrow();
+            Arc::clone(&db.inner)
+        };
+        let collection_name = self.name.clone();
+        let model_cls = self.model_cls.clone_ref(py);
+        future_into_gil_then_blocking(py, move |py| {
+            let cls = model_cls.bind(py);
+            let pk = if pk_or_obj.bind(py).is_instance(cls)? {
+                let pk_name = primary_key_for(cls)?;
+                pk_or_obj.bind(py).getattr(&pk_name)?
+            } else {
+                pk_or_obj.bind(py).clone()
+            };
+            let col = collection_info(inner.as_ref(), &collection_name)?;
+            let pk_name = col
+                .primary_field
+                .as_deref()
+                .ok_or_else(|| PyValueError::new_err("collection has no primary key"))?;
+            let pk_ty = col
+                .fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == pk_name)
+                .map(|f| &f.ty)
+                .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
+            let pk_val = row_values::scalar_from_py(py, &pk, pk_ty)?;
+            Ok(move || {
+                let mut g = lock_inner_write(inner.as_ref())?;
+                let cid = g
+                    .collection_id_named(&collection_name)
+                    .map_err(db_error_to_py)?;
+                g.delete(cid, &pk_val).map_err(db_error_to_py)?;
+                Ok(())
+            })
+        })
+    }
+
+    #[pyo3(name = "where")]
+    fn where_(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<AsyncModelQuery> {
+        let col = self
+            .db
+            .bind(py)
+            .borrow()
+            .collection_handle(py, self.name.clone())?;
+        let qb = col.where_query(py, path, value)?;
+        Ok(AsyncModelQuery {
+            inner: qb.into_pyobject(py)?.unbind(),
+            model_cls: self.model_cls.clone_ref(py),
+            is_pydantic: self.is_pydantic,
+            selected_fields: None,
+        })
+    }
+
+    #[pyo3(signature = (*, fields=None))]
+    fn all<'py>(
+        &self,
+        py: Python<'py>,
+        fields: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let col = self
+            .db
+            .bind(py)
+            .borrow()
+            .collection_handle(py, self.name.clone())?;
+        col.all_rows(py, fields.cloned())
+    }
+
+    fn update<'py>(
+        &self,
+        py: Python<'py>,
+        pk: Py<PyAny>,
+        patch: Py<PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = {
+            let db = self.db.bind(py).borrow();
+            Arc::clone(&db.inner)
+        };
+        let collection_name = self.name.clone();
+        let is_pydantic = self.is_pydantic;
+        future_into_gil_then_blocking(py, move |py| {
+            let col = collection_info(inner.as_ref(), &collection_name)?;
+            let pk_name = col
+                .primary_field
+                .as_deref()
+                .ok_or_else(|| PyValueError::new_err("collection has no primary key"))?;
+            let pk_ty = col
+                .fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0].as_ref() == pk_name)
+                .map(|f| &f.ty)
+                .ok_or_else(|| PyValueError::new_err("primary field not in schema"))?;
+            let pk_val = row_values::scalar_from_py(py, pk.bind(py), pk_ty)?;
+            let g = lock_inner_read(inner.as_ref())?;
+            let cid = g
+                .collection_id_named(&collection_name)
+                .map_err(db_error_to_py)?;
+            let current = g
+                .get(cid, &pk_val)
+                .map_err(db_error_to_py)?
+                .ok_or_else(|| PyValueError::new_err("cannot update missing row"))?;
+            let patch_dict = if let Ok(d) = patch.bind(py).cast::<PyDict>() {
+                d.clone().unbind()
+            } else {
+                obj_to_row_dict(py, patch.bind(py), is_pydantic)?
+            };
+            let inner_c = Arc::clone(&inner);
+            Ok(move || {
+                Python::attach(|py| {
+                    let current_dict = row_values::row_to_dict(py, &current)?;
+                    let patch_dict = patch_dict.bind(py);
+                    let merged = PyDict::new(py);
+                    for (k, v) in current_dict.iter() {
+                        merged.set_item(k, v)?;
+                    }
+                    for (k, v) in patch_dict.iter() {
+                        let key = k.cast::<PyString>()?;
+                        if let Some(existing) = merged.get_item(key)? {
+                            if let (Ok(cur_d), Ok(patch_d)) =
+                                (existing.cast::<PyDict>(), v.cast::<PyDict>())
+                            {
+                                let nested = deep_merge_dicts(py, cur_d, patch_d)?;
+                                merged.set_item(key, nested)?;
+                                continue;
+                            }
+                        }
+                        merged.set_item(key, v)?;
+                    }
+                    let mapped = row_values::row_from_dict(py, &merged, &col)?;
+                    let mut g = lock_inner_write(inner_c.as_ref())?;
+                    g.insert(cid, mapped).map_err(db_error_to_py)?;
+                    Ok(())
+                })
+            })
+        })
+    }
+}
+
+#[pymethods]
+impl AsyncModelQuery {
+    fn select(&self, py: Python<'_>, fields: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let qb = self.inner.bind(py).call_method1("select", (fields,))?;
+        Ok(Self {
+            inner: qb.extract::<Py<AsyncQueryBuilder>>()?,
+            model_cls: self.model_cls.clone_ref(py),
+            is_pydantic: self.is_pydantic,
+            selected_fields: Some(fields.clone().unbind()),
+        })
+    }
+
+    fn and_where(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        let path = path_any_to_py(py, path)?;
+        let qb = self
+            .inner
+            .bind(py)
+            .call_method1("and_where", (path, value))?;
+        Ok(Self {
+            inner: qb.extract::<Py<AsyncQueryBuilder>>()?,
+            model_cls: self.model_cls.clone_ref(py),
+            is_pydantic: self.is_pydantic,
+            selected_fields: opt_pyany_clone_ref(py, &self.selected_fields),
+        })
+    }
+
+    fn limit(&self, py: Python<'_>, n: usize) -> PyResult<Self> {
+        let qb = self.inner.bind(py).call_method1("limit", (n,))?;
+        Ok(Self {
+            inner: qb.extract::<Py<AsyncQueryBuilder>>()?,
+            model_cls: self.model_cls.clone_ref(py),
+            is_pydantic: self.is_pydantic,
+            selected_fields: opt_pyany_clone_ref(py, &self.selected_fields),
+        })
+    }
+
+    fn explain<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        self.inner.bind(py).call_method0("explain")
+    }
+
+    #[pyo3(signature = (*, fields=None))]
+    fn all<'py>(
+        &self,
+        py: Python<'py>,
+        fields: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner_qb = self.inner.clone_ref(py);
+        let model_cls = self.model_cls.clone_ref(py);
+        let is_pydantic = self.is_pydantic;
+        let selected = opt_pyany_clone_ref(py, &self.selected_fields);
+        let fields_arg = fields.map(|f| f.clone().unbind());
+        let partial = selected.is_some() || fields.is_some();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let coro = Python::attach(|py| -> PyResult<Py<PyAny>> {
+                if let Some(f) = fields_arg.as_ref() {
+                    let kwargs = PyDict::new(py);
+                    kwargs.set_item("fields", f.bind(py))?;
+                    Ok(inner_qb
+                        .bind(py)
+                        .call_method("all", (), Some(&kwargs))?
+                        .unbind())
+                } else if let Some(sel) = selected.as_ref() {
+                    let kwargs = PyDict::new(py);
+                    kwargs.set_item("fields", sel.bind(py))?;
+                    Ok(inner_qb
+                        .bind(py)
+                        .call_method("all", (), Some(&kwargs))?
+                        .unbind())
+                } else {
+                    Ok(inner_qb.bind(py).call_method0("all")?.unbind())
+                }
+            })?;
+            let rows_any =
+                Python::attach(|py| pyo3_async_runtimes::tokio::into_future(coro.into_bound(py)))?
+                    .await?;
+            Python::attach(|py| {
+                let rows = rows_any.bind(py).cast::<PyList>()?;
+                let cls = model_cls.bind(py);
+                let mut out = Vec::with_capacity(rows.len());
+                for item in rows.iter() {
+                    let d = item.cast::<PyDict>()?;
+                    out.push(dict_to_obj(py, cls, d, is_pydantic, partial)?);
+                }
+                Ok(out)
+            })
+        })
+    }
+}
+
+#[pyfunction]
+pub fn async_plan<'py>(
+    py: Python<'py>,
+    db: Py<AsyncDatabase>,
+    model_cls: Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let name = collection_name_for(py, &model_cls)?;
+    let fields = fields_from_model(py, &model_cls, 0)?;
+    let indexes = indexes_from_model(py, &model_cls)?;
+    let fields_json = schema_to_fields_json(py, &fields)?;
+    let indexes_json = schema_to_indexes_json(py, &indexes)?;
+    db.bind(py)
+        .call_method1("plan_schema_version", (name, fields_json, indexes_json))
+}
+
+#[pyfunction]
+#[pyo3(signature = (db, model_cls, *, force=false))]
+pub fn async_apply<'py>(
+    py: Python<'py>,
+    db: Py<AsyncDatabase>,
+    model_cls: Bound<'py, PyAny>,
+    force: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let name = collection_name_for(py, &model_cls)?;
+    let fields = fields_from_model(py, &model_cls, 0)?;
+    let indexes = indexes_from_model(py, &model_cls)?;
+    let fields_json = schema_to_fields_json(py, &fields)?;
+    let indexes_json = schema_to_indexes_json(py, &indexes)?;
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("force", force)?;
+    db.bind(py).call_method(
+        "register_schema_version",
+        (name, fields_json, indexes_json),
+        Some(&kwargs),
+    )
 }

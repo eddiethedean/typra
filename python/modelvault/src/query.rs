@@ -11,7 +11,7 @@ use crate::database::Database;
 use crate::errors::db_error_to_py;
 use crate::row_values;
 
-fn parse_path(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
+pub(crate) fn parse_path(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
     if let Ok(s) = obj.extract::<String>() {
         let raw = s.trim();
         if raw.is_empty() {
@@ -33,7 +33,7 @@ fn parse_path(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
     ))
 }
 
-fn parse_path_or_field_ref(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
+pub(crate) fn parse_path_or_field_ref(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
     if let Ok(path) = obj.getattr("path") {
         if let Ok(parts) = path.extract::<Vec<String>>() {
             if !parts.is_empty() && !parts.iter().any(|p| p.is_empty()) {
@@ -44,7 +44,7 @@ fn parse_path_or_field_ref(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
     parse_path(obj)
 }
 
-fn to_field_path(parts: &[String]) -> PyResult<FieldPath> {
+pub(crate) fn to_field_path(parts: &[String]) -> PyResult<FieldPath> {
     if parts.is_empty() || parts.iter().any(|p| p.is_empty()) {
         return Err(PyValueError::new_err("invalid path"));
     }
@@ -53,7 +53,7 @@ fn to_field_path(parts: &[String]) -> PyResult<FieldPath> {
     ))
 }
 
-fn resolve_leaf_type<'a>(
+pub(crate) fn resolve_leaf_type<'a>(
     col: &'a modelvault_core::catalog::CollectionInfo,
     fp: &FieldPath,
 ) -> Option<&'a Type> {
@@ -89,7 +89,7 @@ fn type_at_nested_segments<'a>(ty: &'a Type, segs: &[Cow<'static, str>]) -> Opti
     }
 }
 
-fn merge_and(existing: Option<Predicate>, new: Predicate) -> Predicate {
+pub(crate) fn merge_and(existing: Option<Predicate>, new: Predicate) -> Predicate {
     match existing {
         None => new,
         Some(Predicate::And(mut items)) => {
@@ -100,7 +100,7 @@ fn merge_and(existing: Option<Predicate>, new: Predicate) -> Predicate {
     }
 }
 
-fn scalar_for_path(
+pub(crate) fn scalar_for_path(
     py: Python<'_>,
     col: &modelvault_core::catalog::CollectionInfo,
     parts: &[String],
@@ -112,7 +112,7 @@ fn scalar_for_path(
     row_values::scalar_from_py(py, value, leaf_ty)
 }
 
-fn field_defs_allowlist(
+pub(crate) fn field_defs_allowlist(
     _py: Python<'_>,
     col: &modelvault_core::catalog::CollectionInfo,
     fields: &Bound<'_, PyAny>,
@@ -137,7 +137,7 @@ fn field_defs_allowlist(
     Ok(out)
 }
 
-fn one_path_to_field_def(
+pub(crate) fn one_path_to_field_def(
     col: &modelvault_core::catalog::CollectionInfo,
     obj: &Bound<'_, PyAny>,
 ) -> PyResult<FieldDef> {
@@ -209,7 +209,7 @@ impl Collection {
     ) -> PyResult<QueryBuilder> {
         let parts = parse_path_or_field_ref(path)?;
         let db_ref = self.db.borrow(py);
-        let col = super::database::collection_info(&db_ref.inner, &self.name)?;
+        let col = super::db_handle::collection_info(&db_ref.inner, &self.name)?;
         let scalar = scalar_for_path(py, &col, &parts, value)?;
         let path_fp = to_field_path(&parts)?;
         Ok(QueryBuilder {
@@ -239,7 +239,7 @@ impl QueryBuilder {
     ) -> PyResult<Vec<Py<PyDict>>> {
         let col = {
             let db_ref = self.db.borrow(py);
-            super::database::collection_info(&db_ref.inner, &self.collection_name)?
+            super::db_handle::collection_info(&db_ref.inner, &self.collection_name)?
         };
         let allow = match fields {
             None => None,
@@ -247,7 +247,7 @@ impl QueryBuilder {
         };
         let rows = {
             let db_ref = self.db.borrow(py);
-            let g = super::database::lock_inner(&db_ref.inner)?;
+            let g = super::db_handle::lock_inner_read(&db_ref.inner)?;
             let cid = g
                 .collection_id_named(&self.collection_name)
                 .map_err(db_error_to_py)?;
@@ -282,7 +282,7 @@ impl QueryBuilder {
     ) -> PyResult<Self> {
         let parts = parse_path_or_field_ref(path)?;
         let db_ref = self.db.borrow(py);
-        let col = super::database::collection_info(&db_ref.inner, &self.collection_name)?;
+        let col = super::db_handle::collection_info(&db_ref.inner, &self.collection_name)?;
         let scalar = scalar_for_path(py, &col, &parts, value)?;
         let path_fp = to_field_path(&parts)?;
         Ok(Self {
@@ -401,7 +401,7 @@ impl QueryBuilder {
 
     fn explain(&self, py: Python<'_>) -> PyResult<String> {
         let db_ref = self.db.borrow(py);
-        let g = super::database::lock_inner(&db_ref.inner)?;
+        let g = super::db_handle::lock_inner_read(&db_ref.inner)?;
         let cid = g
             .collection_id_named(&self.collection_name)
             .map_err(db_error_to_py)?;

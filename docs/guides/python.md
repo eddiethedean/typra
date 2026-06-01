@@ -134,6 +134,36 @@ new_version = modelvault.models.apply(db, Book, force=False)
 books.update("Hello", {"rating": 5.0})
 ```
 
+## Asyncio API (`AsyncDatabase`)
+
+For **FastAPI**, **Starlette**, and other asyncio apps, use the parallel **`modelvault.AsyncDatabase`** surface. Sync `Database` is unchanged.
+
+```python
+db = await modelvault.AsyncDatabase.open_in_memory()
+books = modelvault.models.async_collection(db, Book)
+await books.insert(Book(title="Hello", year=2020))
+row = await books.get("Hello")
+
+async with db.transaction():
+    await db.insert("books", {"title": "Txn", "year": 2021})
+```
+
+Operations run the sync engine on a **thread pool** (GIL released during work)—responsive event loops, same on-disk durability and **single-writer-per-file** rules as sync.
+
+### Concurrency on one handle
+
+| Operation class | Behavior |
+|-----------------|----------|
+| **Reads** (`get`, `query`, `explain`, `collection_names`, …) | **Shared** lock — multiple `await`s (e.g. `asyncio.gather`) can run read work in parallel |
+| **Writes** (`insert`, `delete`, schema changes, compaction, …) | **Exclusive** lock — one mutator at a time |
+| **Open transaction** | All operations on that handle serialize until commit/rollback (readers see staged state) |
+
+Cross-process rules are unchanged: one writer per `.modelvault` file; use `read_only=True` for additional reader processes. See [Async policy](../reference/async_policy.md) and [FastAPI (async)](fastapi.md#async-routes).
+
+### Sync `Database` and threads
+
+`Database` uses the same **read/write lock** in the extension. Many threads may call `get` / `query` concurrently; they share the read lock. For CPU-heavy read batches, **`AsyncDatabase` + `asyncio.gather`** is usually a better fit than raw threads because of lower per-call Python overhead.
+
 ## `Database` API
 
 ### Open and path

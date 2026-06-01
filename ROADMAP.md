@@ -27,7 +27,7 @@ In addition, ModelVault should support **multiple storage/compute modes** (embed
 Quick links:
 - **Mode semantics & architecture**: see [In-memory, hybrid, and streaming execution (refined plan)](#in-memory-hybrid-and-streaming-execution-refined-plan)
 - **Release milestones**: see [Roadmap by release](#roadmap-by-release)
-- **User migration**: see [`docs/guides/python.md`](docs/guides/python.md) (schema migrations section) and [`docs/reference/cli.md`](docs/reference/cli.md).
+- **Schema evolution & migrations**: see [Schema evolution & migration management](#schema-evolution--migration-management); user guides: [`docs/guides/python.md`](docs/guides/python.md), [`docs/reference/cli.md`](docs/reference/cli.md) (`migrate plan` / `migrate apply`).
 - **Queries & indexes (Python)**: [`docs/guides/python.md`](docs/guides/python.md) (including [realistic on-disk workflow](docs/guides/python.md#realistic-workflow-indexed-queries-on-disk))
 
 Primary design references:
@@ -58,7 +58,7 @@ flowchart LR
   v060 --> v070 --> v080 --> v090 --> v100 --> v110 --> v120
 ```
 
-**Post-1.0 focus (1.x):** engine hardening, bounded-memory operators, schema/migration ergonomics, and Python DX — while preserving the 1.x format-compat contract.
+**Post-1.0 focus (1.x):** engine hardening, bounded-memory operators, **model-native migration management** ([1.3](#130--migration-management--projection-decode)), projection decode, and Python DX — while preserving the 1.x format-compat contract.
 
 ```mermaid
 flowchart LR
@@ -280,7 +280,7 @@ Append-only segments + checksums, dual superblocks, manifest pointer, schema + r
 
 **Rust — implemented in 0.8.0**
 - **Transaction framing in the log**: `TxnBegin` / `TxnCommit` / `TxnAbort` segment markers so multiple record/index/catalog appends form **one atomic unit** at replay.
-- **Single-writer policy** (process-local): `Database::transaction` enforces non-nested transactions; Python bindings serialize via the database mutex.
+- **Single-writer policy** (process-local): `Database::transaction` enforces non-nested transactions; Python bindings use **exclusive** locks for writes and open transactions, **shared** locks for concurrent reads on one handle (`RwLock`).
 - **Recovery**: on open, detect **torn** tails or **incomplete** transaction tails; default is **auto-truncate** to last committed prefix, with `Strict` mode that refuses open and returns a clear error.
 - **Index + record atomicity**: autocommit insert writes index+record in one committed batch (no orphaned index keys after crash for format minor 6 writes).
 
@@ -316,7 +316,8 @@ Design anchor: superblocks + commit markers in [`docs/02_on_disk_file_format.md`
 - **Compaction prototype**: whole-file rewrite (`compact_to`, `compact_in_place`) with correctness tests for rows + indexes.
 
 **Still future work (post-0.9)**
-- More complete migration execution primitives (beyond backfill/rebuild), richer index planning for ranges, and bounded-memory operators (external sort/spill) once pager/streaming groundwork is scheduled.
+- **Migration ergonomics** (revision files, unified apply, model autogenerate) — tracked under [Schema evolution & migration management](#schema-evolution--migration-management) and the **1.3** milestone.
+- Richer index planning for ranges and bounded-memory operators (external sort/spill) — separate from migration work.
 
 Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md)
 
@@ -464,7 +465,7 @@ These items were high-leverage for real applications shipping ModelVault as an e
 
 **Deferred to 1.1+**:
 
-- Projection-aware decode, ORDER BY spill isolation, expanded join/agg operators, **`DbModel` derive** nested paths/constraints, optional **`cargo-deny`**, expanded property tests beyond `property_invariants.rs`, Python async.
+- Projection-aware decode, ORDER BY spill isolation, expanded join/agg operators, **`DbModel` derive** nested paths/constraints, optional **`cargo-deny`**, expanded property tests beyond `property_invariants.rs`.
 
 **Definition of done** *(met for 1.0.0)*
 - End-to-end **documented** journey: register → insert → **index/query** → **txn batch** → reopen → **migrate** → **compact** → recover from controlled corruption tests.
@@ -472,6 +473,155 @@ These items were high-leverage for real applications shipping ModelVault as an e
 
 **Non-goals (unchanged for 1.0 unless explicitly revisited)**  
 Same as the **Non-goals (through 1.0)** section below: still **no** distributed replica, **no** network server mode, **no** FTS/vector/DuckDB-style analytics as **shipping** commitments in 1.0.
+
+### 1.1.0 — Engine hardening + operator growth
+
+**Goal:** strengthen replay, query, and index correctness under real workloads without changing the 1.x on-disk contract.
+
+- **Rust**: expand join/aggregation operators; planner hardening; ORDER BY spill isolation; projection-aware decode (feeds subset models).
+- **Python**: typing and error polish on `modelvault.models` and DB-API; **`AsyncDatabase`** asyncio surface shipped (experimental; see [`docs/reference/async_policy.md`](docs/reference/async_policy.md)); **concurrent reads** on one handle via `RwLock` (writes remain exclusive).
+- **Migrations (prep only)**: document the **migration contract** (classification + step vocabulary + `force` semantics); tighten tests for nested-path backfill and index rebuild after schema bump; no new revision-file format yet.
+
+**Definition of done:** `make check-full` green; compatibility matrix unchanged for 1.x readers; migration docs describe today’s APIs honestly (including gaps below).
+
+### 1.2.0 — Bounded-memory operators + performance gates
+
+**Goal:** make large-file query behavior predictable and measurable.
+
+- **Rust**: bounded-memory operator maturity; bench/regression gates in CI (non-blocking or on-demand baselines).
+- **Migrations:** none required for format; optional **checkpoint-before-migrate** guidance in ops docs.
+
+### 1.3.0 — Migration management + projection decode
+
+**Goal:** ship **model-native migration management** so teams can evolve schemas in production apps without hand-rolling every backfill flag. This is **not** an Alembic clone (see [Design stance](#design-stance-model-native-not-sql-migrations)).
+
+**Primary deliverables**
+
+| Area | Target |
+|------|--------|
+| **Unified apply** | One code path (Rust + Python + CLI) that runs a `MigrationPlan` end-to-end: execute `BackfillTopLevelField` / `BackfillFieldAtPath` / `RebuildIndexes` with configured defaults → `register_schema_version`, inside a transaction, with backup/checkpoint guidance. |
+| **Revision artifacts** | Check-in **revision files** (JSON or YAML first; optional Python hook later) describing target schema (or model name + version), step parameters (e.g. default for new required fields), and revision id / parent id. |
+| **Autogenerate** | `modelvault migration revision --autogenerate` (CLI) and Python equivalent: diff **declared model** vs on-disk catalog (or vs parent revision) → proposed `MigrationPlan` + human-editable revision file. |
+| **Head / pending** | `migration upgrade` (apply all pending revisions), `migration current` (catalog versions + revision table), `migration history` (list applied revisions). |
+| **App integration** | Optional **startup apply** for desktop/CLI (env-gated): detect pending revisions, refuse or apply with explicit policy; always document **backup first**. |
+
+**Engine (may stay in `modelvault-core` initially)**
+
+- Persist a small **migration history** segment or catalog sidecar (revision id, applied_at, checksum of revision file) — exact encoding TBD in [`docs/specs/format_evolution.md`](docs/specs/format_evolution.md).
+- Extend step vocabulary only when justified: e.g. **rename field** (copy + backfill), **collection copy** for breaking changes; keep arbitrary row logic as an **escape hatch** (user script + `force`), not in the core DSL.
+- Logical crate boundary **`modelvault-migrate`** ([`docs/03_rust_crate_and_module_layout.md`](docs/03_rust_crate_and_module_layout.md)) may be extracted once the orchestration API stabilizes.
+
+**Python**
+
+- **`modelvault.models.apply`** runs safe planned steps when revision metadata or call-time defaults supply backfill values (today it primarily **registers** the new schema version).
+- **`modelvault.migrations`** (or similar) module: load revisions from a package directory, plan/apply from FastAPI/desktop apps.
+
+**Definition of done**
+
+- End-to-end test: v1 model → autogenerate revision → add required field → `upgrade` → all rows valid under new schema.
+- Docs: migration guide (revision layout, safe vs breaking, when to compact or snapshot), CLI reference, FastAPI “deploy new schema” recipe.
+- Comparison note updated: [vs SQLite / Alembic](docs/comparisons/sqlite.md) — ModelVault targets **model diff + catalog steps**, not SQL DDL.
+
+### 1.4.0 — DX + tooling polish
+
+**Goal:** lower friction for support, CI, and day-two ops.
+
+- **Migrations:** revision lint in CI (dry-run plan against fixture DBs); `modelvault migration check` for pipelines; multi-collection revisions in one file (optional).
+- **Tooling:** richer `inspect` output for schema versions and last applied revision.
+
+---
+
+## Schema evolution & migration management
+
+ModelVault treats **schema evolution** as a first-class product concern: typed collections, catalog **schema versions**, and conservative classification of every proposed change. The roadmap goal for **1.3** is **migration management** (repeatable, reviewable, deployable), not a port of Alembic.
+
+### Design stance: model-native, not SQL migrations
+
+| Topic | ModelVault approach |
+|-------|---------------------|
+| **Source of truth** | Declared models (Pydantic/dataclass/`fields_json`) and the **catalog** in the `.modelvault` file |
+| **Change units** | New **schema version** + optional **data steps** (`MigrationStep`), not `ALTER TABLE` |
+| **Comparison target** | [SQLite + Alembic](docs/comparisons/sqlite.md) — use Postgres/SQLite when relational DDL and ad-hoc SQL migrations are the workflow |
+| **Downgrades** | **Forward-first** by default; rollback via **snapshot/backup** or explicit “new collection + copy” for breaking changes — not automatic `downgrade()` scripts in v1 |
+| **SQL track** | Read-only DB-API today; a future SQL **write** path would be a separate product decision, not “run Alembic against ModelVault” |
+
+### What exists today (0.9.0 → 1.0.x / 0.14.x)
+
+**Classification** ([`schema_compat`](crates/modelvault-core/src/schema_compat.rs)): every schema diff is **`Safe`**, **`NeedsMigration`**, or **`Breaking`** before a new version is registered.
+
+**Planning** ([`migration.rs`](crates/modelvault-core/src/migration.rs)): `MigrationPlan` with steps:
+
+- `BackfillTopLevelField { field }`
+- `BackfillFieldAtPath { path }`
+- `RebuildIndexes`
+
+**Rust API:** `plan_schema_version_with_indexes`, `register_schema_version` (+ `_force`), `backfill_top_level_field_with_value`, `backfill_field_at_path_with_value`, index rebuild helpers.
+
+**Python:** `Database.plan_schema_version`, backfill methods; **`modelvault.models.plan`** / **`modelvault.models.apply`** (apply currently **registers** the new catalog version — callers must run backfill/rebuild separately unless using CLI flags).
+
+**CLI** ([`docs/reference/cli.md`](docs/reference/cli.md)): `modelvault migrate plan` (JSON plan) and `modelvault migrate apply` (register + optional `--backfill-field` / `--backfill-value` / `--rebuild-indexes` / `--force`).
+
+**Operational pattern today**
+
+1. Change the model (or `fields_json`).
+2. **`plan`** — inspect `change` and `steps`.
+3. For **`NeedsMigration`**: run backfills and index rebuild (API or CLI flags), then **`register_schema_version`** with **`force`** only after data steps succeed.
+4. For **`Breaking`**: new collection, export/import, or new file — not silent in-place upgrade.
+
+```mermaid
+flowchart TD
+  diff["Proposed schema vs catalog"]
+  classify["classify_schema_update"]
+  safe["Safe → register_schema_version"]
+  needs["NeedsMigration → plan steps"]
+  break["Breaking → reject / new collection"]
+  exec["Execute backfill + rebuild_indexes"]
+  reg["register_schema_version"]
+  diff --> classify
+  classify --> safe
+  classify --> needs
+  classify --> break
+  needs --> exec --> reg
+  safe --> reg
+```
+
+### Gaps (why 1.3 exists)
+
+| Gap | Impact |
+|-----|--------|
+| **No revision chain** | Deployments cannot answer “which migration is applied?” from the file alone beyond catalog version numbers. |
+| **Split plan vs apply** | Python `models.apply` does not execute the planned steps; easy to register schema before data is backfilled. |
+| **Manual step wiring** | CLI requires explicit backfill flags per field; no single `upgrade head`. |
+| **No autogenerate** | Teams hand-write schema JSON or diff models mentally. |
+| **Small step vocabulary** | No first-class rename, type widen/narrow policy, or multi-step migrations in one artifact. |
+| **No startup / CI helpers** | Apps must embed custom “migrate on boot” logic. |
+
+These gaps are **intentional scope control** through 1.0; **1.3** closes the ergonomics layer on top of the engine primitives already shipped in **0.9.0**.
+
+### Roadmap phases (migration-specific)
+
+| Release | Migration focus |
+|---------|-----------------|
+| **1.1** | Document contract; expand regression tests (nested backfill, rebuild after new index); align error messages across Rust/Python/CLI. |
+| **1.2** | Ops guidance: checkpoint/backup before migrate; no format change. |
+| **1.3** | **Revision files**, **unified apply**, **autogenerate**, **upgrade/current/history**, optional startup apply, migration history in file (see [1.3.0](#130--migration-management--projection-decode)). |
+| **1.4+** | CI `migration check`, multi-collection revisions, richer inspect. |
+
+### Explicit non-goals (migration tooling)
+
+- **Alembic compatibility** or “run SQL migrations against ModelVault” as a supported workflow.
+- **Automatic downgrade** scripts for arbitrary schema changes (prefer backup restore).
+- **Distributed migration coordination** (single-writer file; app layer coordinates).
+- **Heavy ETL** inside the core engine — large transforms remain user scripts with documented backup/compact steps.
+
+### Open questions (resolve during 1.2–1.3 design)
+
+- **Revision storage**: dedicated segment type vs catalog extension vs sidecar directory next to the `.modelvault` file for dev-only revisions.
+- **Default backfill values**: required in revision file vs optional “app supplies at apply time” for secrets/env-specific defaults.
+- **Breaking changes**: standard recipe (new collection name + one-time copy migration step) vs force-only escape hatch.
+- **Multi-collection apps**: one revision file per deploy vs monorepo manifest listing several collections.
+
+Design anchors: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_full_architecture_spec.md); logical **`modelvault-migrate`** boundary in [`docs/03_rust_crate_and_module_layout.md`](docs/03_rust_crate_and_module_layout.md); format policy in [`docs/specs/format_evolution.md`](docs/specs/format_evolution.md).
 
 ---
 
@@ -487,6 +637,7 @@ Same as the **Non-goals (through 1.0)** section below: still **no** distributed 
   - Security disclosure process (private reporting channel + coordinated release notes).
 - **Tooling**
   - “Inspect”/debug dump of file structures (header, superblocks, segments).
+  - **Migrations**: operational **`migrate plan` / `migrate apply`** today; revision files + **`migration upgrade`** targeted for **1.3** ([Schema evolution & migration management](#schema-evolution--migration-management)).
   - Benchmarks: **Criterion** query bench (**`make bench`**) compares **`get(pk)`**, indexed equality, and collection scan; broader profiling harness still informal.
   - **Rustdoc quality gate**: **`cargo doc`** with **`RUSTDOCFLAGS=-D warnings`** ([`Makefile`](Makefile) **`rust-doc`**, CI) so broken or missing docs fail checks.
   - **Doc drift checks**: `scripts/verify-doc-examples.sh` keeps README / getting-started / **`guide_python`** command output aligned with **`cargo run -p modelvault --example open`** and the embedded Python snippets (see **`Makefile`** **`verify-doc-examples`**).

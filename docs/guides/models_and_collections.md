@@ -18,7 +18,7 @@ New here? Start with [Why ModelVault](why_modelvault.md) or [Quickstart](quickst
 !!! note "Coming in 1.1"
     Projection-aware decode (skip unused columns at record layer); `DbModel` derive for nested paths and constraints. See [roadmap](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md).
 
-Related: [Python guide](python.md) · [Async policy](../reference/async_policy.md)
+Related: [Python guide](python.md) · [Async policy](../reference/async_policy.md) (use `async_collection` for concurrent reads in asyncio apps)
 
 ## Collection identity vs name
 

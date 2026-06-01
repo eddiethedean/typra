@@ -93,6 +93,8 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
   - Python: `python/modelvault/tests/test_models.py` (with `pydantic>=2` installed)
 - **Async vs sync policy documented**
   - `docs/reference/async_policy.md`
+- **Concurrent reads on one handle (Python + Rust async facade)**
+  - `python/modelvault/src/db_handle.rs` (`RwLock`); tests: `python/modelvault/tests/test_concurrent_reads.py`
 
 ## Model ergonomics
 

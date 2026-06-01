@@ -10,13 +10,16 @@
 
 Store dataclasses and **Pydantic v2** models with validation, indexes, migrations, and single-file deployment — no low-level schema JSON required for the recommended path.
 
+**Asyncio:** `AsyncDatabase` runs engine work on a thread pool and supports **concurrent reads** on one handle (`await asyncio.gather(...)` for many `get` / `query` calls). Writes and transactions remain exclusive. See [Async policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/).
+
 **Read the docs:** **[modelvault.readthedocs.io](https://modelvault.readthedocs.io/en/latest/)**
 
 | | |
 |--|--|
 | [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_modelvault/) | Positioning and tradeoffs |
 | [Pydantic guide](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) | Model-first schemas |
-| [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) | Small API services |
+| [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) | Sync + async API services |
+| [Async policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/) | `AsyncDatabase`, concurrent reads |
 | [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/) | First insert in minutes |
 | [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_modelvault/) | Positioning and design goals |
 

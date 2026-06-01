@@ -3,7 +3,11 @@
 // `pyo3::create_exception!` expands to cfgs that trip `unexpected_cfgs` under `-D warnings`.
 #![allow(unexpected_cfgs)]
 
+mod async_database;
+mod async_query;
+mod async_util;
 mod database;
+mod db_handle;
 mod dbapi;
 mod errors;
 mod fields_json;
@@ -19,16 +23,21 @@ fn modelvault(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add(
         "__doc__",
         "ModelVault Python bindings: typed embedded database built on the Rust engine.\n\n\
-         Import ``Database`` for ``open``, ``open_in_memory``, ``register_collection``, ``register_schema_version``, \
-         ``insert``, ``get``, ``delete``, ``transaction`` (context manager), ``collection`` (query builder), \
-         and ``collection_names``. The experimental ``modelvault.dbapi`` module provides a small read-only DB-API 2.0 \
+         Import ``Database`` (``open``, ``register_collection``, ``insert``, ``get``, …) or \
+         ``AsyncDatabase`` for asyncio (``await AsyncDatabase.open(...)``). Reads on one handle \
+         may run concurrently; writes and open transactions are exclusive. \
+         The experimental ``modelvault.dbapi`` module provides a small read-only DB-API 2.0 \
          adapter (minimal SELECT subset). See the package README for ``fields_json`` and error mapping.",
     )?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<database::Database>()?;
     m.add_class::<database::PyTransaction>()?;
+    m.add_class::<async_database::AsyncDatabase>()?;
+    m.add_class::<async_database::AsyncTransaction>()?;
     m.add_class::<query::Collection>()?;
     m.add_class::<query::QueryBuilder>()?;
+    m.add_class::<async_query::AsyncCollection>()?;
+    m.add_class::<async_query::AsyncQueryBuilder>()?;
 
     // Stable error kinds via distinct exception subclasses (still `isinstance(..., ValueError)` etc).
     m.add(
@@ -55,13 +64,18 @@ fn modelvault(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Python model helpers (class-based schemas).
     let models_mod = PyModule::new(m.py(), "models")?;
     models_mod.add_function(wrap_pyfunction!(models::collection, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::async_collection, &models_mod)?)?;
     models_mod.add_function(wrap_pyfunction!(models::plan, &models_mod)?)?;
     models_mod.add_function(wrap_pyfunction!(models::apply, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::async_plan, &models_mod)?)?;
+    models_mod.add_function(wrap_pyfunction!(models::async_apply, &models_mod)?)?;
     models_mod.add_function(wrap_pyfunction!(models::index, &models_mod)?)?;
     models_mod.add_function(wrap_pyfunction!(models::unique, &models_mod)?)?;
     models_mod.add_function(wrap_pyfunction!(models::constrained, &models_mod)?)?;
     models_mod.add_class::<models::ModelCollection>()?;
     models_mod.add_class::<models::ModelQuery>()?;
+    models_mod.add_class::<models::AsyncModelCollection>()?;
+    models_mod.add_class::<models::AsyncModelQuery>()?;
     models_mod.add_class::<models::IndexSpec>()?;
     models_mod.add_class::<models::ConstraintSpec>()?;
     models_mod.add_class::<models::FieldRef>()?;

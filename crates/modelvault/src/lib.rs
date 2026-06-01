@@ -18,6 +18,8 @@ pub use modelvault_derive::DbModel;
 #[cfg(feature = "async")]
 pub mod async_api;
 #[cfg(feature = "async")]
+mod db_guard;
+#[cfg(feature = "async")]
 pub use async_api::AsyncDatabase;
 
 /// Re-exports [`modelvault_core::prelude`] plus [`DbModel`](modelvault_derive::DbModel) when **`derive`** is enabled.

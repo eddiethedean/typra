@@ -53,7 +53,7 @@ Every major guide should open with **outcomes** (problem → solution), not impl
 |------|-------|
 | [Python API](../reference/python_api.md) | Intermediate |
 | [Rust API](../reference/rust_api.md) | Intermediate |
-| [Async policy](../reference/async_policy.md) | Advanced |
+| [Async policy](../reference/async_policy.md) (concurrent reads, exclusive writes) | Advanced |
 
 ### Engine & format (advanced)
 

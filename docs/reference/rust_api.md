@@ -48,3 +48,11 @@ ModelVault’s primary Rust query surface is typed (non-SQL):
 
 For detailed semantics, see [Query planner and execution spec](../specs/query_planner.md) and [Types matrix](types.md).
 
+## Concurrency
+
+- **`Database`** in one thread (or external synchronization): the engine exposes read methods on `&self` and writes on `&mut self`.
+- **Python bindings** and **`AsyncDatabase`** (`features = ["async"]`): an `RwLock` enforces **concurrent reads** and **exclusive writes** on one shared handle; open transactions serialize all operations on that handle.
+- **On-disk file**: still **single-writer** per path (advisory lock); use `open_read_only` in other processes for additional readers.
+
+See [Async policy](async_policy.md) for Python asyncio and the experimental Rust async facade.
+

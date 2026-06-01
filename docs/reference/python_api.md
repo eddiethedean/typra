@@ -45,6 +45,18 @@ See the [Python guide → Models](../guides/python.md) and the package README on
   - `collection_names() -> list[str]`
   - `collection(name) -> Collection` (typed query builder)
 
+### Concurrency (`Database`)
+
+On one handle, **reads** take a shared lock and may overlap across threads; **writes** and **open transactions** take an exclusive lock. This matches the on-disk **single-writer-per-file** policy (advisory locks across processes are separate). Details: [Async policy](async_policy.md#concurrency) (same rules apply to sync handles).
+
+## `AsyncDatabase` (experimental)
+
+Parallel asyncio surface — `await AsyncDatabase.open(...)`, `await db.get(...)`, `async with db.transaction():`, plus `modelvault.models.async_collection` and `AsyncCollection` / `AsyncQuery`.
+
+- Same method names as `Database` where applicable (returns awaitables).
+- Engine work runs on a **thread pool**; **concurrent read** `await`s overlap; writes serialize.
+- Policy and limits: [Async policy](async_policy.md).
+
 ## Errors
 
 ModelVault maps engine errors to standard Python exceptions (`ValueError`, `OSError`, `RuntimeError`), and also provides **more specific subclasses** you can match on:

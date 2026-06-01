@@ -65,6 +65,7 @@ Most apps need **local, durable storage** for domain objects—users, settings, 
 | **Query with indexes** | Equality, ranges, `AND`/`OR`, `order_by`, and `limit`—without standing up a server |
 | **Evolve safely** | Versioned schema catalog, compatibility checks, and migration helpers (`plan` / `apply`) |
 | **Deploy as one file** | Copy `app.modelvault` with your binary, installer, or repo—no daemon to operate |
+| **Concurrent reads** | Many `get` / `query` operations can overlap on one `Database` or `AsyncDatabase` handle; writes stay exclusive ([async policy](reference/async_policy.md)) |
 
 ## 60-second example (Python)
 
@@ -104,7 +105,7 @@ print(books.get("Hello"))
 ModelVault optimizes for **typed application documents in one process**, not every datastore use case:
 
 - **Not SQL-first** — model APIs are primary; full ISO SQL and SQLAlchemy integration are on the [roadmap](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md).
-- **Not a network database** — embedded single-writer semantics; no replication or server mode in the current release.
+- **Not a network database** — embedded **single-writer per file** (advisory locks across processes); multiple readers per handle or `read_only` opens; no replication or server mode in the current release.
 - **Not OLAP at scale** — use DuckDB (or export) for heavy analytics; ModelVault is OLTP-oriented for app state.
 
 ## Install

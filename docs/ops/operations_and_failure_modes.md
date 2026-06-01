@@ -60,6 +60,20 @@ ModelVault is **single-writer** embedded:
 
 Another process holding the lock → open fails fast. Readers block new writers; writers block new readers.
 
+## In-process concurrency (one handle)
+
+Separate from **file** locking: Python `Database` / `AsyncDatabase` (and Rust `AsyncDatabase` with the `async` feature) use an **`RwLock`** around the in-memory engine view:
+
+| Operation | Lock | Notes |
+|-----------|------|-------|
+| **Reads** — `get`, `query`, `explain`, `collection_names`, … | Shared | Safe to overlap across threads or `asyncio.gather` on the **same** handle |
+| **Writes** — `insert`, `delete`, schema changes, compaction, … | Exclusive | One mutator at a time |
+| **Open transaction** | Exclusive for all ops on that handle | Other readers/writers on the same handle wait until commit/rollback |
+
+**Backup tip:** While a writer holds the file lock, use **checkpoint + copy** or `export_snapshot` from a consistent point; concurrent **reads** on one handle do not replace cross-process `read_only` opens for scaling readers across processes.
+
+Policy details: [Async vs sync policy](../reference/async_policy.md#concurrency).
+
 ## Compaction
 
 Rewrites the database to a smaller image (live rows + catalog + indexes only).

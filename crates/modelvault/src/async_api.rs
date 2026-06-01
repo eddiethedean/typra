@@ -1,8 +1,9 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 use modelvault_core::storage::{FileStore, Store, VecStore};
 use modelvault_core::{Database, DbError, OpenOptions, RowValue, ScalarValue};
+
+use crate::db_guard::{read_db, write_db, DbState, SharedDbState};
 
 fn map_join_err(e: tokio::task::JoinError) -> DbError {
     DbError::Io(std::io::Error::other(format!(
@@ -10,16 +11,14 @@ fn map_join_err(e: tokio::task::JoinError) -> DbError {
     )))
 }
 
-fn map_mutex_poisoned() -> DbError {
-    DbError::Io(std::io::Error::other("modelvault database mutex poisoned"))
-}
-
 /// Async wrapper over [`Database`].
 ///
 /// This is an integration convenience for async applications. Internally, operations execute on
 /// a Tokio blocking thread via [`tokio::task::spawn_blocking`].
+///
+/// Reads may run concurrently; writes and open transactions take an exclusive lock.
 pub struct AsyncDatabase<S: Store = FileStore> {
-    inner: Arc<Mutex<Database<S>>>,
+    inner: SharedDbState<S>,
 }
 
 impl AsyncDatabase<FileStore> {
@@ -29,7 +28,7 @@ impl AsyncDatabase<FileStore> {
             .await
             .map_err(map_join_err)??;
         Ok(Self {
-            inner: Arc::new(Mutex::new(db)),
+            inner: std::sync::Arc::new(DbState::new(db)),
         })
     }
 
@@ -42,7 +41,7 @@ impl AsyncDatabase<FileStore> {
             .await
             .map_err(map_join_err)??;
         Ok(Self {
-            inner: Arc::new(Mutex::new(db)),
+            inner: std::sync::Arc::new(DbState::new(db)),
         })
     }
 }
@@ -53,7 +52,7 @@ impl AsyncDatabase<VecStore> {
             .await
             .map_err(map_join_err)??;
         Ok(Self {
-            inner: Arc::new(Mutex::new(db)),
+            inner: std::sync::Arc::new(DbState::new(db)),
         })
     }
 
@@ -63,24 +62,22 @@ impl AsyncDatabase<VecStore> {
                 .await
                 .map_err(map_join_err)??;
         Ok(Self {
-            inner: Arc::new(Mutex::new(db)),
+            inner: std::sync::Arc::new(DbState::new(db)),
         })
     }
 }
 
-impl<S: Store + Send + 'static> AsyncDatabase<S> {
+impl<S: Store + Send + Sync + 'static> AsyncDatabase<S> {
     pub fn clone_handle(&self) -> Self {
         Self {
-            inner: Arc::clone(&self.inner),
+            inner: std::sync::Arc::clone(&self.inner),
         }
     }
 
     pub async fn path_string(&self) -> String {
-        let inner = Arc::clone(&self.inner);
+        let inner = std::sync::Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            inner
-                .lock()
-                .map_err(|_| map_mutex_poisoned())
+            read_db(inner.as_ref())
                 .map(|db| db.path().display().to_string())
                 .unwrap_or_else(|e| format!("error:{e:?}"))
         })
@@ -89,9 +86,9 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
     }
 
     pub async fn collection_names(&self) -> Result<Vec<String>, DbError> {
-        let inner = Arc::clone(&self.inner);
+        let inner = std::sync::Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let db = inner.lock().map_err(|_| map_mutex_poisoned())?;
+            let db = read_db(inner.as_ref())?;
             Ok(db.collection_names())
         })
         .await
@@ -110,9 +107,9 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
         ),
         DbError,
     > {
-        let inner = Arc::clone(&self.inner);
+        let inner = std::sync::Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
+            let mut db = write_db(inner.as_ref())?;
             db.register_collection(&name, fields, &primary_field)
         })
         .await
@@ -124,9 +121,9 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
         collection_id: modelvault_core::CollectionId,
         row: std::collections::BTreeMap<String, RowValue>,
     ) -> Result<(), DbError> {
-        let inner = Arc::clone(&self.inner);
+        let inner = std::sync::Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
+            let mut db = write_db(inner.as_ref())?;
             db.insert(collection_id, row)
         })
         .await
@@ -138,9 +135,9 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
         collection_id: modelvault_core::CollectionId,
         pk: ScalarValue,
     ) -> Result<Option<std::collections::BTreeMap<String, RowValue>>, DbError> {
-        let inner = Arc::clone(&self.inner);
+        let inner = std::sync::Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let db = inner.lock().map_err(|_| map_mutex_poisoned())?;
+            let db = read_db(inner.as_ref())?;
             db.get(collection_id, &pk)
         })
         .await
@@ -152,9 +149,9 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
         collection_id: modelvault_core::CollectionId,
         pk: ScalarValue,
     ) -> Result<(), DbError> {
-        let inner = Arc::clone(&self.inner);
+        let inner = std::sync::Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
+            let mut db = write_db(inner.as_ref())?;
             db.delete(collection_id, &pk)
         })
         .await
@@ -165,10 +162,13 @@ impl<S: Store + Send + 'static> AsyncDatabase<S> {
         &self,
         f: impl FnOnce(&mut Database<S>) -> Result<R, DbError> + Send + 'static,
     ) -> Result<R, DbError> {
-        let inner = Arc::clone(&self.inner);
+        let inner = std::sync::Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || {
-            let mut db = inner.lock().map_err(|_| map_mutex_poisoned())?;
-            db.transaction(f)
+            let mut db = write_db(inner.as_ref())?;
+            inner.txn_enter();
+            let result = db.transaction(f);
+            inner.txn_exit();
+            result
         })
         .await
         .map_err(map_join_err)?

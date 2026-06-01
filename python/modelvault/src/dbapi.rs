@@ -36,7 +36,7 @@ pub fn connect(py: Python<'_>, path: String) -> PyResult<Connection> {
     let py_db = Py::new(
         py,
         Database {
-            inner: std::sync::Mutex::new(crate::inner_db::InnerDb::File(db)),
+            inner: crate::db_handle::DbHandle::new(crate::inner_db::InnerDb::File(db)),
         },
     )?;
     Ok(Connection {
@@ -281,7 +281,7 @@ impl Cursor {
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("cursor is closed"))?;
         let db_ref = conn.borrow(py);
-        let g = super::database::lock_inner(&db_ref.inner)?;
+        let g = super::db_handle::lock_inner_read(&db_ref.inner)?;
         let it = g.query_iter(&plan.query).map_err(db_error_to_py)?;
 
         for r in it.skip(start).take(take) {
@@ -343,8 +343,8 @@ impl Cursor {
                 .as_ref()
                 .ok_or_else(|| PyRuntimeError::new_err("cursor is closed"))?;
             let db_ref = conn.borrow(py);
-            let col = super::database::collection_info(&db_ref.inner, &parsed.collection)?;
-            let g = super::database::lock_inner(&db_ref.inner)?;
+            let col = super::db_handle::collection_info(&db_ref.inner, &parsed.collection)?;
+            let g = super::db_handle::lock_inner_read(&db_ref.inner)?;
             let cid = g
                 .collection_id_named(&parsed.collection)
                 .map_err(db_error_to_py)?;

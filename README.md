@@ -9,7 +9,7 @@
 
 **ModelVault is the database for application models** — a schema-first, typed embedded database for application data.
 
-Store dataclasses and Pydantic models directly with validation, indexes, migrations, and single-file deployment. Same engine in **Rust** and **Python**.
+Store dataclasses and Pydantic models directly with validation, indexes, migrations, and single-file deployment. Same engine in **Rust** and **Python**. **Concurrent reads** on one handle (`asyncio.gather`, thread pools) overlap safely; writes stay exclusive.
 
 **Non-goals:** ModelVault does **not** aim to support **SQL**, **SQLAlchemy**, or to compete with relational databases like SQLite. ModelVault’s supported interfaces are its typed Rust APIs and the model-first Python APIs.
 
@@ -63,7 +63,7 @@ Also works with **dataclasses** — see the [Pydantic guide](https://modelvault.
 
 | Persona | What you get |
 |---------|----------------|
-| **FastAPI developer** | Local persistence without PostgreSQL; models map straight to storage — [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) |
+| **FastAPI developer** | Local persistence without PostgreSQL; `AsyncDatabase` + parallel reads for list endpoints — [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/) |
 | **Desktop app** | Ship a `.modelvault` file; validation and indexes built in |
 | **CLI tool** | Durable, typed local data — better than ad-hoc JSON |
 | **Local-first app** | Offline storage with schema evolution — no database server |
@@ -127,7 +127,7 @@ opened: :memory:
 registered collection id=1 version=1
 ```
 
-More: **[Rust API](https://modelvault.readthedocs.io/en/latest/reference/rust_api/)** · crate README: [crates/modelvault/README.md](https://github.com/eddiethedean/modelvault/blob/main/crates/modelvault/README.md)
+More: **[Rust API](https://modelvault.readthedocs.io/en/latest/reference/rust_api/)** · [Async / concurrency policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/) · crate README: [crates/modelvault/README.md](https://github.com/eddiethedean/modelvault/blob/main/crates/modelvault/README.md)
 
 ## Repository layout
 

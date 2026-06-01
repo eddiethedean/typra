@@ -20,6 +20,34 @@ pub(crate) enum InnerDb {
 }
 
 impl InnerDb {
+    pub(crate) fn open_path(path: &str, read_only: bool) -> Result<Self, PyErr> {
+        let db = if read_only {
+            CoreDatabase::open_read_only(path)
+        } else {
+            CoreDatabase::open(path)
+        }
+        .map_err(db_error_to_py)?;
+        Ok(InnerDb::File(db))
+    }
+
+    pub(crate) fn open_in_memory() -> Result<Self, PyErr> {
+        CoreDatabase::open_in_memory()
+            .map(InnerDb::Mem)
+            .map_err(db_error_to_py)
+    }
+
+    pub(crate) fn from_snapshot_bytes(data: Vec<u8>) -> Result<Self, PyErr> {
+        CoreDatabase::from_snapshot_bytes(data)
+            .map(InnerDb::Mem)
+            .map_err(db_error_to_py)
+    }
+
+    pub(crate) fn open_snapshot_path(path: &str) -> Result<Self, PyErr> {
+        CoreDatabase::open_snapshot_path(path)
+            .map(InnerDb::Mem)
+            .map_err(db_error_to_py)
+    }
+
     pub(crate) fn register_collection_with_indexes(
         &mut self,
         name: &str,

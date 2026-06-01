@@ -26,6 +26,8 @@ serde_json = "1"
 modelvault-core.workspace = true
 # abi3-py39: one wheel per platform compatible with CPython 3.9+ (PEP 384 limited API).
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
+pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
+tokio = { version = "1", features = ["rt", "sync"] }
 
 [features]
 tracing = ["modelvault-core/tracing"]

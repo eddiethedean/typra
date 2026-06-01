@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Concurrent reads on one handle** (Python `Database` / `AsyncDatabase`, Rust `AsyncDatabase` with `async` feature): `get`, `query`, and other read paths use a shared lock; writes and open transactions remain exclusive. Multiple `asyncio.gather` read tasks or blocking-thread reads can overlap engine work (~2× throughput vs sequential awaits for read-heavy batches in typical probes).
+
+### Changed
+
+- **Python bindings**: replaced process-wide `Mutex` on the engine with `RwLock` + transaction-depth tracking (reads upgrade to exclusive lock while a transaction is open).
+- **Docs / READMEs**: concurrency model documented in [async policy](docs/reference/async_policy.md), [operations runbook](docs/ops/operations_and_failure_modes.md), and guides.
 
 ## [0.14.0] - 2026-06-01
 
