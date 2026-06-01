@@ -1,24 +1,24 @@
 [workspace]
 members = [
-    "crates/typra-core",
-    "crates/typra-derive",
-    "crates/typra",
-    "crates/typra-cli",
-    "python/typra",
+    "crates/modelvault-core",
+    "crates/modelvault-derive",
+    "crates/modelvault",
+    "crates/modelvault-cli",
+    "python/modelvault",
     "fuzz",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-typra = { path = "crates/typra", version = "1.0.0" }
-typra-core = { path = "crates/typra-core", version = "1.0.0" }
-typra-derive = { path = "crates/typra-derive", version = "1.0.0" }
+modelvault = { path = "crates/modelvault", version = "0.14.0" }
+modelvault-core = { path = "crates/modelvault-core", version = "0.14.0" }
+modelvault-derive = { path = "crates/modelvault-derive", version = "0.14.0" }
 
 [workspace.package]
-version = "1.0.0"
+version = "0.14.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/eddiethedean/typra"
+repository = "https://github.com/eddiethedean/modelvault"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

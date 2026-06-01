@@ -1,0 +1,34 @@
+[package]
+name = "modelvault-python"
+description = "Python bindings (PyO3) for ModelVault, a typed embedded database."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+include = [
+    "Cargo.toml",
+    "README.md",
+    "modelvault.pyi",
+    "pyproject.toml",
+    "build.rs",
+    "src/**/*",
+]
+
+[lib]
+name = "modelvault"
+crate-type = ["cdylib"]
+# Same lib name as the `modelvault` facade crate; skip rustdoc to avoid output collision with `cargo doc --workspace`.
+doc = false
+
+[dependencies]
+serde_json = "1"
+modelvault-core.workspace = true
+# abi3-py39: one wheel per platform compatible with CPython 3.9+ (PEP 384 limited API).
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
+
+[features]
+tracing = ["modelvault-core/tracing"]
+
+[lints]
+workspace = true

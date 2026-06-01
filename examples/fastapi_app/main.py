@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal FastAPI + Typra service.
+"""Minimal FastAPI + ModelVault service.
 
 Install extras once:
   .venv/bin/pip install fastapi uvicorn
@@ -12,16 +12,16 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import typra
+import modelvault
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-DB_PATH = Path(__file__).resolve().parent / "items.typra"
+DB_PATH = Path(__file__).resolve().parent / "items.modelvault"
 
 
 class Item(BaseModel):
-    __typra_primary_key__ = "id"
-    __typra_indexes__ = [typra.models.index("name")]
+    __modelvault_primary_key__ = "id"
+    __modelvault_indexes__ = [modelvault.models.index("name")]
 
     id: int
     name: str
@@ -30,12 +30,12 @@ class Item(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.db = typra.Database.open(str(DB_PATH))
-    app.state.items = typra.models.collection(app.state.db, Item)
+    app.state.db = modelvault.Database.open(str(DB_PATH))
+    app.state.items = modelvault.models.collection(app.state.db, Item)
     yield
 
 
-app = FastAPI(title="Typra FastAPI example", lifespan=lifespan)
+app = FastAPI(title="ModelVault FastAPI example", lifespan=lifespan)
 
 
 def get_items(request: Request) -> object:

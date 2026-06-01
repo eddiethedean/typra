@@ -2,7 +2,7 @@
 
 **Problem:** A small API needs persistence without PostgreSQL for early deployments.
 
-**Solution:** Typra file on disk + Pydantic models shared between HTTP bodies and storage.
+**Solution:** ModelVault file on disk + Pydantic models shared between HTTP bodies and storage.
 
 ## Setup
 
@@ -29,12 +29,12 @@ curl -s localhost:8000/items/1
 curl -s localhost:8000/items/search/widget
 ```
 
-**Result:** data persists in `examples/fastapi_app/items.typra`.
+**Result:** data persists in `examples/fastapi_app/items.modelvault`.
 
 ## What it demonstrates
 
-- Lifespan hook opens Typra once per process
+- Lifespan hook opens ModelVault once per process
 - FastAPI `Depends` injects the model collection
 - Indexed lookup via `where(Item.name, ...)`
 
-Docs: [FastAPI guide](https://typra.readthedocs.io/en/latest/guides/fastapi/)
+Docs: [FastAPI guide](https://modelvault.readthedocs.io/en/latest/guides/fastapi/)

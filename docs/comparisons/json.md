@@ -1,4 +1,4 @@
-# Typra vs JSON files
+# ModelVault vs JSON files
 
 JSON (or YAML) on disk is the fastest way to persist data — until you need **structure, queries, and integrity**.
 
@@ -20,20 +20,20 @@ Pain appears quickly:
 
 ## Solution
 
-Typra keeps the **single-file** ergonomics but adds engine guarantees:
+ModelVault keeps the **single-file** ergonomics but adds engine guarantees:
 
 ```python
 from pydantic import BaseModel
-import typra
+import modelvault
 
 class User(BaseModel):
-    __typra_primary_key__ = "id"
-    __typra_indexes__ = [typra.models.index("name")]
+    __modelvault_primary_key__ = "id"
+    __modelvault_indexes__ = [modelvault.models.index("name")]
     id: int
     name: str
 
-db = typra.Database.open("app.typra")
-users = typra.models.collection(db, User)
+db = modelvault.Database.open("app.modelvault")
+users = modelvault.models.collection(db, User)
 users.insert(User(id=1, name="Ada"))
 # Invalid: users.insert(User(id="x", name="Ada"))  # fails on write
 ```
@@ -42,7 +42,7 @@ users.insert(User(id=1, name="Ada"))
 
 ## Comparison
 
-| Topic | JSON files | Typra |
+| Topic | JSON files | ModelVault |
 |-------|------------|-------|
 | Validation | Manual | On write |
 | Indexes | None | Declared on model |
@@ -57,7 +57,7 @@ users.insert(User(id=1, name="Ada"))
 - Human-edited config you want in git verbatim
 - Interchange with tools that only speak JSON
 
-## When Typra wins
+## When ModelVault wins
 
 - Application **domain data** that must stay consistent
 - You need **indexed lookups** without loading everything

@@ -1,0 +1,20 @@
+[package]
+name = "modelvault-derive"
+description = "Derive DbModel for ModelVault — map Rust structs to typed collections with validation and indexes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+modelvault-core.workspace = true
+
+[lints]
+workspace = true

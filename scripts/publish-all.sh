@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish all Typra Rust crates to crates.io and the Python wheel to PyPI.
+# Publish all ModelVault Rust crates to crates.io and the Python wheel to PyPI.
 # Run from a shell where your credentials are exported (or configure the same
 # variables for Cursor / CI).
 set -euo pipefail
@@ -27,6 +27,6 @@ export MATURIN_NON_INTERACTIVE="${MATURIN_NON_INTERACTIVE:-true}"
 "$ROOT/scripts/publish-crates.sh"
 
 echo "Publishing Python package to PyPI (current platform)..."
-(cd "$ROOT/python/typra" && maturin publish --skip-existing)
+(cd "$ROOT/python/modelvault" && maturin publish --skip-existing)
 
 echo "Done."

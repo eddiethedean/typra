@@ -6,15 +6,15 @@ Tools for diagnosing validation failures, query plans, and engine behavior.
 
 ## Python exception types
 
-Beyond `ValueError`, `OSError`, and `RuntimeError`, Typra exposes stable subclasses:
+Beyond `ValueError`, `OSError`, and `RuntimeError`, ModelVault exposes stable subclasses:
 
 | Class | Typical cause |
 |-------|---------------|
-| `typra.TypraFormatError` | File format / header issues |
-| `typra.TypraSchemaError` | Catalog / schema mismatch |
-| `typra.TypraValidationError` | Constraint or type failure on write |
-| `typra.TypraQueryError` | Invalid query shape |
-| `typra.TypraTransactionError` | Transaction framing issues |
+| `modelvault.ModelVaultFormatError` | File format / header issues |
+| `modelvault.ModelVaultSchemaError` | Catalog / schema mismatch |
+| `modelvault.ModelVaultValidationError` | Constraint or type failure on write |
+| `modelvault.ModelVaultQueryError` | Invalid query shape |
+| `modelvault.ModelVaultTransactionError` | Transaction framing issues |
 
 ### Query plans
 
@@ -27,20 +27,20 @@ print(plan)  # look for "IndexLookup"
 
 ## Rust `tracing` (feature-gated)
 
-`typra-core` emits spans at open, replay, checkpoint, compaction, and query planning when built with the **`tracing`** feature.
+`modelvault-core` emits spans at open, replay, checkpoint, compaction, and query planning when built with the **`tracing`** feature.
 
 ### Build with tracing
 
 ```bash
-cargo build -p typra-core --features tracing
-cargo build -p typra --features tracing
+cargo build -p modelvault-core --features tracing
+cargo build -p modelvault --features tracing
 ```
 
 ### Subscriber setup
 
 ```toml
 [dependencies]
-typra = { version = "1.0", features = ["tracing"] }
+modelvault = { version = "1.0", features = ["tracing"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```
 
@@ -52,7 +52,7 @@ fn main() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let db = typra::Database::open("app.typra").expect("open");
+    let db = modelvault::Database::open("app.modelvault").expect("open");
     let _ = db.collection_names();
 }
 ```
@@ -60,24 +60,24 @@ fn main() {
 Run with filter:
 
 ```bash
-RUST_LOG=typra_core=debug cargo run --features tracing
+RUST_LOG=modelvault_core=debug cargo run --features tracing
 ```
 
 ### Useful targets
 
 | Target | Events |
 |--------|--------|
-| `typra_core::db::open` | File open, recovery |
-| `typra_core::db::replay` | Segment replay, catalog load |
-| `typra_core::checkpoint` | Checkpoint encode/decode |
-| `typra_core::query::planner` | Plan selection, ORDER BY spill |
+| `modelvault_core::db::open` | File open, recovery |
+| `modelvault_core::db::replay` | Segment replay, catalog load |
+| `modelvault_core::checkpoint` | Checkpoint encode/decode |
+| `modelvault_core::query::planner` | Plan selection, ORDER BY spill |
 
 ## Python extension + tracing
 
-Default wheels link `typra-core` **without** tracing. Local debug build:
+Default wheels link `modelvault-core` **without** tracing. Local debug build:
 
 ```bash
-cd python/typra
+cd python/modelvault
 maturin develop --release --features tracing
 ```
 
@@ -86,8 +86,8 @@ Tracing output still needs a Rust subscriber in a custom embedding. For most Pyt
 ## CLI inspection
 
 ```bash
-typra inspect app.typra
-typra dump-catalog app.typra --json
+modelvault inspect app.modelvault
+modelvault dump-catalog app.modelvault --json
 ```
 
 See [CLI reference](../reference/cli.md).

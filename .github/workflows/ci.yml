@@ -41,7 +41,7 @@ jobs:
           path: site
 
   readiness:
-    name: 1.0 readiness (check-1p0-ready)
+    name: 1.0 readiness (check-2p0-ready)
     runs-on: ubuntu-latest
     needs: [preflight]
     steps:
@@ -64,11 +64,11 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
-      - name: Run check-1p0-ready
+      - name: Run check-2p0-ready
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install -U pip
-          make check-1p0-ready
+          make check-2p0-ready
 
   rust:
     strategy:
@@ -119,7 +119,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
-            python/typra/pyproject.toml
+            python/modelvault/pyproject.toml
             docs/requirements.txt
 
       - name: Install system deps (PyO3)
@@ -137,7 +137,7 @@ jobs:
           fi
           "$VENV_PY" -m pip install -U pip
           "$VENV_PY" -m pip install -U "maturin>=1.5,<2" "pytest>=8" "ruff>=0.8" "ty>=0.0.28" "pydantic>=2"
-          cd python/typra
+          cd python/modelvault
           "$VENV_PY" -m maturin develop --release
           "$VENV_PY" -m pytest -v
           cd "${GITHUB_WORKSPACE}"

@@ -2,11 +2,11 @@
 
 **Audience:** advanced (engine contributors, format tooling)
 
-Design and **wire-format** documents for the Typra engine. Application developers should start with [Why Typra](../guides/why_typra.md), [Quickstart](../guides/quickstart.md), and [Reference](../reference/types.md).
+Design and **wire-format** documents for the ModelVault engine. Application developers should start with [Why ModelVault](../guides/why_modelvault.md), [Quickstart](../guides/quickstart.md), and [Reference](../reference/types.md).
 
 ## Normative on-disk specification (1.0.x)
 
-These pages describe the **implemented** `.typra` file format. [Compatibility](../reference/compatibility.md) defines read/write and recovery policy.
+These pages describe the **implemented** `.modelvault` file format. [Compatibility](../reference/compatibility.md) defines read/write and recovery policy.
 
 | Document | Contents |
 |----------|----------|
@@ -18,7 +18,7 @@ These pages describe the **implemented** `.typra` file format. [Compatibility](.
 | [Record encoding v2](record_encoding_v2.md) | `RowValue` record payloads (default for flat schemas) |
 | [Record encoding v3](record_encoding_v3.md) | Multi-segment `FieldPath` record payloads |
 
-**Code references:** `crates/typra-core/src/file_format.rs`, `superblock.rs`, `segments/`, `catalog/codec.rs`, `record/`, `index.rs`.
+**Code references:** `crates/modelvault-core/src/file_format.rs`, `superblock.rs`, `segments/`, `catalog/codec.rs`, `record/`, `index.rs`.
 
 ## Architecture & product
 

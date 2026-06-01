@@ -1,0 +1,26 @@
+#![cfg(feature = "derive")]
+
+use std::error::Error;
+
+use modelvault::prelude::*;
+use modelvault::DbModel;
+
+#[derive(DbModel)]
+#[allow(dead_code)]
+struct Book {
+    #[db(primary)]
+    title: String,
+}
+
+fn assert_db_model<T: modelvault_core::DbModel>() {}
+
+#[test]
+fn facade_smoke() -> Result<(), Box<dyn Error>> {
+    let dir = tempfile::tempdir()?;
+    let _db = Database::open(dir.path().join("db.modelvault"))?;
+    let _book = Book {
+        title: "Example".into(),
+    };
+    assert_db_model::<Book>();
+    Ok(())
+}

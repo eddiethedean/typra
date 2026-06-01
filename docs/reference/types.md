@@ -2,7 +2,7 @@
 
 **Audience:** intermediate (application developers)
 
-Truth table for what Typra **1.0** supports today: catalog types, row values, constraints, indexes, and query predicates — use this when mapping **Pydantic or dataclass fields** to storage.
+Truth table for what ModelVault **1.0** supports today: catalog types, row values, constraints, indexes, and query predicates — use this when mapping **Pydantic or dataclass fields** to storage.
 
 Model-first workflows: [Pydantic guide](../guides/pydantic.md) · [Models & collections](../guides/models_and_collections.md)
 

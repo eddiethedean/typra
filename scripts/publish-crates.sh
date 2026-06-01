@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish Typra Rust workspace crates to crates.io (typra-core, typra-derive, typra, typra-python).
+# Publish ModelVault Rust workspace crates to crates.io (modelvault-core, modelvault-derive, modelvault, modelvault-python).
 # Requires CARGO_REGISTRY_TOKEN (or CRATES_IO_TOKEN). Idempotent: skips if version already exists.
 set -euo pipefail
 
@@ -34,9 +34,9 @@ cargo_publish_allow_duplicate() {
 }
 
 echo "Publishing Rust crates to crates.io..."
-cargo_publish_allow_duplicate typra-core
-cargo_publish_allow_duplicate typra-derive
-cargo_publish_allow_duplicate typra
-cargo_publish_allow_duplicate typra-python
+cargo_publish_allow_duplicate modelvault-core
+cargo_publish_allow_duplicate modelvault-derive
+cargo_publish_allow_duplicate modelvault
+cargo_publish_allow_duplicate modelvault-python
 
 echo "Crates publish done."

@@ -2,15 +2,15 @@
 
 Not sure which doc to open? Start here — organized by **outcomes**, not engine internals.
 
-## I'm evaluating Typra
+## I'm evaluating ModelVault
 
 | Question | Read |
 |----------|------|
-| Why does Typra exist? | [Why Typra](guides/why_typra.md) |
+| Why does ModelVault exist? | [Why ModelVault](guides/why_modelvault.md) |
 | How is it different from SQLite / JSON / TinyDB? | [Comparisons](comparisons/index.md) |
 | Can I try it in 5 minutes? | [Quickstart](guides/quickstart.md) |
 | What does it guarantee? | [Compatibility](reference/compatibility.md) · [Types](reference/types.md) · [Security](reference/security.md) |
-| What's planned next? | [Roadmap on GitHub](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md) |
+| What's planned next? | [Roadmap on GitHub](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md) |
 
 ## I'm building an app
 
@@ -37,7 +37,7 @@ Then:
 | Corruption or crash recovery | [Compatibility → recovery](reference/compatibility.md) |
 | Enable tracing | [Debugging](ops/debugging.md) |
 
-## I'm contributing or extending Typra
+## I'm contributing or extending ModelVault
 
 | Task | Doc |
 |------|-----|

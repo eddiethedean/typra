@@ -2,7 +2,7 @@
 
 ## Field paths (1.0 contract)
 
-Typra’s internal schema model uses `FieldPath` segments to address nested fields.
+ModelVault’s internal schema model uses `FieldPath` segments to address nested fields.
 
 In 1.0, collection schemas may define fields using **multi-segment paths** (e.g. `["profile","timezone"]`) as first-class nested leaf fields, subject to invariants:
 
@@ -17,7 +17,7 @@ How schemas are persisted in `SegmentType::Schema` segments is specified in **[C
 
 ## Text DSL (future)
 
-A human-readable schema DSL (`.tdb` files) is described in the historical design doc [Schema DSL spec on GitHub](https://github.com/eddiethedean/typra/blob/main/docs/04_schema_dsl_spec.md). That grammar is **not** what the engine writes to disk today; registration uses Rust `FieldDef` / Python model inference, encoded via the catalog codec.
+A human-readable schema DSL (`.tdb` files) is described in the historical design doc [Schema DSL spec on GitHub](https://github.com/eddiethedean/modelvault/blob/main/docs/04_schema_dsl_spec.md). That grammar is **not** what the engine writes to disk today; registration uses Rust `FieldDef` / Python model inference, encoded via the catalog codec.
 
 ## See also
 

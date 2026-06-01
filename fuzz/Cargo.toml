@@ -1,5 +1,5 @@
 [package]
-name = "typra-core-fuzz"
+name = "modelvault-core-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -10,8 +10,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 
-[dependencies.typra-core]
-path = "../crates/typra-core"
+[dependencies.modelvault-core]
+path = "../crates/modelvault-core"
 
 [[bin]]
 name = "decode_file_header"

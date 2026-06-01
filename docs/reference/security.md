@@ -2,18 +2,18 @@
 
 **Audience:** intermediate (security review, production deployment)
 
-Typra is a **local, embedded** database — one file in your app’s trust boundary, not a network service. This page defines threat model, expectations, and non-goals.
+ModelVault is a **local, embedded** database — one file in your app’s trust boundary, not a network service. This page defines threat model, expectations, and non-goals.
 
-Evaluating Typra: [Why Typra](../guides/why_typra.md) · Operations: [Runbook](../ops/operations_and_failure_modes.md)
+Evaluating ModelVault: [Why ModelVault](../guides/why_modelvault.md) · Operations: [Runbook](../ops/operations_and_failure_modes.md)
 
 ## Scope and non-goals
 
 - **In scope**
-  - Malicious or corrupted `.typra` files opened by the engine.
+  - Malicious or corrupted `.modelvault` files opened by the engine.
   - Untrusted input values passed through public APIs (Rust and Python).
   - Denial-of-service via pathological inputs (CPU, memory, disk growth).
 - **Out of scope (for now)**
-  - Network server exposure (Typra is not a DB server).
+  - Network server exposure (ModelVault is not a DB server).
   - Multi-tenant isolation / sandboxing beyond normal OS process boundaries.
   - Cryptographic confidentiality guarantees (encryption-at-rest is a future consideration, not a current guarantee).
 
@@ -21,14 +21,14 @@ Evaluating Typra: [Why Typra](../guides/why_typra.md) · Operations: [Runbook](.
 
 Assume an attacker can provide:
 
-- A crafted `.typra` file with arbitrary bytes (including truncated, torn-write, or checksum-colliding attempts).
+- A crafted `.modelvault` file with arbitrary bytes (including truncated, torn-write, or checksum-colliding attempts).
 - SQL text for the supported DB-API `SELECT` subset (Python), including adversarial whitespace and parameter edge cases.
 - Arbitrary JSON schema descriptors in Python (`fields_json`, `indexes_json`) and arbitrary row values.
 
 Assume the attacker **cannot**:
 
-- Execute arbitrary code inside the process except through Typra’s bugs.
-- Bypass OS permissions (Typra has no elevated privileges).
+- Execute arbitrary code inside the process except through ModelVault’s bugs.
+- Bypass OS permissions (ModelVault has no elevated privileges).
 
 ## Security invariants (must hold)
 
@@ -53,7 +53,7 @@ Assume the attacker **cannot**:
 
 ## Supply chain and release risks
 
-Typra’s attacker model is primarily “malicious local file”, but production deployments should also
+ModelVault’s attacker model is primarily “malicious local file”, but production deployments should also
 consider supply-chain threats:
 
 - Compromised GitHub Actions / CI runners
@@ -69,7 +69,7 @@ Mitigations used (or recommended) in this repo:
 
 ## Operational guidance
 
-- Treat `.typra` files as **untrusted input** when sourced externally.
+- Treat `.modelvault` files as **untrusted input** when sourced externally.
 - Prefer `RecoveryMode::Strict` when you need fail-fast behavior (e.g. automated pipelines).
 - Use `AutoTruncate` when best-effort salvage is preferred and truncation is acceptable.
 

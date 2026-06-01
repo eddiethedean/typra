@@ -67,7 +67,7 @@ Nested object keys are the **first path segment** of each nested `FieldDef` (top
 
 Encoded as a **string** tagged scalar (tag 4 + UTF-8 bytes). Content must be one of `variants`.
 
-Implementation: `crates/typra-core/src/record/row_value.rs`.
+Implementation: `crates/modelvault-core/src/record/row_value.rs`.
 
 ## Compatibility
 

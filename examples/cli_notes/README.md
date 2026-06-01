@@ -2,7 +2,7 @@
 
 **Problem:** A CLI tool needs structured, durable local storage without running a database server.
 
-**Solution:** Dataclass models in a single `notes.typra` file next to the script.
+**Solution:** Dataclass models in a single `notes.modelvault` file next to the script.
 
 ## Run
 
@@ -17,4 +17,4 @@
 - Append-style CLI workflow
 - On-disk single-file persistence
 
-Docs: [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) · [Typra vs JSON](https://typra.readthedocs.io/en/latest/comparisons/json/)
+Docs: [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_modelvault/) · [ModelVault vs JSON](https://modelvault.readthedocs.io/en/latest/comparisons/json/)

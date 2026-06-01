@@ -1,18 +1,18 @@
-# Typra
+# ModelVault
 
 ## SQLite simplicity, with real types
 
-**The database for application models** — store dataclasses and Pydantic models directly with validation, indexes, migrations, and single-file deployment. Ship a `.typra` file with your app, or run in memory for tests. Same engine in **Rust** and **Python**.
+**The database for application models** — store dataclasses and Pydantic models directly with validation, indexes, migrations, and single-file deployment. Ship a `.modelvault` file with your app, or run in memory for tests. Same engine in **Rust** and **Python**.
 
 <div class="grid cards" markdown>
 
--   :material-lightbulb-on:{ .lg .middle } **Why Typra?**
+-   :material-lightbulb-on:{ .lg .middle } **Why ModelVault?**
 
     ---
 
-    When to choose Typra over SQLite, JSON, TinyDB, or DuckDB.
+    When to choose ModelVault over SQLite, JSON, TinyDB, or DuckDB.
 
-    [:octicons-arrow-right-24: Why Typra](guides/why_typra.md)
+    [:octicons-arrow-right-24: Why ModelVault](guides/why_modelvault.md)
 
 -   :material-rocket-launch:{ .lg .middle } **Get started in 5 minutes**
 
@@ -46,21 +46,21 @@
 |---------|----------------|
 | **Store models directly** | Your Python class or Rust struct is the schema — no parallel SQL DDL |
 | **Validate on write** | Invalid data fails before it hits disk |
-| **Deploy as a single file** | One `.typra` file (or `:memory:`) — no database server to run |
+| **Deploy as a single file** | One `.modelvault` file (or `:memory:`) — no database server to run |
 
 ## Quick example (Pydantic)
 
 ```python
 from pydantic import BaseModel
-import typra
+import modelvault
 
 class Book(BaseModel):
-    __typra_primary_key__ = "title"
+    __modelvault_primary_key__ = "title"
     title: str
     year: int
 
-db = typra.Database.open_in_memory()
-books = typra.models.collection(db, Book)
+db = modelvault.Database.open_in_memory()
+books = modelvault.models.collection(db, Book)
 books.insert(Book(title="Hello", year=2020))
 print(books.get("Hello"))
 ```
@@ -74,9 +74,9 @@ print(books.get("Hello"))
 - **CLI tools** — structured, durable local data beyond JSON blobs
 - **Local-first** — offline-first apps with schema evolution over time
 
-## How is Typra different?
+## How is ModelVault different?
 
-| | SQLite | JSON files | TinyDB | Typra |
+| | SQLite | JSON files | TinyDB | ModelVault |
 |--|--------|------------|--------|-------|
 | App model mapping | Manual SQL + ORM | Manual | Manual | **Native** |
 | Validation on write | App layer | None | Limited | **Engine** |
@@ -91,14 +91,14 @@ print(books.get("Hello"))
 === "Python"
 
     ```bash
-    pip install "typra>=1.0.0,<2"
+    pip install "modelvault>=0.14.0,<0.15"
     ```
 
 === "Rust"
 
     ```toml
     [dependencies]
-    typra = "1.0"
+    modelvault = "0.14"
     ```
 
 ## What you get in 1.0
@@ -109,17 +109,17 @@ print(books.get("Hello"))
 | **Validation on write** | Invalid data fails before it hits disk |
 | **Indexes & queries** | Secondary indexes; equality, ranges, `AND`/`OR`, `order_by`, `limit` |
 | **Durability** | Transactions, checkpoints, compaction, recovery modes |
-| **Python ergonomics** | `typra.models` + optional read-only DB-API |
-| **Operations** | `typra` CLI for inspect, verify, backup, migrate |
+| **Python ergonomics** | `modelvault.models` + optional read-only DB-API |
+| **Operations** | `modelvault` CLI for inspect, verify, backup, migrate |
 
 !!! note "Not SQL-first (yet)"
-    Typra is **model-first**. A minimal read-only SQL subset exists for DB-API; full ISO SQL and SQLAlchemy are on the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md#post-10-isoiec-9075-sql-track).
+    ModelVault is **model-first**. A minimal read-only SQL subset exists for DB-API; full ISO SQL and SQLAlchemy are on the [roadmap](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md#post-10-isoiec-9075-sql-track).
 
 ## Documentation by goal
 
 | I want to… | Go to |
 |------------|-------|
-| Decide if Typra fits | [Why Typra](guides/why_typra.md) · [Comparisons](comparisons/index.md) · [Launch blog](https://github.com/eddiethedean/typra/blob/main/blog/typra-for-application-models.md) |
+| Decide if ModelVault fits | [Why ModelVault](guides/why_modelvault.md) · [Comparisons](comparisons/index.md) · [Launch blog](https://github.com/eddiethedean/modelvault/blob/main/blog/modelvault-for-application-models.md) |
 | Try it quickly | [Quickstart](guides/quickstart.md) |
 | Build with Pydantic / FastAPI | [Pydantic](guides/pydantic.md) · [FastAPI](guides/fastapi.md) |
 | Learn the mental model | [Core concepts](guides/concepts.md) |

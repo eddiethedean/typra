@@ -13,15 +13,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-import typra
+import modelvault
 
-DB_PATH = Path(__file__).resolve().parent / "notes.typra"
+DB_PATH = Path(__file__).resolve().parent / "notes.modelvault"
 
 
 @dataclass
 class Note:
-    __typra_primary_key__ = "id"
-    __typra_indexes__ = [typra.models.index("created_at")]
+    __modelvault_primary_key__ = "id"
+    __modelvault_indexes__ = [modelvault.models.index("created_at")]
 
     id: int
     body: str
@@ -29,8 +29,8 @@ class Note:
 
 
 def open_notes():
-    db = typra.Database.open(str(DB_PATH))
-    return db, typra.models.collection(db, Note)
+    db = modelvault.Database.open(str(DB_PATH))
+    return db, modelvault.models.collection(db, Note)
 
 
 def cmd_add(notes: object, body: str) -> None:
@@ -47,7 +47,7 @@ def cmd_list(notes: object) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Typra CLI notes example")
+    parser = argparse.ArgumentParser(description="ModelVault CLI notes example")
     sub = parser.add_subparsers(dest="command", required=True)
     add_p = sub.add_parser("add")
     add_p.add_argument("body")

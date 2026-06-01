@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal todo list backed by Typra — CRUD, indexes, and queries.
+"""Minimal todo list backed by ModelVault — CRUD, indexes, and queries.
 
 Run from repo root after `make python-develop`:
   .venv/bin/python examples/todo_app/main.py
@@ -12,16 +12,16 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-import typra
+import modelvault
 
-DB_PATH = Path(__file__).resolve().parent / "tasks.typra"
+DB_PATH = Path(__file__).resolve().parent / "tasks.modelvault"
 
 
 class Task(BaseModel):
-    __typra_primary_key__ = "id"
-    __typra_indexes__ = [
-        typra.models.index("done"),
-        typra.models.unique("id"),
+    __modelvault_primary_key__ = "id"
+    __modelvault_indexes__ = [
+        modelvault.models.index("done"),
+        modelvault.models.unique("id"),
     ]
 
     id: int
@@ -29,9 +29,9 @@ class Task(BaseModel):
     done: bool = False
 
 
-def open_db() -> tuple[typra.Database, object]:
-    db = typra.Database.open(str(DB_PATH))
-    tasks = typra.models.collection(db, Task)
+def open_db() -> tuple[modelvault.Database, object]:
+    db = modelvault.Database.open(str(DB_PATH))
+    tasks = modelvault.models.collection(db, Task)
     return db, tasks
 
 
@@ -61,7 +61,7 @@ def cmd_done(tasks: object, task_id: int) -> None:
     print(f"completed task {task_id}")
 
 
-def cmd_delete(db: typra.Database, tasks: object, task_id: int) -> None:
+def cmd_delete(db: modelvault.Database, tasks: object, task_id: int) -> None:
     if tasks.get(task_id) is None:
         print(f"no task with id {task_id}", file=sys.stderr)
         sys.exit(1)
@@ -70,7 +70,7 @@ def cmd_delete(db: typra.Database, tasks: object, task_id: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Typra todo example")
+    parser = argparse.ArgumentParser(description="ModelVault todo example")
     sub = parser.add_subparsers(dest="command", required=True)
 
     add_p = sub.add_parser("add", help="add a task")

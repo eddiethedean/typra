@@ -2,7 +2,7 @@
 # Verifies stdout from the minimal Rust and Python snippets shown in README / guides.
 # Covered: root README (Rust + Pydantic Python), docs/guides/quickstart.md (Rust cmd + Python),
 # docs/guides/python.md (quick start + query + realistic workflow + fields example),
-# python/typra/README.md (Pydantic quick start).
+# python/modelvault/README.md (Pydantic quick start).
 # When outputs change intentionally, update the expected heredocs here and the matching ```text blocks.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,15 +29,15 @@ fail() {
 
 { [[ -x "$PYTHON" ]] || [[ -f "$PYTHON" ]]; } || fail "Need a venv with the extension built (e.g. make python-develop). PYTHON=$PYTHON"
 
-# --- Rust: crates/typra/examples/open.rs (also embedded in README + guide_getting_started) ---
+# --- Rust: crates/modelvault/examples/open.rs (also embedded in README + guide_getting_started) ---
 read -r -d '' EXPECT_RUST <<'EOF' || true
 opened: :memory:
 registered collection id=1 version=1
 
 EOF
-ACTUAL_RUST=$(cargo run -q -p typra --example open | strip_cr)
+ACTUAL_RUST=$(cargo run -q -p modelvault --example open | strip_cr)
 [[ "$ACTUAL_RUST" == "$EXPECT_RUST" ]] || {
-  echo "Rust example output mismatch. Update scripts/verify-doc-examples.sh and docs (guide_getting_started, root README, crates/typra/README, guide_python)." >&2
+  echo "Rust example output mismatch. Update scripts/verify-doc-examples.sh and docs (guide_getting_started, root README, crates/modelvault/README, guide_python)." >&2
   diff -u <(printf '%s' "$EXPECT_RUST") <(printf '%s' "$ACTUAL_RUST") >&2 || true
   exit 1
 }
@@ -45,7 +45,7 @@ ACTUAL_RUST=$(cargo run -q -p typra --example open | strip_cr)
 # --- Python: docs/guides/quickstart.md "Run it (from this repo)" ---
 read -r -d '' EXPECT_PY_GUIDE <<'EOF' || true
 get: Book(title='Hello', year=2020, rating=4.5)
-typra 1.0.0
+modelvault 1.0.0
 
 EOF
 ACTUAL_PY_GUIDE=$("$PYTHON" <<'PY' | strip_cr
@@ -55,27 +55,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Annotated, Optional
 
-import typra
+import modelvault
 
 
 @dataclass
 class Book:
-    __typra_primary_key__ = "title"
-    __typra_indexes__ = [
-        typra.models.index("year"),
-        typra.models.unique("title"),
+    __modelvault_primary_key__ = "title"
+    __modelvault_indexes__ = [
+        modelvault.models.index("year"),
+        modelvault.models.unique("title"),
     ]
 
     title: str
-    year: Annotated[int, typra.models.constrained(min_i64=0)]
+    year: Annotated[int, modelvault.models.constrained(min_i64=0)]
     rating: Optional[float] = None
 
 
-db = typra.Database.open_in_memory()
-books = typra.models.collection(db, Book)
+db = modelvault.Database.open_in_memory()
+books = modelvault.models.collection(db, Book)
 books.insert(Book(title="Hello", year=2020, rating=4.5))
 print("get:", books.get("Hello"))
-print("typra", typra.__version__)
+print("modelvault", modelvault.__version__)
 PY
 )
 [[ "$ACTUAL_PY_GUIDE" == "$EXPECT_PY_GUIDE" ]] || {
@@ -92,18 +92,18 @@ title='Hello' year=2020
 EOF
 ACTUAL_PY_ROOT=$("$PYTHON" <<'PY' | strip_cr
 from pydantic import BaseModel
-import typra
+import modelvault
 
 class Book(BaseModel):
-    __typra_primary_key__ = "title"
+    __modelvault_primary_key__ = "title"
     title: str
     year: int
 
-db = typra.Database.open_in_memory()
-books = typra.models.collection(db, Book)
+db = modelvault.Database.open_in_memory()
+books = modelvault.models.collection(db, Book)
 books.insert(Book(title="Hello", year=2020))
 print(books.get("Hello"))
-print(typra.__version__)
+print(modelvault.__version__)
 PY
 )
 [[ "$ACTUAL_PY_ROOT" == "$EXPECT_PY_ROOT" ]] || {
@@ -112,30 +112,30 @@ PY
   exit 1
 }
 
-# --- Python: python/typra/README.md quick start (Pydantic) ---
+# --- Python: python/modelvault/README.md quick start (Pydantic) ---
 read -r -d '' EXPECT_PY_PKG <<'EOF' || true
-title='Typra' year=2020
+title='ModelVault' year=2020
 1.0.0
 
 EOF
 ACTUAL_PY_PKG=$("$PYTHON" <<'PY' | strip_cr
 from pydantic import BaseModel
-import typra
+import modelvault
 
 class Book(BaseModel):
-    __typra_primary_key__ = "title"
+    __modelvault_primary_key__ = "title"
     title: str
     year: int
 
-db = typra.Database.open_in_memory()
-books = typra.models.collection(db, Book)
-books.insert(Book(title="Typra", year=2020))
-print(books.get("Typra"))
-print(typra.__version__)
+db = modelvault.Database.open_in_memory()
+books = modelvault.models.collection(db, Book)
+books.insert(Book(title="ModelVault", year=2020))
+print(books.get("ModelVault"))
+print(modelvault.__version__)
 PY
 )
 [[ "$ACTUAL_PY_PKG" == "$EXPECT_PY_PKG" ]] || {
-  echo "Python (python/typra/README) output mismatch." >&2
+  echo "Python (python/modelvault/README) output mismatch." >&2
   diff -u <(printf '%s' "$EXPECT_PY_PKG") <(printf '%s' "$ACTUAL_PY_PKG") >&2 || true
   exit 1
 }
@@ -149,9 +149,9 @@ collection_names: ['books']
 EOF
 ACTUAL_PY_GUIDE_PYTHON=$("$PYTHON" <<'PY' | strip_cr
 # Setup: module, in-memory DB, and one collection.
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 cid, ver = db.register_collection(
     "books",
     '[{"path": ["title"], "type": "string"}]',
@@ -177,9 +177,9 @@ rows: [{'title': 'Hello'}]
 EOF
 ACTUAL_PY_GUIDE_QUERY=$("$PYTHON" <<'PY' | strip_cr
 # Setup: in-memory DB, schema, index, and one row.
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 fields = (
     '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
 )
@@ -213,11 +213,11 @@ ACTUAL_PY_GUIDE_WORKFLOW=$("$PYTHON" <<'PY' | strip_cr
 import tempfile
 from pathlib import Path
 
-import typra
+import modelvault
 
 with tempfile.TemporaryDirectory() as d:
-    path = Path(d) / "app.typra"
-    db = typra.Database.open(str(path))
+    path = Path(d) / "app.modelvault"
+    db = modelvault.Database.open(str(path))
     fields = """[
       {"path": ["id"], "type": "int64"},
       {"path": ["sku"], "type": "string"},
@@ -253,7 +253,7 @@ with tempfile.TemporaryDirectory() as d:
         key=lambda r: r["id"],
     )
     print("subset:", short)
-    db2 = typra.Database.open(str(path))
+    db2 = modelvault.Database.open(str(path))
     row = db2.get("order_lines", 1)
     print("reopen_qty:", row["qty"] if row else None)
 PY
@@ -271,9 +271,9 @@ collection_id: 1 schema_version: 1
 EOF
 ACTUAL_PY_GUIDE_FIELDS=$("$PYTHON" <<'PY' | strip_cr
 # Setup: in-memory DB and a multi-field `books` schema (PK `title`).
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 fields = """[
   {"path": ["title"], "type": "string"},
   {"path": ["year"], "type": "int64"},
@@ -298,9 +298,9 @@ get: {'title': 'Hello'}
 
 EOF
 ACTUAL_PY_OPS=$("$PYTHON" <<'PY' | strip_cr
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 db.register_collection("books", '[{"path": ["title"], "type": "string"}]', "title")
 db.insert("books", {"title": "Hello"})
 

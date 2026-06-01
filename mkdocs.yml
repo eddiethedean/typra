@@ -1,8 +1,8 @@
-site_name: Typra
+site_name: ModelVault
 site_description: The database for application models — SQLite simplicity with real types
-site_url: https://typra.readthedocs.io/
-repo_url: https://github.com/eddiethedean/typra
-repo_name: eddiethedean/typra
+site_url: https://modelvault.readthedocs.io/
+repo_url: https://github.com/eddiethedean/modelvault
+repo_name: eddiethedean/modelvault
 edit_uri: edit/main/docs/
 
 theme:
@@ -84,12 +84,12 @@ exclude_docs: |
   security_threat_model.md
   types_matrix.md
   contributing.md
-  TYPRA_DOCUMENTATION_POSITIONING_MASTER_PLAN.md
+  MODELVAULT_DOCUMENTATION_POSITIONING_MASTER_PLAN.md
 
 nav:
   - Home: index.md
   - Get started:
-      - Why Typra: guides/why_typra.md
+      - Why ModelVault: guides/why_modelvault.md
       - Quickstart: guides/quickstart.md
       - Choose your path: map.md
       - Core concepts: guides/concepts.md
@@ -142,8 +142,8 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/eddiethedean/typra
+      link: https://github.com/eddiethedean/modelvault
     - icon: fontawesome/brands/python
-      link: https://pypi.org/project/typra/
+      link: https://pypi.org/project/modelvault/
     - icon: fontawesome/brands/rust
-      link: https://crates.io/crates/typra
+      link: https://crates.io/crates/modelvault

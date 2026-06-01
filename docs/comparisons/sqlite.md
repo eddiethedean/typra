@@ -1,4 +1,4 @@
-# Typra vs SQLite
+# ModelVault vs SQLite
 
 Both are **embedded, single-file, zero-server** databases. The difference is what you optimize for: **SQL tables** vs **application models**.
 
@@ -15,19 +15,19 @@ That works — it is the industry default — but it is not the fastest path whe
 
 ## Solution
 
-Typra registers a **collection** from your model class. Inserts validate against the schema catalog; nested paths are typed in the engine.
+ModelVault registers a **collection** from your model class. Inserts validate against the schema catalog; nested paths are typed in the engine.
 
 ```python
 from pydantic import BaseModel
-import typra
+import modelvault
 
 class User(BaseModel):
-    __typra_primary_key__ = "id"
+    __modelvault_primary_key__ = "id"
     id: int
     name: str
 
-db = typra.Database.open("app.typra")
-users = typra.models.collection(db, User)
+db = modelvault.Database.open("app.modelvault")
+users = modelvault.models.collection(db, User)
 users.insert(User(id=1, name="Ada"))
 ```
 
@@ -35,7 +35,7 @@ users.insert(User(id=1, name="Ada"))
 
 ## Side-by-side
 
-| Topic | SQLite | Typra |
+| Topic | SQLite | ModelVault |
 |-------|--------|-------|
 | Schema | `CREATE TABLE` + migrations | Model class + catalog versions |
 | Nested data | Often JSON in `TEXT` | Typed object paths in catalog |
@@ -49,7 +49,7 @@ users.insert(User(id=1, name="Ada"))
 - Heavy **ad-hoc reporting** with joins across dozens of legacy tables
 - Existing **SQLite** tooling and drivers are mandatory
 
-## When Typra wins
+## When ModelVault wins
 
 - Your app is **model-first** (Pydantic, dataclasses, Rust structs)
 - You want **validation and indexes** without ORM ceremony
@@ -67,7 +67,7 @@ users.insert(User(id=1, name="Ada"))
     -- App serializes Customer pydantic model to JSON string
     ```
 
-=== "Typra"
+=== "ModelVault"
 
     ```python
     class Customer(BaseModel):
@@ -75,13 +75,13 @@ users.insert(User(id=1, name="Ada"))
         tier: str
 
     class Order(BaseModel):
-        __typra_primary_key__ = "id"
+        __modelvault_primary_key__ = "id"
         id: int
         customer: Customer  # nested object in schema
     ```
 
 ## Related
 
-- [Why Typra](../guides/why_typra.md)
+- [Why ModelVault](../guides/why_modelvault.md)
 - [Comparisons overview](index.md)
 - [Compatibility](../reference/compatibility.md)

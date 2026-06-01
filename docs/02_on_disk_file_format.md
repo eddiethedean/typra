@@ -5,7 +5,7 @@
 > **Published wire spec (Read the Docs):** [`docs/specs/on_disk_file_format.md`](specs/on_disk_file_format.md) and linked pages under [`docs/specs/`](specs/index.md).
 >
 > The **normative compatibility contract** is in [`docs/reference/compatibility.md`](reference/compatibility.md).
-> Implemented header/version constants live in `crates/typra-core/src/file_format.rs`.
+> Implemented header/version constants live in `crates/modelvault-core/src/file_format.rs`.
 
 ## Goals
 The on-disk format should be:
@@ -46,7 +46,7 @@ Use alternating superblocks so metadata updates are crash-safe.
 ## File Header
 Fixed-size header.
 
-**Implemented today:** Typra uses a **32-byte header** (`FILE_HEADER_SIZE = 32`) with:
+**Implemented today:** ModelVault uses a **32-byte header** (`FILE_HEADER_SIZE = 32`) with:
 
 - magic: `TDB0`
 - `format_major: u16`

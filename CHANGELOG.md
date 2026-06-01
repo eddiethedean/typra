@@ -7,30 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
 _Nothing yet._
+
+## [0.14.0] - 2026-06-01
+
+### Changed
+
+- **Rebrand:** Typra is now **ModelVault** — crates `modelvault`, `modelvault-core`, `modelvault-derive`, `modelvault-cli`; Python package `modelvault`; CLI binary `modelvault`.
+- **File extension:** default `.modelvault` (on-disk format and `TDB0` magic unchanged; Typra 1.x files remain readable).
+- **Python model hooks:** `__modelvault_primary_key__`, `__modelvault_indexes__`, etc. (replace `__typra_*__`).
+- **Exceptions:** `ModelVaultFormatError`, `ModelVaultSchemaError`, `ModelVaultValidationError`, `ModelVaultQueryError`, `ModelVaultTransactionError`.
+
+### Notes
+
+- **Upgrading from Typra 1.x:** change imports and dependency names; existing database files open without conversion. See [`docs/MODELVAULT_REBRAND_PLAN.md`](docs/MODELVAULT_REBRAND_PLAN.md).
 
 ## [1.0.0] - 2026-05-31
 
-First **stable 1.x** release: semver + on-disk compatibility policy, production-oriented operations, and **`typra.models`** as the primary Python API.
+First **stable 1.x** release (shipped as **Typra**): semver + on-disk compatibility policy, production-oriented operations, and **`typra.models`** as the primary Python API.
+
+First **stable 1.x** release: semver + on-disk compatibility policy, production-oriented operations, and **`modelvault.models`** as the primary Python API.
 
 ### Added
 
 - **Multi-segment schema field paths**: collection schemas may define nested leaf fields via multi-segment `FieldPath`s (e.g. `["profile","timezone"]`) end-to-end (write, replay, indexes, query, projections).
 - **Record payload v3**: new record encoding that persists values keyed by full `FieldPath`, enabling multi-segment schema field defs while retaining v1/v2 read compatibility.
-- **Python `typra.models`**: class-defined schemas (dataclass + Pydantic v2), constraints, indexes, migrations (`plan` / `apply`), and typed collections as the **recommended** application API.
-- **Operational CLI (`typra`)**: `inspect`, `verify`, `dump-catalog`, `checkpoint`, `compact`, `backup`, and migration helpers — see [`docs/reference/cli.md`](docs/reference/cli.md).
+- **Python `modelvault.models`**: class-defined schemas (dataclass + Pydantic v2), constraints, indexes, migrations (`plan` / `apply`), and typed collections as the **recommended** application API.
+- **Operational CLI (`modelvault`)**: `inspect`, `verify`, `dump-catalog`, `checkpoint`, `compact`, `backup`, and migration helpers — see [`docs/reference/cli.md`](docs/reference/cli.md).
 - **Cross-process safety**: single-writer file locking with crisp errors when a second writer opens the same file.
-- **Backup/restore**: checkpoint + supported backup workflow (`typra backup`, snapshot bytes APIs).
-- **Observability**: optional **`tracing`** feature on `typra-core` / `typra-python`; structured error kinds documented in [`docs/ops/debugging.md`](docs/ops/debugging.md).
+- **Backup/restore**: checkpoint + supported backup workflow (`modelvault backup`, snapshot bytes APIs).
+- **Observability**: optional **`tracing`** feature on `modelvault-core` / `modelvault-python`; structured error kinds documented in [`docs/ops/debugging.md`](docs/ops/debugging.md).
 - **Docs & contracts**: compatibility matrix ([`docs/reference/compatibility.md`](docs/reference/compatibility.md)), types matrix, security posture ([`SECURITY.md`](SECURITY.md), [`docs/reference/security.md`](docs/reference/security.md)), async policy ([`docs/reference/async_policy.md`](docs/reference/async_policy.md)), and 1.0 readiness checklist ([`docs/reference/readiness.md`](docs/reference/readiness.md)).
-- **CI / quality gates**: `make check-1p0-ready` (includes `check-full`, doc-example verification, and async-facade tests); minimum **`typra-core`** line-coverage gate in CI.
+- **CI / quality gates**: `make check-2p0-ready` (includes `check-full`, doc-example verification, and async-facade tests); minimum **`modelvault-core`** line-coverage gate in CI.
 
 ### Changed
 
 - **Python parity**: `fields_json`, inserts, and the typed query builder accept and resolve multi-segment schema paths; new parity tests cover nested paths and index-backed queries.
-- **Stable API policy**: `typra`, `typra-core`, and `typra-derive` **1.0.x** are safe to depend on directly; breaking changes require **2.0**.
+- **Stable API policy**: `modelvault`, `modelvault-core`, and `modelvault-derive` **1.0.x** are safe to depend on directly; breaking changes require **2.0**.
 
 ### Notes
 
@@ -54,7 +67,7 @@ First **stable 1.x** release: semver + on-disk compatibility policy, production-
 
 - **Bounded-memory scaffolding (v0)**: an internal streaming `query_iter` operator boundary, plus ephemeral `Temp` spill segments and a small spill helper to support future external algorithms.
 - **External sort (v0)**: `order_by` can spill to temporary segments for large inputs (on-disk databases) instead of forcing a full in-memory sort.
-- **DB-API cursor incremental fetch (v0)**: `typra.dbapi` now refills results incrementally instead of materializing the full result set on `execute`.
+- **DB-API cursor incremental fetch (v0)**: `modelvault.dbapi` now refills results incrementally instead of materializing the full result set on `execute`.
 
 ## [0.11.0] - 2026-04-24
 
@@ -74,7 +87,7 @@ First **stable 1.x** release: semver + on-disk compatibility policy, production-
 
 ### Added
 
-- **Python DB-API 2.0 (PEP 249)**: experimental, read-only adapter exposed as **`typra.dbapi`** (`connect`, `Connection`, `Cursor`, `execute` + `fetch*`, and `cursor.description`).
+- **Python DB-API 2.0 (PEP 249)**: experimental, read-only adapter exposed as **`modelvault.dbapi`** (`connect`, `Connection`, `Cursor`, `execute` + `fetch*`, and `cursor.description`).
 - **Minimal SQL `SELECT` subset** (read-only): `SELECT <cols|*> FROM <collection>` with optional `WHERE` (`=` / `AND` / `OR` / range predicates using `?` positional params), `ORDER BY <field> [ASC|DESC]`, and `LIMIT n`.
 - **Query errors**: new `DbError::Query(QueryError)` for SQL parsing / query adapter failures.
 - **Tests**: Rust unit tests for the SQL adapter and Python integration tests for the DB-API module.
@@ -117,22 +130,22 @@ First **stable 1.x** release: semver + on-disk compatibility policy, production-
 
 - **Secondary indexes (Rust)**: catalog `IndexDef`, insert-time index maintenance, persisted index segments, unique violations, minimal **query AST** (`get` / equality / `limit`), heuristic **`explain`**, **`Database::query_iter`** (pull-based row iterator), **`row_subset_by_field_defs`** for nested path projections.
 - **Python**: optional **`indexes_json`** on **`register_collection`**, **`collection(...).where` / `and_where` / `limit` / `explain` / `all`**, subset rows via **`all(fields=[...])`** (paths must match `fields_json`).
-- **Benchmarks**: Criterion bench **`crates/typra-core/benches/query.rs`** (`make bench`); compares **`get(pk)`**, indexed equality, and scan.
+- **Benchmarks**: Criterion bench **`crates/modelvault-core/benches/query.rs`** (`make bench`); compares **`get(pk)`**, indexed equality, and scan.
 - **Docs**: Python guide sections for queries, indexes, subset projection, and **DB-API / SQLAlchemy scope** (design-only for 0.7).
 
 ### Notes
 
-- **0.6.x → 0.7.0** is **additive** for typical `insert` / `get` usage. Publishing **`typra-core`** to crates.io before **`typra-derive`** / **`typra`** / **`typra-python`** is required (see [`scripts/publish-crates.sh`](scripts/publish-crates.sh)).
+- **0.6.x → 0.7.0** is **additive** for typical `insert` / `get` usage. Publishing **`modelvault-core`** to crates.io before **`modelvault-derive`** / **`modelvault`** / **`modelvault-python`** is required (see [`scripts/publish-crates.sh`](scripts/publish-crates.sh)).
 
 ## [0.6.0] - 2026-04-21
 
 ### Added
 
-- **Validation engine**: recursive type checks for primitives, `Optional`, `List`, `Object`, and `Enum`; field **constraints** (`min_i64` / `max_i64`, `min_u64` / `max_u64`, `min_f64` / `max_f64`, `min_length` / `max_length`, `regex`, `email`, `url`, `nonempty`) on [`FieldDef`](crates/typra-core/src/schema.rs); structured [`DbError::Validation`](crates/typra-core/src/error.rs) with nested paths.
-- **Row values**: [`RowValue`](crates/typra-core/src/record/row_value.rs) for in-memory rows and nested structures; [`Database::insert`](crates/typra-core/src/db/mod.rs) / [`get`](crates/typra-core/src/db/mod.rs) use `BTreeMap<String, RowValue>` (primary key remains a primitive [`ScalarValue`](crates/typra-core/src/record/scalar.rs) for `get` lookups).
-- **Record payload v2**: [`encode_record_payload_v2`](crates/typra-core/src/record/payload_v2.rs) and unified [`decode_record_payload`](crates/typra-core/src/record/payload_v2.rs) (replays **v1** and **v2** segments); see [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md).
-- **Catalog v3**: [`CATALOG_PAYLOAD_VERSION_V3`](crates/typra-core/src/catalog/codec.rs) persists per-field `constraints`; decoders still read catalog **v1** and **v2**.
-- **Python**: optional `"constraints"` array on each field in `fields_json`; composite values in `insert` / `get`; [`DbError::Validation`](python/typra/src/errors.rs) mapped to `ValueError`.
+- **Validation engine**: recursive type checks for primitives, `Optional`, `List`, `Object`, and `Enum`; field **constraints** (`min_i64` / `max_i64`, `min_u64` / `max_u64`, `min_f64` / `max_f64`, `min_length` / `max_length`, `regex`, `email`, `url`, `nonempty`) on [`FieldDef`](crates/modelvault-core/src/schema.rs); structured [`DbError::Validation`](crates/modelvault-core/src/error.rs) with nested paths.
+- **Row values**: [`RowValue`](crates/modelvault-core/src/record/row_value.rs) for in-memory rows and nested structures; [`Database::insert`](crates/modelvault-core/src/db/mod.rs) / [`get`](crates/modelvault-core/src/db/mod.rs) use `BTreeMap<String, RowValue>` (primary key remains a primitive [`ScalarValue`](crates/modelvault-core/src/record/scalar.rs) for `get` lookups).
+- **Record payload v2**: [`encode_record_payload_v2`](crates/modelvault-core/src/record/payload_v2.rs) and unified [`decode_record_payload`](crates/modelvault-core/src/record/payload_v2.rs) (replays **v1** and **v2** segments); see [`docs/07_record_encoding_v2.md`](docs/07_record_encoding_v2.md).
+- **Catalog v3**: [`CATALOG_PAYLOAD_VERSION_V3`](crates/modelvault-core/src/catalog/codec.rs) persists per-field `constraints`; decoders still read catalog **v1** and **v2**.
+- **Python**: optional `"constraints"` array on each field in `fields_json`; composite values in `insert` / `get`; [`DbError::Validation`](python/modelvault/src/errors.rs) mapped to `ValueError`.
 
 ### Changed
 
@@ -145,17 +158,17 @@ See the release notes above for details.
 
 ### Changed
 
-- **typra-core (internal)**: Split `Database` implementation into `db/` submodules (`open`, `replay`, `write`, `helpers`); public `Database` API unchanged.
+- **modelvault-core (internal)**: Split `Database` implementation into `db/` submodules (`open`, `replay`, `write`, `helpers`); public `Database` API unchanged.
 - Removed unused `StorageEngine` placeholder; `validation` and `config` are documentation-only stubs pending broader validation/config work ([ROADMAP](ROADMAP.md) 0.6+).
-- [`Store`](crates/typra-core/src/storage.rs): documented deferring a read-only store trait until a second consumer exists.
+- [`Store`](crates/modelvault-core/src/storage.rs): documented deferring a read-only store trait until a second consumer exists.
 
 ## [0.5.0] - 2026-04-21
 
 ### Added
 
 - **Record encoding v1**: `SegmentType::Record` payloads with typed primary key + body fields; see [`docs/06_record_encoding_v1.md`](docs/06_record_encoding_v1.md).
-- **Catalog**: wire v2 with optional `primary_field` on create; [`Catalog::lookup_name`](crates/typra-core/src/catalog/state.rs) for name → id.
-- **Database (Rust)**: generic [`Database<S: Store>`](crates/typra-core/src/db/mod.rs) with default `Database` = on-disk [`FileStore`](crates/typra-core/src/storage.rs); [`Database::open_in_memory`](crates/typra-core/src/db/mod.rs), [`from_snapshot_bytes`](crates/typra-core/src/db/mod.rs), [`snapshot_bytes`](crates/typra-core/src/db/mod.rs); [`insert`](crates/typra-core/src/db/mod.rs) / [`get`](crates/typra-core/src/db/mod.rs); [`register_collection(..., primary_field)`](crates/typra-core/src/db/mod.rs).
+- **Catalog**: wire v2 with optional `primary_field` on create; [`Catalog::lookup_name`](crates/modelvault-core/src/catalog/state.rs) for name → id.
+- **Database (Rust)**: generic [`Database<S: Store>`](crates/modelvault-core/src/db/mod.rs) with default `Database` = on-disk [`FileStore`](crates/modelvault-core/src/storage.rs); [`Database::open_in_memory`](crates/modelvault-core/src/db/mod.rs), [`from_snapshot_bytes`](crates/modelvault-core/src/db/mod.rs), [`snapshot_bytes`](crates/modelvault-core/src/db/mod.rs); [`insert`](crates/modelvault-core/src/db/mod.rs) / [`get`](crates/modelvault-core/src/db/mod.rs); [`register_collection(..., primary_field)`](crates/modelvault-core/src/db/mod.rs).
 - **Format**: new databases use file format minor **5**; first record write lazily bumps **4 → 5**; schema-only writes bump **3 → 4** as in 0.4.0.
 - **Python**: `register_collection(..., primary_field)`, `insert`, `get`, `open_in_memory`, `open_snapshot_bytes`, `snapshot_bytes`.
 
@@ -167,10 +180,10 @@ See the release notes above for details.
 
 ### Added
 
-- **Schema catalog (Rust)**: binary encoding for catalog records in `SegmentType::Schema` segment payloads (`CreateCollection`, `NewSchemaVersion`), in-memory [`Catalog`](crates/typra-core/src/catalog/state.rs) with replay on `Database::open`, and public APIs [`Database::register_collection`](crates/typra-core/src/db/mod.rs) / [`Database::register_schema_version`](crates/typra-core/src/db/mod.rs).
+- **Schema catalog (Rust)**: binary encoding for catalog records in `SegmentType::Schema` segment payloads (`CreateCollection`, `NewSchemaVersion`), in-memory [`Catalog`](crates/modelvault-core/src/catalog/state.rs) with replay on `Database::open`, and public APIs [`Database::register_collection`](crates/modelvault-core/src/db/mod.rs) / [`Database::register_schema_version`](crates/modelvault-core/src/db/mod.rs).
 - **On-disk format**: file format minor **4**; new databases write **0.4** headers; **0.3** files are upgraded lazily to **0.4** on the first catalog write.
-- **Python**: [`Database`](python/typra/src/lib.rs) with `open`, `register_collection(fields_json)`, and `collection_names()`; JSON parsing for field definitions in [`fields_json.rs`](python/typra/src/fields_json.rs).
-- **Errors**: extended [`SchemaError`](crates/typra-core/src/error.rs) and [`FormatError::InvalidCatalogPayload`](crates/typra-core/src/error.rs).
+- **Python**: [`Database`](python/modelvault/src/lib.rs) with `open`, `register_collection(fields_json)`, and `collection_names()`; JSON parsing for field definitions in [`fields_json.rs`](python/modelvault/src/fields_json.rs).
+- **Errors**: extended [`SchemaError`](crates/modelvault-core/src/error.rs) and [`FormatError::InvalidCatalogPayload`](crates/modelvault-core/src/error.rs).
 
 ### Changed
 
@@ -202,27 +215,27 @@ See the release notes above for details.
 
 ### Added
 
-- **`typra-core`**: `Database::open` creates/opens a database file; `DbError` with `Display` / `Error` and I/O mapping; `prelude` module; `DbModel` marker trait.
-- **`typra-derive`**: `#[derive(DbModel)]` implements `DbModel` for structs (including generics).
-- **`typra-python`**: PyO3 module `typra` with `__version__` aligned to the workspace release.
+- **`modelvault-core`**: `Database::open` creates/opens a database file; `DbError` with `Display` / `Error` and I/O mapping; `prelude` module; `DbModel` marker trait.
+- **`modelvault-derive`**: `#[derive(DbModel)]` implements `DbModel` for structs (including generics).
+- **`modelvault-python`**: PyO3 module `modelvault` with `__version__` aligned to the workspace release.
 - Integration tests for derive and file open behavior.
 
 ### Notes
 
 - Storage, queries, validation, and rich Python APIs are **not** implemented yet; 0.1.0 establishes semver, crates.io/PyPI layout, and a minimal Rust API surface.
 
-[0.1.0]: https://github.com/eddiethedean/typra/releases/tag/v0.1.0
-[0.2.0]: https://github.com/eddiethedean/typra/releases/tag/v0.2.0
-[0.3.0]: https://github.com/eddiethedean/typra/releases/tag/v0.3.0
-[0.4.0]: https://github.com/eddiethedean/typra/releases/tag/v0.4.0
-[0.5.0]: https://github.com/eddiethedean/typra/releases/tag/v0.5.0
-[0.5.1]: https://github.com/eddiethedean/typra/releases/tag/v0.5.1
-[0.6.0]: https://github.com/eddiethedean/typra/releases/tag/v0.6.0
-[0.7.0]: https://github.com/eddiethedean/typra/releases/tag/v0.7.0
-[0.8.0]: https://github.com/eddiethedean/typra/releases/tag/v0.8.0
-[0.9.0]: https://github.com/eddiethedean/typra/releases/tag/v0.9.0
-[0.10.0]: https://github.com/eddiethedean/typra/releases/tag/v0.10.0
-[0.11.0]: https://github.com/eddiethedean/typra/releases/tag/v0.11.0
-[0.12.0]: https://github.com/eddiethedean/typra/releases/tag/v0.12.0
-[0.13.0]: https://github.com/eddiethedean/typra/releases/tag/v0.13.0
-[1.0.0]: https://github.com/eddiethedean/typra/releases/tag/v1.0.0
+[0.1.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.1.0
+[0.2.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.2.0
+[0.3.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.3.0
+[0.4.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.4.0
+[0.5.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.5.0
+[0.5.1]: https://github.com/eddiethedean/modelvault/releases/tag/v0.5.1
+[0.6.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.6.0
+[0.7.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.7.0
+[0.8.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.8.0
+[0.9.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.9.0
+[0.10.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.10.0
+[0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
+[0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
+[0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
+[1.0.0]: https://github.com/eddiethedean/modelvault/releases/tag/v1.0.0

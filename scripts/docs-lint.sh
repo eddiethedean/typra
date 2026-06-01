@@ -17,16 +17,16 @@ fi
 
 # Stale version strings / install ranges that should not appear in 1.x docs.
 STALE_PATTERNS=(
-  "typra>=0\\."
+  "modelvault>=0\\."
   "<0\\."
-  "typra = \"0\\."
+  "modelvault = \"0\\."
   "Status \\(v0\\."
 )
 
 for pat in "${STALE_PATTERNS[@]}"; do
-  if grep -R --line-number -E "$pat" README.md docs python/typra/README.md crates/typra/README.md >/dev/null 2>&1; then
+  if grep -R --line-number -E "$pat" README.md docs python/modelvault/README.md crates/modelvault/README.md >/dev/null 2>&1; then
     echo "Found stale doc pattern: $pat" >&2
-    grep -R --line-number -E "$pat" README.md docs python/typra/README.md crates/typra/README.md >&2 || true
+    grep -R --line-number -E "$pat" README.md docs python/modelvault/README.md crates/modelvault/README.md >&2 || true
     exit 1
   fi
 done

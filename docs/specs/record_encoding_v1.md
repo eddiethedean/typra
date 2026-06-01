@@ -33,7 +33,7 @@ Each scalar is a `u8` type tag followed by payload bytes:
 | 6 | `uuid` | 16 bytes |
 | 7 | `timestamp` | `i64` Unix microseconds |
 
-Implementation: `crates/typra-core/src/record/scalar.rs`.
+Implementation: `crates/modelvault-core/src/record/scalar.rs`.
 
 ## Replay rules
 

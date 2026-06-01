@@ -1,0 +1,24 @@
+[package]
+name = "modelvault"
+description = "Application-focused embedded database for typed models — validation, migrations, nested objects, single-file deploy."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+
+[dependencies]
+modelvault-core.workspace = true
+modelvault-derive = { workspace = true, optional = true }
+tokio = { version = "1", optional = true, features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = ["derive"]
+derive = ["dep:modelvault-derive"]
+async = ["dep:tokio"]
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

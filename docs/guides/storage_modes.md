@@ -2,7 +2,7 @@
 
 **Deploy as a single file** (or run in memory for tests) — SQLite-like ergonomics with model-first typing and validation. This page explains **on-disk**, **in-memory**, and the planned **hybrid/streaming** modes.
 
-Positioning: [Why Typra](why_typra.md) · Comparisons: [vs JSON files](../comparisons/json.md)
+Positioning: [Why ModelVault](why_modelvault.md) · Comparisons: [vs JSON files](../comparisons/json.md)
 
 ## Current status (1.0)
 
@@ -12,18 +12,18 @@ Positioning: [Why Typra](why_typra.md) · Comparisons: [vs JSON files](../compar
 | **In-memory** | ✅ Same APIs (`open_in_memory` / `Database::open_in_memory`) + snapshot export/import |
 | **Hybrid / streaming** | 🔜 Roadmap — buffer pool + bounded-memory query operators |
 
-Engine layout: [Rust crate layout](../specs/rust_crate_layout.md) · Plans: [ROADMAP](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md)
+Engine layout: [Rust crate layout](../specs/rust_crate_layout.md) · Plans: [ROADMAP](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md)
 
 ## On-disk (default)
 
-**One `.typra` file** — durable embedded persistence, “ship a file with your app.”
+**One `.modelvault` file** — durable embedded persistence, “ship a file with your app.”
 
 ```python
-db = typra.Database.open("app.typra")
+db = modelvault.Database.open("app.modelvault")
 ```
 
 ```rust
-let db = Database::open("app.typra")?;
+let db = Database::open("app.modelvault")?;
 ```
 
 Format details: [On-disk file format](../specs/on_disk_file_format.md).
@@ -42,9 +42,9 @@ Same logical API; state lives in RAM.
 | Use cases | Tests, prototypes, ephemeral UI state |
 
 ```python
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 data = db.snapshot_bytes()          # save
-db2 = typra.Database.open_snapshot_bytes(data)  # restore
+db2 = modelvault.Database.open_snapshot_bytes(data)  # restore
 ```
 
 ```rust
@@ -57,7 +57,7 @@ For datasets larger than RAM while staying embedded.
 
 ### Hybrid buffered (pager / buffer pool)
 
-- Database remains a normal on-disk `.typra` file
+- Database remains a normal on-disk `.modelvault` file
 - Internal buffer pool loads pages/segments on demand
 - Dirty data written back to the same file
 
@@ -69,7 +69,7 @@ Pull-based operators for scans/filters/limits; bounded-memory aggregations and j
 
 ### Spill location (planned default)
 
-Internal temporary segments **inside the same `.typra` file** — preserves the single-file mental model.
+Internal temporary segments **inside the same `.modelvault` file** — preserves the single-file mental model.
 
 ## Decision guide
 

@@ -2,7 +2,7 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use typra_core::schema::{FieldDef, FieldPath, Type};
+use modelvault_core::schema::{FieldDef, FieldPath, Type};
 
 fuzz_target!(|data: &[u8]| {
     // Decode with a minimal schema context; errors are fine.
@@ -13,5 +13,5 @@ fuzz_target!(|data: &[u8]| {
         ty: Type::Int64,
         constraints: vec![],
     }];
-    let _ = typra_core::record::decode_record_payload(data, pk_name, &pk_ty, &fields);
+    let _ = modelvault_core::record::decode_record_payload(data, pk_name, &pk_ty, &fields);
 });

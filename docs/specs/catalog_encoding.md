@@ -4,7 +4,7 @@
 
 `SegmentType::Schema` segment payloads carry the **schema catalog**: collection creation and schema version bumps. Payloads are length-prefixed catalog blobs inside checkpoint snapshots and schema segments.
 
-Implementation: `crates/typra-core/src/catalog/codec.rs`.
+Implementation: `crates/modelvault-core/src/catalog/codec.rs`.
 
 ## Catalog payload wrapper
 

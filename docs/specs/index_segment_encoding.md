@@ -4,7 +4,7 @@
 
 `SegmentType::Index` segment payloads carry **secondary index deltas** (insert/delete of index keys). Replay applies them to rebuild in-memory `IndexState`.
 
-Implementation: `crates/typra-core/src/index.rs`.
+Implementation: `crates/modelvault-core/src/index.rs`.
 
 ## Index payload layout
 

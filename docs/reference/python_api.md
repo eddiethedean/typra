@@ -1,29 +1,29 @@
 # Python API
 
-Curated reference for the **`typra`** PyPI package — **store Pydantic and dataclass models** via `typra.models`.
+Curated reference for the **`modelvault`** PyPI package — **store Pydantic and dataclass models** via `modelvault.models`.
 
 Tutorials: [Pydantic guide](../guides/pydantic.md) · [Python guide](../guides/python.md) · [Examples](../examples/index.md)
 
 ## Install
 
 ```bash
-pip install "typra>=1.0.0,<2"
+pip install "modelvault>=0.14.0,<0.15"
 ```
 
-## Primary API: `typra.models`
+## Primary API: `modelvault.models`
 
 Recommended for applications: define schemas with dataclasses or Pydantic, then use typed collections.
 
-- **`typra.models.collection(db, ModelClass) -> ModelCollection`**
-- **`typra.models.index(path)`**, **`typra.models.unique(path)`**, **`typra.models.constrained(...)`**
+- **`modelvault.models.collection(db, ModelClass) -> ModelCollection`**
+- **`modelvault.models.index(path)`**, **`modelvault.models.unique(path)`**, **`modelvault.models.constrained(...)`**
 - **`ModelCollection.insert`**, **`get`**, **`delete`**, query builder via **`ModelCollection.where`**
-- **`typra.models.plan`**, **`typra.models.apply`** for migration workflows
+- **`modelvault.models.plan`**, **`modelvault.models.apply`** for migration workflows
 
-See the [Python guide → Models](../guides/python.md) and the package README on GitHub (`python/typra/README.md`).
+See the [Python guide → Models](../guides/python.md) and the package README on GitHub (`python/modelvault/README.md`).
 
 ## Core objects
 
-- **`typra.Database`**
+- **`modelvault.Database`**
   - `open(path: str, *, read_only: bool = False) -> Database`
   - `open_in_memory() -> Database`
   - `open_snapshot_bytes(data: bytes) -> Database`
@@ -47,13 +47,13 @@ See the [Python guide → Models](../guides/python.md) and the package README on
 
 ## Errors
 
-Typra maps engine errors to standard Python exceptions (`ValueError`, `OSError`, `RuntimeError`), and also provides **more specific subclasses** you can match on:
+ModelVault maps engine errors to standard Python exceptions (`ValueError`, `OSError`, `RuntimeError`), and also provides **more specific subclasses** you can match on:
 
-- `typra.TypraFormatError` (subclass of `ValueError`)
-- `typra.TypraSchemaError` (subclass of `ValueError`)
-- `typra.TypraValidationError` (subclass of `ValueError`)
-- `typra.TypraQueryError` (subclass of `ValueError`)
-- `typra.TypraTransactionError` (subclass of `RuntimeError`)
+- `modelvault.ModelVaultFormatError` (subclass of `ValueError`)
+- `modelvault.ModelVaultSchemaError` (subclass of `ValueError`)
+- `modelvault.ModelVaultValidationError` (subclass of `ValueError`)
+- `modelvault.ModelVaultQueryError` (subclass of `ValueError`)
+- `modelvault.ModelVaultTransactionError` (subclass of `RuntimeError`)
 
 ## Query builder (`Collection`)
 
@@ -66,9 +66,9 @@ Typra maps engine errors to standard Python exceptions (`ValueError`, `OSError`,
 - `explain() -> str`
 - `all(fields: list[str] | None = None) -> list[dict]` (subset projection)
 
-## DB-API (`typra.dbapi`)
+## DB-API (`modelvault.dbapi`)
 
-Typra ships a **read-only** DB-API 2.0 adapter for a minimal `SELECT` subset.
+ModelVault ships a **read-only** DB-API 2.0 adapter for a minimal `SELECT` subset.
 
 - Supported subset is documented in [Python guide → DB-API](../guides/python.md#db-api-20-pep-249).
 - Non-`SELECT` SQL raises `ValueError`.
@@ -77,4 +77,4 @@ Typra ships a **read-only** DB-API 2.0 adapter for a minimal `SELECT` subset.
 
 The canonical typing surface for the package lives in:
 
-- `python/typra/typra.pyi` (`https://github.com/eddiethedean/typra/blob/main/python/typra/typra.pyi`)
+- `python/modelvault/modelvault.pyi` (`https://github.com/eddiethedean/modelvault/blob/main/python/modelvault/modelvault.pyi`)

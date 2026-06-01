@@ -547,6 +547,68 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "modelvault"
+version = "0.14.0"
+dependencies = [
+ "modelvault-core",
+ "modelvault-derive",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "modelvault-cli"
+version = "0.14.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "modelvault-core",
+ "predicates",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "modelvault-core"
+version = "0.14.0"
+dependencies = [
+ "crc32c",
+ "criterion",
+ "fs2",
+ "proptest",
+ "regex",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "modelvault-core-fuzz"
+version = "0.0.0"
+dependencies = [
+ "libfuzzer-sys",
+ "modelvault-core",
+]
+
+[[package]]
+name = "modelvault-derive"
+version = "0.14.0"
+dependencies = [
+ "modelvault-core",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "modelvault-python"
+version = "0.14.0"
+dependencies = [
+ "modelvault-core",
+ "pyo3",
+ "serde_json",
+]
+
+[[package]]
 name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1084,68 +1146,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "typra"
-version = "1.0.0"
-dependencies = [
- "tempfile",
- "tokio",
- "typra-core",
- "typra-derive",
-]
-
-[[package]]
-name = "typra-cli"
-version = "1.0.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "predicates",
- "serde_json",
- "tempfile",
- "typra-core",
-]
-
-[[package]]
-name = "typra-core"
-version = "1.0.0"
-dependencies = [
- "crc32c",
- "criterion",
- "fs2",
- "proptest",
- "regex",
- "tempfile",
- "tracing",
-]
-
-[[package]]
-name = "typra-core-fuzz"
-version = "0.0.0"
-dependencies = [
- "libfuzzer-sys",
- "typra-core",
-]
-
-[[package]]
-name = "typra-derive"
-version = "1.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "typra-core",
-]
-
-[[package]]
-name = "typra-python"
-version = "1.0.0"
-dependencies = [
- "pyo3",
- "serde_json",
- "typra-core",
 ]
 
 [[package]]

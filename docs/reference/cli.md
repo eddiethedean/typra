@@ -2,7 +2,7 @@
 
 **Audience:** intermediate (operators)
 
-The **`typra`** CLI inspects, verifies, checkpoints, compacts, and migrates `.typra` files you ship with desktop, CLI, or server apps — built for support and ops, not application hot paths.
+The **`modelvault`** CLI inspects, verifies, checkpoints, compacts, and migrates `.modelvault` files you ship with desktop, CLI, or server apps — built for support and ops, not application hot paths.
 
 Backups and recovery: [Operations runbook](../ops/operations_and_failure_modes.md)
 
@@ -11,14 +11,14 @@ Backups and recovery: [Operations runbook](../ops/operations_and_failure_modes.m
 === "From source (repo)"
 
     ```bash
-    cargo run -p typra-cli -- inspect ./app.typra
+    cargo run -p modelvault-cli -- inspect ./app.modelvault
     ```
 
 === "Build binary"
 
     ```bash
-    cargo build -p typra-cli
-    ./target/debug/typra inspect ./app.typra
+    cargo build -p modelvault-cli
+    ./target/debug/modelvault inspect ./app.modelvault
     ```
 
 ## Commands
@@ -68,8 +68,8 @@ Checkpoint + copy. With **`--verify`**, runs `verify` on the snapshot.
 Schema migration helpers for deployment pipelines.
 
 ```bash
-typra migrate plan ./app.typra --collection books --schema-json schema.json
-typra migrate apply ./app.typra --collection books --schema-json schema.json [--force]
+modelvault migrate plan ./app.modelvault --collection books --schema-json schema.json
+modelvault migrate apply ./app.modelvault --collection books --schema-json schema.json [--force]
 ```
 
 **`plan`** — JSON describing whether a schema update is safe and required steps.

@@ -10,19 +10,19 @@ The Rust project layout should:
 
 ## Implementation note (current)
 
-The **current** Cargo workspace members are **`typra`**, **`typra-core`**, **`typra-derive`**, and **`typra-python`** (PyO3 package under `python/typra/`). Names like **`typra-storage`**, **`typra-query`**, and **`typra-migrate`** describe **planned** crate splits that are **not** separate directories or published crates yet; file I/O, segments, catalog, and record encoding live inside **`typra-core`** today.
+The **current** Cargo workspace members are **`modelvault`**, **`modelvault-core`**, **`modelvault-derive`**, and **`modelvault-python`** (PyO3 package under `python/modelvault/`). Names like **`modelvault-storage`**, **`modelvault-query`**, and **`modelvault-migrate`** describe **planned** crate splits that are **not** separate directories or published crates yet; file I/O, segments, catalog, and record encoding live inside **`modelvault-core`** today.
 
 ## Workspace layout
 
 ```text
-typra/
+modelvault/
 ├── Cargo.toml                 # [workspace.package] version; workspace.lints: unsafe_code = forbid
 ├── crates/
-│   ├── typra-core/            # engine (Database, Store, segments, catalog, records)
-│   ├── typra-derive/          # #[derive(DbModel)]
-│   └── typra/                 # facade: re-exports typra-core + optional derive
+│   ├── modelvault-core/            # engine (Database, Store, segments, catalog, records)
+│   ├── modelvault-derive/          # #[derive(DbModel)]
+│   └── modelvault/                 # facade: re-exports modelvault-core + optional derive
 ├── python/
-│   └── typra/                 # PyPI package (Cargo package name: typra-python)
+│   └── modelvault/                 # PyPI package (Cargo package name: modelvault-python)
 ├── docs/
 ├── scripts/
 └── ...
@@ -30,14 +30,14 @@ typra/
 
 ### Future crate splits (planned, not in this tree yet)
 
-Design docs may refer to **`typra-storage`**, **`typra-schema`**, **`typra-query`**, **`typra-migrate`**, **`typra-cli`**, and **`typra-bench`** as eventual extracted crates. Until then, treat them as **logical boundaries** inside **`typra-core`** (or as future work), not as workspace members.
+Design docs may refer to **`modelvault-storage`**, **`modelvault-schema`**, **`modelvault-query`**, **`modelvault-migrate`**, **`modelvault-cli`**, and **`modelvault-bench`** as eventual extracted crates. Until then, treat them as **logical boundaries** inside **`modelvault-core`** (or as future work), not as workspace members.
 
 ## Crate Responsibilities
 
-### `typra-core`
+### `modelvault-core`
 Public engine façade and shared primitives: **`Database<S: Store>`**, persisted **catalog** (decode **v1–v4**; new registrations write **v4** with per-field **constraints** and optional **`indexes`**), **record** payload **v1 + v2** (decode both; new inserts use **v2**), **`SegmentType::Index`** append + replay into **`IndexState`**, minimal **`query`** AST + **planner** + **`query_iter`**, **segment** I/O, **superblock** / **manifest** publication, **`validation`** (types + constraints before write), and **error** types. **`config`** remains a small placeholder for future engine configuration ([`ROADMAP.md`](../ROADMAP.md)).
 
-### `typra-storage`
+### `modelvault-storage`
 Low-level storage engine.
 Contains:
 - file open/close
@@ -47,7 +47,7 @@ Contains:
 - durability and recovery
 - compaction
 
-### `typra-schema`
+### `modelvault-schema`
 Schema system.
 Contains:
 - type definitions
@@ -57,7 +57,7 @@ Contains:
 - schema registry structures
 - schema hashing / compatibility comparisons
 
-### `typra-query`
+### `modelvault-query`
 Query IR and execution planning.
 Contains:
 - filter expression AST
@@ -66,7 +66,7 @@ Contains:
 - query planner
 - executor coordination with indexes / scans
 
-### `typra-migrate`
+### `modelvault-migrate`
 Schema evolution support.
 Contains:
 - migration plan model
@@ -74,7 +74,7 @@ Contains:
 - backfill / transform orchestration
 - schema diff engine
 
-### `typra-derive`
+### `modelvault-derive`
 Procedural macros.
 Contains:
 - derive macros for Rust structs/enums
@@ -82,8 +82,8 @@ Contains:
 - field attribute parsing
 - compile-time diagnostics
 
-### Python package (`python/typra`)
-PyO3 bindings (Cargo package name may remain `typra-python` for crates.io).
+### Python package (`python/modelvault`)
+PyO3 bindings (Cargo package name may remain `modelvault-python` for crates.io).
 Contains:
 - Python module entrypoint
 - model registration bridge
@@ -91,7 +91,7 @@ Contains:
 - **query** builder wrappers (`collection`, `where`, …)
 - exception mapping
 
-### `typra-cli`
+### `modelvault-cli`
 Debug/admin/developer tool.
 Contains:
 - inspect file header
@@ -102,7 +102,7 @@ Contains:
 - rebuild indexes
 - compact database
 
-### `typra-bench`
+### `modelvault-bench`
 Benchmarks and profiling harness.
 Contains:
 - criterion benches
@@ -111,7 +111,7 @@ Contains:
 
 ## Internal modules
 
-### `typra-core` (current `src/` layout)
+### `modelvault-core` (current `src/` layout)
 
 The engine is organized around **`db/`** (open, replay, append writes), **`catalog/`**, **`record/`**, **`query/`**, **`segments/`**, plus **`index.rs`**, and shared **`storage`**, **`file_format`**, **`superblock`**, **`manifest`**, and **`publish`**.
 
@@ -164,11 +164,11 @@ src/
 - **`DbError`**, **`SchemaError`**, **`ValidationError`** (**`DbError::Validation`**), format/manifest/superblock errors as in **`error.rs`**
 - **`ScalarValue`**, **`RowValue`**, **`Constraint`**, **`CollectionSchema`**, **`FieldDef`**, **`IndexDef`**, **`Type`**, **`SchemaVersion`**, **`CollectionId`**
 - **`Query`**, **`Predicate`**, **`QueryRowIter`**, **`IndexState`**, **`row_subset_by_field_defs`**
-- **`DbModel`** marker trait (derive lives in **`typra-derive`**)
+- **`DbModel`** marker trait (derive lives in **`modelvault-derive`**)
 
-Not yet in the public API: typed **`CollectionHandle<T>`**, rich SQL text / full DB-API compatibility (see [`ROADMAP.md`](../ROADMAP.md)). Minimal **non-SQL** queries and **secondary indexes** ship (**0.7.0**); multi-write **transactions** ship (**0.8.0**); `OR` / range predicates / `order_by` ship (**0.9.0**); an experimental, read-only **DB-API 2.0** adapter with a minimal `SELECT` subset ships in **0.10.0** (Python `typra.dbapi`); pager/checkpointed open ships in **0.11.0**; initial bounded-memory scaffolding (ephemeral `Temp` segments, external sort plumbing) lands in **0.12.0**; fuzz/property tests and spillable agg/join foundations land in **0.13.0**; multi-segment schema field paths are supported as of **1.0.0**.
+Not yet in the public API: typed **`CollectionHandle<T>`**, rich SQL text / full DB-API compatibility (see [`ROADMAP.md`](../ROADMAP.md)). Minimal **non-SQL** queries and **secondary indexes** ship (**0.7.0**); multi-write **transactions** ship (**0.8.0**); `OR` / range predicates / `order_by` ship (**0.9.0**); an experimental, read-only **DB-API 2.0** adapter with a minimal `SELECT` subset ships in **0.10.0** (Python `modelvault.dbapi`); pager/checkpointed open ships in **0.11.0**; initial bounded-memory scaffolding (ephemeral `Temp` segments, external sort plumbing) lands in **0.12.0**; fuzz/property tests and spillable agg/join foundations land in **0.13.0**; multi-segment schema field paths are supported as of **1.0.0**.
 
-### `typra-storage`
+### `modelvault-storage`
 ```text
 src/
 ├── lib.rs
@@ -198,7 +198,7 @@ src/
 └── cache.rs
 ```
 
-### `typra-schema`
+### `modelvault-schema`
 ```text
 src/
 ├── lib.rs
@@ -212,7 +212,7 @@ src/
 └── encode.rs
 ```
 
-### `typra-query`
+### `modelvault-query`
 ```text
 src/
 ├── lib.rs
@@ -226,7 +226,7 @@ src/
 └── optimize.rs
 ```
 
-### `typra-migrate`
+### `modelvault-migrate`
 ```text
 src/
 ├── lib.rs
@@ -286,13 +286,13 @@ pub enum DbError {
 
 ## Public API structure (today)
 
-**`typra-core`** re-exports **`Database`**, schema/catalog/record types, and **`prelude`** (see `lib.rs`). **`typra`** re-exports **`typra_core`** and, with the default **`derive`** feature, **`#[derive(DbModel)]`**.
+**`modelvault-core`** re-exports **`Database`**, schema/catalog/record types, and **`prelude`** (see `lib.rs`). **`modelvault`** re-exports **`modelvault_core`** and, with the default **`derive`** feature, **`#[derive(DbModel)]`**.
 
 Longer term, queries, migrations, and richer handles may join the stable surface; keep storage segments and checksum details private unless tooling requires them.
 
 ## Testing Strategy
 Each crate should have:
-- unit tests for local logic (in **`typra-core`**, test bodies live under **`crates/typra-core/tests/unit/`** and are pulled into `#[cfg(test)]` modules via **`include!`** so they stay in the same crate and can access private items)
+- unit tests for local logic (in **`modelvault-core`**, test bodies live under **`crates/modelvault-core/tests/unit/`** and are pulled into `#[cfg(test)]` modules via **`include!`** so they stay in the same crate and can access private items)
 - integration tests against public API
 - corruption/recovery tests for storage
 - snapshot tests for schema derivation
@@ -350,13 +350,13 @@ Example:
 For an MVP, you can start with fewer crates:
 
 ```text
-typra/
+modelvault/
 ├── crates/
-│   ├── typra/          # application facade (depends on typra-core + typra-derive)
-│   ├── typra-core/
-│   └── typra-derive/
+│   ├── modelvault/          # application facade (depends on modelvault-core + modelvault-derive)
+│   ├── modelvault-core/
+│   └── modelvault-derive/
 └── python/
-    └── typra/
+    └── modelvault/
 ```
 
-And keep `storage`, `schema`, and `query` as internal modules inside `typra-core` until they grow enough to split out.
+And keep `storage`, `schema`, and `query` as internal modules inside `modelvault-core` until they grow enough to split out.

@@ -1,6 +1,6 @@
-# FastAPI and Typra
+# FastAPI and ModelVault
 
-**Goal:** make Typra the easiest database for **small FastAPI services** that should not require PostgreSQL for early deployments.
+**Goal:** make ModelVault the easiest database for **small FastAPI services** that should not require PostgreSQL for early deployments.
 
 ## Problem
 
@@ -13,7 +13,7 @@ You want:
 
 ## Solution
 
-Use a **single Typra file** per environment and inject a `Database` (or typed collections) via FastAPI dependencies.
+Use a **single ModelVault file** per environment and inject a `Database` (or typed collections) via FastAPI dependencies.
 
 ### Application setup
 
@@ -21,14 +21,14 @@ Use a **single Typra file** per environment and inject a `Database` (or typed co
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import typra
+import modelvault
 from fastapi import FastAPI
 
-DB_PATH = Path("data/app.typra")
+DB_PATH = Path("data/app.modelvault")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.db = typra.Database.open(str(DB_PATH))
+    app.state.db = modelvault.Database.open(str(DB_PATH))
     yield
     # Database is closed when process exits; for explicit close, add cleanup here.
 
@@ -39,17 +39,17 @@ app = FastAPI(lifespan=lifespan)
 
 ```python
 from pydantic import BaseModel
-import typra
+import modelvault
 
 class Item(BaseModel):
-    __typra_primary_key__ = "id"
-    __typra_indexes__ = [typra.models.index("name")]
+    __modelvault_primary_key__ = "id"
+    __modelvault_indexes__ = [modelvault.models.index("name")]
     id: int
     name: str
     qty: int
 
-def items_repo(db: typra.Database):
-    return typra.models.collection(db, Item)
+def items_repo(db: modelvault.Database):
+    return modelvault.models.collection(db, Item)
 ```
 
 ### Dependency injection
@@ -57,10 +57,10 @@ def items_repo(db: typra.Database):
 ```python
 from fastapi import Depends, Request
 
-def get_db(request: Request) -> typra.Database:
+def get_db(request: Request) -> modelvault.Database:
     return request.app.state.db
 
-def get_items(db: typra.Database = Depends(get_db)):
+def get_items(db: modelvault.Database = Depends(get_db)):
     return items_repo(db)
 ```
 
@@ -107,11 +107,11 @@ See [Python guide](python.md) for semantics and error mapping.
 Use in-memory databases in tests — no temp files required:
 
 ```python
-import typra
+import modelvault
 
 def test_create_item():
-    db = typra.Database.open_in_memory()
-    items = typra.models.collection(db, Item)
+    db = modelvault.Database.open_in_memory()
+    items = modelvault.models.collection(db, Item)
     items.insert(Item(id=1, name="test", qty=1))
     assert items.get(1) is not None
 ```
@@ -124,11 +124,11 @@ Run pytest the same way as the rest of the repo (`make test` from root after `ma
 |-------|----------------|
 | FastAPI routes | HTTP, auth, request validation |
 | Pydantic models | API + storage schema (or separate DTOs if you prefer) |
-| `typra.models.collection` | CRUD and queries |
-| `app.typra` file | Durable state per environment |
+| `modelvault.models.collection` | CRUD and queries |
+| `app.modelvault` file | Durable state per environment |
 
 !!! tip "When to add PostgreSQL"
-    Move to a server database when you need multi-process writers, network replicas, or complex cross-service SQL. Until then, Typra keeps prototypes deployable as **one binary + one data file**.
+    Move to a server database when you need multi-process writers, network replicas, or complex cross-service SQL. Until then, ModelVault keeps prototypes deployable as **one binary + one data file**.
 
 ## Production checklist
 
@@ -141,4 +141,4 @@ Run pytest the same way as the rest of the repo (`make test` from root after `ma
 
 - [Pydantic guide](pydantic.md)
 - [Python guide](python.md) — queries, migrations, errors
-- [Why Typra](why_typra.md)
+- [Why ModelVault](why_modelvault.md)

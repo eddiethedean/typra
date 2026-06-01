@@ -9,7 +9,7 @@ updates:
     schedule:
       interval: "weekly"
   - package-ecosystem: "pip"
-    directory: "/python/typra"
+    directory: "/python/modelvault"
     schedule:
       interval: "weekly"
   - package-ecosystem: "pip"

@@ -2,28 +2,28 @@
 
 ## Production contract
 
-**Typra 1.0 treats the synchronous `Database` API as the supported production surface** for both Rust and Python:
+**ModelVault 1.0 treats the synchronous `Database` API as the supported production surface** for both Rust and Python:
 
-- Rust: `typra::Database` (re-exported from `typra-core`)
-- Python: `typra.Database`
+- Rust: `modelvault::Database` (re-exported from `modelvault-core`)
+- Python: `modelvault.Database`
 
 All documented getting-started flows, E2E tests, and operational guidance assume sync open → insert → query → transaction → checkpoint → compact.
 
 ## Optional Rust async facade
 
-The `typra` crate exposes an **optional**, **experimental** async wrapper behind the **`async`** feature:
+The `modelvault` crate exposes an **optional**, **experimental** async wrapper behind the **`async`** feature:
 
 ```toml
 [dependencies]
-typra = { version = "1.0", features = ["async"] }
+modelvault = { version = "1.0", features = ["async"] }
 ```
 
 ```rust
-use typra::AsyncDatabase;
+use modelvault::AsyncDatabase;
 
 #[tokio::main]
-async fn main() -> Result<(), typra::DbError> {
-    let db = AsyncDatabase::open("app.typra").await?;
+async fn main() -> Result<(), modelvault::DbError> {
+    let db = AsyncDatabase::open("app.modelvault").await?;
     let names = db.collection_names().await?;
     Ok(())
 }
@@ -33,7 +33,7 @@ Characteristics:
 
 - Wraps the same sync engine with `spawn_blocking` (or equivalent) for IO-heavy paths.
 - **Not** exposed in Python bindings.
-- **Not** required for 1.0 readiness; CI runs `cargo test -p typra --features async` via `make check-1p0-ready` to keep the feature compiling.
+- **Not** required for 1.0 readiness; CI runs `cargo test -p modelvault --features async` via `make check-2p0-ready` to keep the feature compiling.
 
 ## What we are not committing to in 1.0
 

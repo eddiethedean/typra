@@ -14,15 +14,15 @@ MATURIN ?= $(PYTHON) -m maturin
 .PHONY: help venv install-tools python-develop test check-full check-python check-rust verify-doc-examples examples-smoke bench
 .PHONY: docs-lint
 .PHONY: test-format-compat
-.PHONY: check-1p0-ready
+.PHONY: check-2p0-ready
 .PHONY: docs-install docs-check docs
 .PHONY: coverage coverage-rust coverage-python
-.PHONY: coverage-rust-core coverage-rust-typra-core
+.PHONY: coverage-rust-core coverage-rust-modelvault-core
 .PHONY: ruff-format-check ruff-check ty-check
 .PHONY: rust-fmt-check rust-clippy rust-check rust-doc rust-test
 
 help:
-	@echo "Typra Makefile"
+	@echo "ModelVault Makefile"
 	@echo ""
 	@echo "Setup:"
 	@echo "  venv            Create .venv (if missing)"
@@ -31,16 +31,16 @@ help:
 	@echo ""
 	@echo "Checks:"
 	@echo "  check-full      Python + Rust checks, tests, doc examples, examples-smoke, docs"
-	@echo "  check-1p0-ready check-full + test-format-compat + async facade tests"
+	@echo "  check-2p0-ready check-full + test-format-compat + async facade tests"
 	@echo "  check-python    ruff format/check + ty check (python/)"
 	@echo "  check-rust      cargo fmt/clippy/check/doc/test (workspace)"
 	@echo ""
 	@echo "Tests:"
-	@echo "  test-format-compat  1.x must read 1.0-shaped .typra fixtures"
-	@echo "  test            maturin develop --release + pytest (python/typra)"
+	@echo "  test-format-compat  1.x must read 1.0-shaped .modelvault fixtures"
+	@echo "  test            maturin develop --release + pytest (python/modelvault)"
 	@echo "  verify-doc-examples  Assert README + guides output matches all verified Python/Rust snippets"
 	@echo "  examples-smoke    Run todo_app + cli_notes example CLIs (requires python-develop)"
-	@echo "  bench           Criterion benchmarks for typra-core (optional; not part of check-full)"
+	@echo "  bench           Criterion benchmarks for modelvault-core (optional; not part of check-full)"
 
 venv:
 	@test -x .venv/bin/python || python3 -m venv .venv
@@ -55,10 +55,10 @@ check-full: check-python check-rust test verify-doc-examples examples-smoke docs
 # - Runs the full cross-language check pipeline.
 # - Adds an explicit async-surface compile/test run for the Rust facade.
 test-format-compat:
-	cargo test -p typra-core --test format_back_compat_1x --all-features
+	cargo test -p modelvault-core --test format_back_compat_1x --all-features
 
-check-1p0-ready: check-full test-format-compat
-	cargo test -p typra --features async
+check-2p0-ready: check-full test-format-compat
+	cargo test -p modelvault --features async
 
 check-python: install-tools ruff-format-check ruff-check ty-check
 
@@ -89,13 +89,13 @@ rust-test:
 	cargo test --workspace --all-features
 
 bench:
-	cargo bench -p typra-core --bench query
+	cargo bench -p modelvault-core --bench query
 
 python-develop: install-tools
-	cd python/typra && env -u VIRTUAL_ENV $(MATURIN) develop --release
+	cd python/modelvault && env -u VIRTUAL_ENV $(MATURIN) develop --release
 
 test: python-develop
-	cd python/typra && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q
+	cd python/modelvault && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q
 
 verify-doc-examples: python-develop
 	bash ./scripts/verify-doc-examples.sh
@@ -107,10 +107,10 @@ docs-install: venv
 	@$(PYTHON) -m pip -q install -r docs/requirements.txt >/dev/null
 
 docs-check: docs-install
-	@NO_MKDOCS_2_WARNING=1 $(PYTHON) -m mkdocs build --strict 2>&1 | tee /tmp/typra-mkdocs-build.log; \
+	@NO_MKDOCS_2_WARNING=1 $(PYTHON) -m mkdocs build --strict 2>&1 | tee /tmp/modelvault-mkdocs-build.log; \
 	status=$$?; \
 	if [ $$status -ne 0 ]; then exit $$status; fi; \
-	if grep -qE 'WARNING|excluded from the built site' /tmp/typra-mkdocs-build.log; then \
+	if grep -qE 'WARNING|excluded from the built site' /tmp/modelvault-mkdocs-build.log; then \
 	  echo "mkdocs build produced warnings (see above)" >&2; \
 	  exit 1; \
 	fi
@@ -119,8 +119,8 @@ docs: docs-check
 
 coverage: coverage-rust coverage-python
 
-# Minimum line coverage for `typra-core` (CI gate via `make coverage-rust`).
-COVERAGE_TYPRA_CORE_LINES ?= 90
+# Minimum line coverage for `modelvault-core` (CI gate via `make coverage-rust`).
+COVERAGE_MODELVAULT_CORE_LINES ?= 90
 
 # Per-module line coverage for db / query / index / validation (`make coverage-rust-core`).
 COVERAGE_MODULE_MIN_LINES ?= 90
@@ -130,7 +130,7 @@ COVERAGE_CORE_INDEX_LINES ?= $(COVERAGE_MODULE_MIN_LINES)
 COVERAGE_CORE_VALIDATION_LINES ?= $(COVERAGE_MODULE_MIN_LINES)
 
 examples-smoke: python-develop
-	@rm -f examples/todo_app/tasks.typra examples/cli_notes/notes.typra
+	@rm -f examples/todo_app/tasks.modelvault examples/cli_notes/notes.modelvault
 	@rm -rf examples/desktop_app/.smoke-data
 	$(PYTHON) examples/todo_app/main.py add "docs smoke"
 	$(PYTHON) examples/todo_app/main.py list | grep -q "docs smoke"
@@ -138,33 +138,33 @@ examples-smoke: python-develop
 	$(PYTHON) examples/todo_app/main.py open
 	$(PYTHON) examples/cli_notes/main.py add "cli smoke"
 	$(PYTHON) examples/cli_notes/main.py list | grep -q "cli smoke"
-	@TYPRA_EXAMPLE_DATA_DIR="$(CURDIR)/examples/desktop_app/.smoke-data" \
+	@MODELVAULT_EXAMPLE_DATA_DIR="$(CURDIR)/examples/desktop_app/.smoke-data" \
 		$(PYTHON) examples/desktop_app/main.py | grep -q "initialized theme=dark"
-	@TYPRA_EXAMPLE_DATA_DIR="$(CURDIR)/examples/desktop_app/.smoke-data" \
+	@MODELVAULT_EXAMPLE_DATA_DIR="$(CURDIR)/examples/desktop_app/.smoke-data" \
 		$(PYTHON) examples/desktop_app/main.py | grep -q "loaded theme="
 	@echo "examples-smoke: OK (todo, cli, desktop)"
 
-coverage-rust-typra-core:
+coverage-rust-modelvault-core:
 	@mkdir -p target/coverage
-	@CI=1 cargo llvm-cov -p typra-core --all-features \
-		--lcov --output-path target/coverage/typra-core.lcov \
-		--fail-under-lines $(COVERAGE_TYPRA_CORE_LINES) --summary-only
-	@$(PYTHON) scripts/coverage_core.py target/coverage/typra-core.lcov \
+	@CI=1 cargo llvm-cov -p modelvault-core --all-features \
+		--lcov --output-path target/coverage/modelvault-core.lcov \
+		--fail-under-lines $(COVERAGE_MODELVAULT_CORE_LINES) --summary-only
+	@$(PYTHON) scripts/coverage_core.py target/coverage/modelvault-core.lcov \
 		--db-min-lines $(COVERAGE_CORE_DB_LINES) \
 		--query-min-lines $(COVERAGE_CORE_QUERY_LINES) \
 		--index-min-lines $(COVERAGE_CORE_INDEX_LINES) \
 		--validation-min-lines $(COVERAGE_CORE_VALIDATION_LINES)
 
-coverage-rust: coverage-rust-typra-core
+coverage-rust: coverage-rust-modelvault-core
 	@CI=1 cargo llvm-cov --workspace --all-features \
-		--ignore-filename-regex 'python/typra/src/.*' \
+		--ignore-filename-regex 'python/modelvault/src/.*' \
 		--lcov --output-path target/coverage/rust.lcov
 
-coverage-rust-core: coverage-rust-typra-core
+coverage-rust-core: coverage-rust-modelvault-core
 
 coverage-python: python-develop
 	@mkdir -p target/coverage
-	cd python/typra && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q \
+	cd python/modelvault && env -u VIRTUAL_ENV $(PYTHON) -m pytest -q \
 		--cov=tests --cov-report=term-missing \
 		--cov-report=xml:../../target/coverage/python.xml \
 		--cov-fail-under 70

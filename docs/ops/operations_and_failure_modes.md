@@ -2,11 +2,11 @@
 
 **Audience:** intermediate (production)
 
-You chose Typra to **deploy as a single file** — this runbook covers running it safely: durability, locking, compaction, backup/restore, and recovery from corruption.
+You chose ModelVault to **deploy as a single file** — this runbook covers running it safely: durability, locking, compaction, backup/restore, and recovery from corruption.
 
 | Related | Link |
 |---------|------|
-| Why single-file embed | [Why Typra](../guides/why_typra.md) · [Storage modes](../guides/storage_modes.md) |
+| Why single-file embed | [Why ModelVault](../guides/why_modelvault.md) · [Storage modes](../guides/storage_modes.md) |
 | First steps | [Quickstart](../guides/quickstart.md) |
 | Python API | [Python guide](../guides/python.md) |
 | Format contract | [Compatibility](../reference/compatibility.md) |
@@ -17,9 +17,9 @@ You chose Typra to **deploy as a single file** — this runbook covers running i
 Minimal deterministic check — open, register, insert, get:
 
 ```python
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 db.register_collection("books", '[{"path": ["title"], "type": "string"}]', "title")
 db.insert("books", {"title": "Hello"})
 
@@ -51,7 +51,7 @@ Details: [Compatibility → recovery](../reference/compatibility.md#recovery-mod
 
 ## Locking (single-writer)
 
-Typra is **single-writer** embedded:
+ModelVault is **single-writer** embedded:
 
 | Open mode | Lock |
 |-----------|------|
@@ -77,11 +77,11 @@ Failed compaction should leave the original file intact.
 ### Backup workflow
 
 1. **Checkpoint** (recommended) — stable state marker
-2. **Copy** the `.typra` file
+2. **Copy** the `.modelvault` file
 3. **Verify** with CLI (recommended)
 
 ```bash
-typra verify /path/to/backup.typra
+modelvault verify /path/to/backup.modelvault
 ```
 
 Rust: `Database::export_snapshot_to_path(dest)` does checkpoint + copy.
@@ -100,13 +100,13 @@ When a file may be corrupt or partially written:
 
 ```bash
 # 1. Inspect header + checkpoint metadata
-typra inspect /path/to/app.typra
+modelvault inspect /path/to/app.modelvault
 
 # 2. Verify segment framing and catalog
-typra verify /path/to/app.typra
+modelvault verify /path/to/app.modelvault
 
 # 3. Dump catalog for support
-typra dump-catalog /path/to/app.typra --json
+modelvault dump-catalog /path/to/app.modelvault --json
 ```
 
 Then choose recovery mode:

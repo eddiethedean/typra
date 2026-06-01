@@ -2,20 +2,20 @@
 
 Application-focused embedded database for Rust — model-driven schemas, validation, migrations, and single-file deploy.
 
-What to import and what’s stable in Typra’s Rust crates. Product context: [Why Typra](../guides/why_typra.md) · [Quickstart](../guides/quickstart.md).
+What to import and what’s stable in ModelVault’s Rust crates. Product context: [Why ModelVault](../guides/why_modelvault.md) · [Quickstart](../guides/quickstart.md).
 
 | Crate | docs.rs |
 |-------|---------|
-| **`typra`** (facade — use this) | [docs.rs/typra](https://docs.rs/typra) |
-| **`typra-core`** (engine) | [docs.rs/typra-core](https://docs.rs/typra-core) |
+| **`modelvault`** (facade — use this) | [docs.rs/modelvault](https://docs.rs/modelvault) |
+| **`modelvault-core`** (engine) | [docs.rs/modelvault-core](https://docs.rs/modelvault-core) |
 
 ## Recommended crate
 
-Most applications should depend on **`typra`**:
+Most applications should depend on **`modelvault`**:
 
 ```toml
 [dependencies]
-typra = "1.0"
+modelvault = "0.14"
 ```
 
 It re-exports the engine and (by default) enables `#[derive(DbModel)]`.
@@ -40,7 +40,7 @@ It re-exports the engine and (by default) enables `#[derive(DbModel)]`.
 
 ## Query surface (typed)
 
-Typra’s primary Rust query surface is typed (non-SQL):
+ModelVault’s primary Rust query surface is typed (non-SQL):
 
 - Predicate composition (`Eq`, `And`, `Or`, ranges)
 - `limit`, `order_by`, `explain`

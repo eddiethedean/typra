@@ -2,13 +2,13 @@
 
 **Audience:** beginner — get your first model stored in about five minutes.
 
-Install, open a database, define a schema, insert a row. Covers **Python** (`typra.models`) and a **minimal Rust** registration example.
+Install, open a database, define a schema, insert a row. Covers **Python** (`modelvault.models`) and a **minimal Rust** registration example.
 
 !!! tip "New here?"
-    Read [Why Typra](why_typra.md) for positioning, or [Comparisons](../comparisons/index.md) vs SQLite and JSON. Prefer Pydantic? See the [Pydantic guide](pydantic.md).
+    Read [Why ModelVault](why_modelvault.md) for positioning, or [Comparisons](../comparisons/index.md) vs SQLite and JSON. Prefer Pydantic? See the [Pydantic guide](pydantic.md).
 
 !!! tip "Already know embedded DBs?"
-    Typra is **schema-first**: you declare types and constraints up front; invalid writes fail at the boundary. See [Core concepts](concepts.md) for the full picture.
+    ModelVault is **schema-first**: you declare types and constraints up front; invalid writes fail at the boundary. See [Core concepts](concepts.md) for the full picture.
 
 ## Install
 
@@ -17,7 +17,7 @@ Install, open a database, define a schema, insert a row. Covers **Python** (`typ
     **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`).
 
     ```bash
-    pip install "typra>=1.0.0,<2"
+    pip install "modelvault>=0.14.0,<0.15"
     ```
 
 === "Rust"
@@ -26,20 +26,20 @@ Install, open a database, define a schema, insert a row. Covers **Python** (`typ
 
     ```toml
     [dependencies]
-    typra = "1.0"
+    modelvault = "0.14"
     ```
 
 ## Rust: open and register a collection
 
-In-memory (no file left behind). For on-disk, use `Database::open("my.typra")?`.
+In-memory (no file left behind). For on-disk, use `Database::open("my.modelvault")?`.
 
 ```rust
 use std::borrow::Cow;
 
-use typra::prelude::*;
-use typra::schema::FieldPath;
-use typra::FieldDef;
-use typra::Type;
+use modelvault::prelude::*;
+use modelvault::schema::FieldPath;
+use modelvault::FieldDef;
+use modelvault::Type;
 
 fn main() -> Result<(), DbError> {
     let mut db = Database::open_in_memory()?;
@@ -62,7 +62,7 @@ fn main() -> Result<(), DbError> {
 ### Run it (from this repo)
 
 ```bash
-cargo run -q -p typra --example open
+cargo run -q -p modelvault --example open
 ```
 
 Output:
@@ -74,7 +74,7 @@ registered collection id=1 version=1
 
 ## Python: models, insert, get
 
-Recommended path: define a **dataclass** (or Pydantic model) and use **`typra.models.collection`**.
+Recommended path: define a **dataclass** (or Pydantic model) and use **`modelvault.models.collection`**.
 
 ```python
 # Setup: class-defined schema + in-memory DB.
@@ -83,28 +83,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Annotated, Optional
 
-import typra
+import modelvault
 
 
 @dataclass
 class Book:
-    __typra_primary_key__ = "title"
-    __typra_indexes__ = [
-        typra.models.index("year"),
-        typra.models.unique("title"),
+    __modelvault_primary_key__ = "title"
+    __modelvault_indexes__ = [
+        modelvault.models.index("year"),
+        modelvault.models.unique("title"),
     ]
 
     title: str
-    year: Annotated[int, typra.models.constrained(min_i64=0)]
+    year: Annotated[int, modelvault.models.constrained(min_i64=0)]
     rating: Optional[float] = None
 
 
-db = typra.Database.open_in_memory()
-books = typra.models.collection(db, Book)
+db = modelvault.Database.open_in_memory()
+books = modelvault.models.collection(db, Book)
 
 books.insert(Book(title="Hello", year=2020, rating=4.5))
 print("get:", books.get("Hello"))
-print("typra", typra.__version__)
+print("modelvault", modelvault.__version__)
 ```
 
 ### Run it (from this repo)
@@ -118,20 +118,20 @@ Output:
 
 ```text
 get: Book(title='Hello', year=2020, rating=4.5)
-typra 1.0.0
+modelvault 1.0.0
 ```
 
-On disk, swap `open_in_memory()` for `Database.open("app.typra")`.
+On disk, swap `open_in_memory()` for `Database.open("app.modelvault")`.
 
 ## What’s in 1.0
 
 - Persisted **schema catalog**, **validation**, **indexes**, **queries** (including ranges and `order_by`)
 - **Transactions**, **migrations**, **compaction**, **checkpoints**
 - **Multi-segment nested field paths** (record payload v3)
-- Read-only **DB-API** (`typra.dbapi`) with a minimal `SELECT` subset
+- Read-only **DB-API** (`modelvault.dbapi`) with a minimal `SELECT` subset
 
 !!! info "Roadmap"
-    Full SQL and SQLAlchemy are planned post-1.0. See the [roadmap on GitHub](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
+    Full SQL and SQLAlchemy are planned post-1.0. See the [roadmap on GitHub](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md).
 
 ## Contracts & matrices
 
@@ -142,7 +142,7 @@ On disk, swap `open_in_memory()` for `Database.open("app.typra")`.
 
 | Topic | Guide |
 |-------|-------|
-| Why Typra exists | [Why Typra](why_typra.md) |
+| Why ModelVault exists | [Why ModelVault](why_modelvault.md) |
 | Pydantic & FastAPI | [Pydantic](pydantic.md) · [FastAPI](fastapi.md) |
 | Mental model | [Core concepts](concepts.md) |
 | Python in depth | [Python guide](python.md) |

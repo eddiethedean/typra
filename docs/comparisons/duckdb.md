@@ -1,6 +1,6 @@
-# Typra vs DuckDB
+# ModelVault vs DuckDB
 
-[DuckDB](https://duckdb.org/) is an embedded **analytical** SQL engine (OLAP). Typra is an embedded **application model** store (OLTP). They solve different problems and often **belong in the same project**.
+[DuckDB](https://duckdb.org/) is an embedded **analytical** SQL engine (OLAP). ModelVault is an embedded **application model** store (OLTP). They solve different problems and often **belong in the same project**.
 
 ## Problem
 
@@ -13,12 +13,12 @@ DuckDB excels at the second. Using it as the only store for fine-grained app CRU
 
 ## Solution
 
-Use Typra for **authoritative application data** and DuckDB when you need **analytics**:
+Use ModelVault for **authoritative application data** and DuckDB when you need **analytics**:
 
 ```text
 ┌─────────────────┐     export / ETL      ┌──────────────┐
-│  app.typra      │ ────────────────────► │  reports.duckdb │
-│  (Typra OLTP)   │                       │  (DuckDB OLAP)  │
+│  app.modelvault      │ ────────────────────► │  reports.duckdb │
+│  (ModelVault OLTP)   │                       │  (DuckDB OLAP)  │
 └─────────────────┘                       └──────────────┘
 ```
 
@@ -26,7 +26,7 @@ Use Typra for **authoritative application data** and DuckDB when you need **anal
 
 ## OLTP vs OLAP
 
-| Dimension | Typra | DuckDB |
+| Dimension | ModelVault | DuckDB |
 |-----------|-------|--------|
 | Workload | Point reads/writes, app CRUD | Scans, aggregations, analytics |
 | Schema | Model / collection catalog | SQL tables |
@@ -39,7 +39,7 @@ Use Typra for **authoritative application data** and DuckDB when you need **anal
 - **Parquet/CSV** ingestion and columnar performance
 - **SQL-first** exploration by analysts
 
-## When Typra wins
+## When ModelVault wins
 
 - **Application models** with validation on every write
 - **Single-file** app deployment with indexes on domain fields
@@ -47,11 +47,11 @@ Use Typra for **authoritative application data** and DuckDB when you need **anal
 
 ## Hybrid usage
 
-1. Persist domain records in Typra (`users`, `orders`, `settings`).
+1. Persist domain records in ModelVault (`users`, `orders`, `settings`).
 2. Periodically export snapshots (JSON, CSV, or custom) into DuckDB for reporting.
-3. Keep Typra as the **system of record**; DuckDB as **read-optimized replica**.
+3. Keep ModelVault as the **system of record**; DuckDB as **read-optimized replica**.
 
 ## Related
 
-- [Why Typra](../guides/why_typra.md)
+- [Why ModelVault](../guides/why_modelvault.md)
 - [Comparisons overview](index.md)

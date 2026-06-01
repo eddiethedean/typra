@@ -4,8 +4,8 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     // Scan a random byte image as if it were a file. Errors are fine; panics are not.
-    let mut store = typra_core::storage::VecStore::from_vec(data.to_vec());
-    let res = typra_core::segments::reader::scan_segments(&mut store, 0);
+    let mut store = modelvault_core::storage::VecStore::from_vec(data.to_vec());
+    let res = modelvault_core::segments::reader::scan_segments(&mut store, 0);
     if let Ok(metas) = res {
         // Invariants: segment offsets are monotonic, and each header's payload_len fits in usize.
         let mut last = 0u64;

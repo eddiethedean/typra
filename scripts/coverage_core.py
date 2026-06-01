@@ -70,13 +70,13 @@ def parse_lcov_files(path: Path) -> list[LcovFile]:
 
 def _bucket_for(rel: str) -> str | None:
     # "Core logic" areas we gate.
-    if rel == "crates/typra-core/src/db/mod.rs":
+    if rel == "crates/modelvault-core/src/db/mod.rs":
         return "db"
-    if rel.startswith("crates/typra-core/src/query/"):
+    if rel.startswith("crates/modelvault-core/src/query/"):
         return "query"
-    if rel == "crates/typra-core/src/index.rs":
+    if rel == "crates/modelvault-core/src/index.rs":
         return "index"
-    if rel == "crates/typra-core/src/validation.rs":
+    if rel == "crates/modelvault-core/src/validation.rs":
         return "validation"
     return None
 

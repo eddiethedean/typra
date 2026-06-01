@@ -2,7 +2,7 @@
 
 **Audience:** advanced (engine contributors, alternate implementations, format tooling)
 
-This document is the **published wire specification** for Typra **1.0.x** `.typra` files. It describes what the engine writes and replays today.
+This document is the **published wire specification** for ModelVault **1.0.x** `.modelvault` files. It describes what the engine writes and replays today.
 
 | Document | Role |
 |----------|------|
@@ -13,9 +13,9 @@ This document is the **published wire specification** for Typra **1.0.x** `.typr
 | [Index segment encoding](index_segment_encoding.md) | `SegmentType::Index` payloads |
 | [Record encoding v1–v3](record_encoding_v1.md) | `SegmentType::Record` payloads |
 
-**Source of truth in code:** `crates/typra-core/src/file_format.rs`, `superblock.rs`, `segments/header.rs`, `manifest.rs`, `txn.rs`, `checkpoint.rs`, `publish.rs`.
+**Source of truth in code:** `crates/modelvault-core/src/file_format.rs`, `superblock.rs`, `segments/header.rs`, `manifest.rs`, `txn.rs`, `checkpoint.rs`, `publish.rs`.
 
-**Historical design notes** (not normative): [On-disk format (long form) on GitHub](https://github.com/eddiethedean/typra/blob/main/docs/02_on_disk_file_format.md).
+**Historical design notes** (not normative): [On-disk format (long form) on GitHub](https://github.com/eddiethedean/modelvault/blob/main/docs/02_on_disk_file_format.md).
 
 ## Design goals
 

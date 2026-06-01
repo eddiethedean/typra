@@ -2,13 +2,13 @@
 
 **Audience:** intermediate (operators and library consumers)
 
-Read/write compatibility for `.typra` files and stability expectations for public APIs — what you can rely on when you **ship a single `.typra` file`** with your app.
+Read/write compatibility for `.modelvault` files and stability expectations for public APIs — what you can rely on when you **ship a single `.modelvault` file`** with your app.
 
-New to Typra? Start with [Why Typra](../guides/why_typra.md) and [Quickstart](../guides/quickstart.md). Typra is **1.x**: breaking changes require a major version bump. File-format evolution is explicit and tested.
+New to ModelVault? Start with [Why ModelVault](../guides/why_modelvault.md) and [Quickstart](../guides/quickstart.md). ModelVault is **1.x**: breaking changes require a major version bump. File-format evolution is explicit and tested.
 
 ## 1.x on-disk backwards compatibility pledge
 
-**Any Typra 1.y.z release must remain able to read `.typra` files produced by earlier 1.x releases** (and pre-1.0 minors that 1.0 already reads), without requiring users to migrate or rewrite files.
+**Any ModelVault 1.y.z release must remain able to read `.modelvault` files produced by earlier 1.x releases** (and pre-1.0 minors that 1.0 already reads), without requiring users to migrate or rewrite files.
 
 | Guarantee | Meaning |
 |-----------|---------|
@@ -17,15 +17,15 @@ New to Typra? Start with [Why Typra](../guides/why_typra.md) and [Quickstart](..
 | **Lazy upgrade** | The engine may bump `format_minor` in the file header (e.g. to **6** for transaction framing) when a write requires newer invariants; the log prefix remains replayable. |
 | **Payload versions** | Catalog **v1–v4**, record **v1–v3**, and index **v1–v2** stay decodable for the life of **1.x**. |
 
-**Requires Typra 2.0 (new `FORMAT_MAJOR`):** removing replay for any of the above, changing segment-type semantics, or incompatible layout changes to headers/superblocks/segments that existing 1.x files rely on.
+**Requires ModelVault 2.0 (new `FORMAT_MAJOR`):** removing replay for any of the above, changing segment-type semantics, or incompatible layout changes to headers/superblocks/segments that existing 1.x files rely on.
 
-Contributor rules and release checklist: [Format evolution (1.x)](../specs/format_evolution.md). CI: `make test-format-compat` and golden fixtures under `crates/typra-core/tests/fixtures/format/`.
+Contributor rules and release checklist: [Format evolution (1.x)](../specs/format_evolution.md). CI: `make test-format-compat` and golden fixtures under `crates/modelvault-core/tests/fixtures/format/`.
 
 ## File-format compatibility
 
-Typra database files have a **format major** and **format minor** (see [On-disk file format spec](../specs/on_disk_file_format.md)).
+ModelVault database files have a **format major** and **format minor** (see [On-disk file format spec](../specs/on_disk_file_format.md)).
 
-- **Format major (`FORMAT_MAJOR`)**: breaking changes. Typra will refuse to open unknown majors. **1.x uses major 0**; a future incompatible format uses major **1** with Typra **2.0**.
+- **Format major (`FORMAT_MAJOR`)**: breaking changes. ModelVault will refuse to open unknown majors. **1.x uses major 0**; a future incompatible format uses major **1** with ModelVault **2.0**.
 - **Format minor (`FORMAT_MINOR`)**: compatible evolution within a major. Minors may gate new segment types, replay semantics, or publication metadata.
 
 ### Compatibility terms
@@ -45,8 +45,8 @@ Typra database files have a **format major** and **format minor** (see [On-disk 
 ### Upgrade and write behavior (policy)
 
 - **Existing files** are opened without rewriting whenever possible.
-- Typra prefers **preserving the file’s current minor** until an operation requires newer invariants.
-- When a **lazy upgrade** happens, Typra will make the post-upgrade behavior explicit in release notes.
+- ModelVault prefers **preserving the file’s current minor** until an operation requires newer invariants.
+- When a **lazy upgrade** happens, ModelVault will make the post-upgrade behavior explicit in release notes.
 
 #### Practical rules by minor
 
@@ -56,7 +56,7 @@ Typra database files have a **format major** and **format minor** (see [On-disk 
 - **Minor ≤ 5**
   - **Reads** are supported.
   - **Writes are best-effort**: some write paths require **minor 6** invariants (notably around atomic multi-write durability).
-    - In those cases Typra may **lazily upgrade** the file to minor 6 before/while appending new durable state.
+    - In those cases ModelVault may **lazily upgrade** the file to minor 6 before/while appending new durable state.
 
 ### Recovery modes (contract)
 
@@ -79,7 +79,7 @@ truncate the underlying file).
 - Unknown **format minors** within a known major are refused unless explicitly handled by the compatibility logic for that release line.
 - Unknown **segment types** are refused by default, unless explicitly declared ignorable/ephemeral by the format spec for that major/minor.
 
-Typra prefers **explicit compatibility** over “best guess” parsing.
+ModelVault prefers **explicit compatibility** over “best guess” parsing.
 
 ### What 1.1, 1.2, … may add (without breaking old files)
 
@@ -92,7 +92,7 @@ See [Format evolution (1.x)](../specs/format_evolution.md).
 
 ## Segment types and stability
 
-Typra’s on-disk log is append-only segments with checksums.
+ModelVault’s on-disk log is append-only segments with checksums.
 
 - **Stable/persistent segments** (part of the durable logical state): `Schema`, `Record`, `Index`, `Manifest`, `TxnBegin`, `TxnCommit`, `TxnAbort`, `Checkpoint`.
 - **Ephemeral segments**: `Temp` is **scratch spill storage** for bounded-memory operators.
@@ -105,21 +105,21 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
 
 ### Rust crates
 
-- **`typra`** (facade): preferred dependency for applications.
-  - **Stability goal**: strongest compatibility guarantees in the Rust ecosystem for Typra.
+- **`modelvault`** (facade): preferred dependency for applications.
+  - **Stability goal**: strongest compatibility guarantees in the Rust ecosystem for ModelVault.
   - **Policy**: breaking changes require a major version bump and are called out explicitly.
-- **`typra-core`** (engine): lower-level APIs and internal types.
+- **`modelvault-core`** (engine): lower-level APIs and internal types.
   - **Stability goal (1.x)**: stable for direct use by power users. Breaking changes require a
-    major version bump (2.0), same as `typra`.
+    major version bump (2.0), same as `modelvault`.
   - **Policy**: internal refactors are acceptable, but **public exports** and documented behavior
     remain compatible within 1.x.
-- **`typra-derive`**: proc macro for `#[derive(DbModel)]`.
+- **`modelvault-derive`**: proc macro for `#[derive(DbModel)]`.
   - **Stability goal**: mostly additive improvements (new attributes and validations) with minimal breakage.
 
-### Python package (`typra` on PyPI)
+### Python package (`modelvault` on PyPI)
 
 - The Python surface mirrors the engine where feasible.
-- DB-API (`typra.dbapi`) is a read-only subset of PEP 249 for a minimal `SELECT` grammar (see [Python guide](../guides/python.md)).
+- DB-API (`modelvault.dbapi`) is a read-only subset of PEP 249 for a minimal `SELECT` grammar (see [Python guide](../guides/python.md)).
 
 ## DB-API + SQL subset guarantees (current)
 

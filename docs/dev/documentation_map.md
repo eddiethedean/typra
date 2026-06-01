@@ -1,6 +1,6 @@
 # Documentation map
 
-How the Typra docs are organized by **audience** and **goal**. Use this when editing or reviewing pages for consistent positioning ([master plan](https://github.com/eddiethedean/typra/blob/main/docs/TYPRA_DOCUMENTATION_POSITIONING_MASTER_PLAN.md)).
+How the ModelVault docs are organized by **audience** and **goal**. Use this when editing or reviewing pages for consistent positioning ([master plan](https://github.com/eddiethedean/modelvault/blob/main/docs/MODELVAULT_DOCUMENTATION_POSITIONING_MASTER_PLAN.md)).
 
 ## Audience levels
 
@@ -14,12 +14,12 @@ Every major guide should open with **outcomes** (problem → solution), not impl
 
 ## By goal
 
-### Evaluate Typra (beginner)
+### Evaluate ModelVault (beginner)
 
 | Page | Level |
 |------|-------|
 | [Home](../index.md) | Beginner |
-| [Why Typra](../guides/why_typra.md) | Beginner |
+| [Why ModelVault](../guides/why_modelvault.md) | Beginner |
 | [Comparisons](../comparisons/index.md) | Beginner |
 | [Quickstart](../guides/quickstart.md) | Beginner |
 | [Choose your path](../map.md) | Beginner |
@@ -74,22 +74,22 @@ Every major guide should open with **outcomes** (problem → solution), not impl
 | FastAPI | Intermediate | `examples/fastapi_app/` |
 | Desktop data dir | Intermediate | `examples/desktop_app/` |
 
-CI: `make examples-smoke` (todo + CLI + desktop with isolated `TYPRA_EXAMPLE_DATA_DIR`).
+CI: `make examples-smoke` (todo + CLI + desktop with isolated `MODELVAULT_EXAMPLE_DATA_DIR`).
 
 ## Launch material
 
 | Asset | Path |
 |-------|------|
 | Copy bank | [launch_messaging.md](launch_messaging.md) |
-| Blog post | [blog/typra-for-application-models.md](https://github.com/eddiethedean/typra/blob/main/blog/typra-for-application-models.md) |
+| Blog post | [blog/modelvault-for-application-models.md](https://github.com/eddiethedean/modelvault/blob/main/blog/modelvault-for-application-models.md) |
 
 ## Editorial checklist (new or updated pages)
 
 1. **Headline** — outcome or question, not “SegmentType catalog”
 2. **Problem** — who is stuck and why
-3. **Solution** — what Typra provides
+3. **Solution** — what ModelVault provides
 4. **Code + result** — runnable or verified output where possible
-5. **Links** — Why Typra, comparisons, or quickstart for newcomers
+5. **Links** — Why ModelVault, comparisons, or quickstart for newcomers
 6. **Level** — place advanced detail behind intermediate summaries
 
 ## Maintainers

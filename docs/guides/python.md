@@ -1,17 +1,17 @@
 # Python guide
 
-Build with the **`typra`** PyPI package: store **dataclasses and Pydantic models** with validation, indexes, and single-file deployment.
+Build with the **`modelvault`** PyPI package: store **dataclasses and Pydantic models** with validation, indexes, and single-file deployment.
 
 !!! tip "Start here"
-    New to Typra? Read [Why Typra](why_typra.md) and the [Pydantic guide](pydantic.md). Building an API? See [FastAPI](fastapi.md). Runnable samples: [Examples](../examples/index.md).
+    New to ModelVault? Read [Why ModelVault](why_modelvault.md) and the [Pydantic guide](pydantic.md). Building an API? See [FastAPI](fastapi.md). Runnable samples: [Examples](../examples/index.md).
 
 !!! tip "Recommended path"
-    Prefer **`typra.models`** with dataclasses or Pydantic over hand-written `fields_json`. See [Models & collections](models_and_collections.md).
+    Prefer **`modelvault.models`** with dataclasses or Pydantic over hand-written `fields_json`. See [Models & collections](models_and_collections.md).
 
 | Resource | Link |
 |----------|------|
-| Why Typra | [Why Typra](why_typra.md) · [Comparisons](../comparisons/index.md) |
-| Examples | [Examples](../examples/index.md) · [todo_app on GitHub](https://github.com/eddiethedean/typra/tree/main/examples/todo_app) |
+| Why ModelVault | [Why ModelVault](why_modelvault.md) · [Comparisons](../comparisons/index.md) |
+| Examples | [Examples](../examples/index.md) · [todo_app on GitHub](https://github.com/eddiethedean/modelvault/tree/main/examples/todo_app) |
 | Compatibility | [Compatibility matrix](../reference/compatibility.md) |
 | Rust usage | [Quickstart](quickstart.md) |
 
@@ -20,22 +20,22 @@ Build with the **`typra`** PyPI package: store **dataclasses and Pydantic models
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9+ on that platform.
 
 ```bash
-pip install "typra>=1.0.0,<2"
+pip install "modelvault>=0.14.0,<0.15"
 ```
 
-Pin the major range you test against. Typra 1.x follows SemVer (breaking changes require 2.0).
+Pin the major range you test against. ModelVault 1.x follows SemVer (breaking changes require 2.0).
 
 ## Quick start (low-level API)
 
-The snippets below use **`register_collection`** + JSON field definitions — useful for dynamic schemas and tests. For application code, prefer **[`typra.models`](#define-schemas-with-classes)** or the [Pydantic guide](pydantic.md).
+The snippets below use **`register_collection`** + JSON field definitions — useful for dynamic schemas and tests. For application code, prefer **[`modelvault.models`](#define-schemas-with-classes)** or the [Pydantic guide](pydantic.md).
 
-In-memory (repeatable; no file). For a file, use `Database.open("/path/to/app.typra")`.
+In-memory (repeatable; no file). For a file, use `Database.open("/path/to/app.modelvault")`.
 
 ```python
 # Setup: module, in-memory DB, and one collection.
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 cid, ver = db.register_collection(
     "books",
     '[{"path": ["title"], "type": "string"}]',
@@ -57,25 +57,25 @@ collection_names: ['books']
 
 `register_collection` returns **`(collection_id, schema_version)`**. New collections start at id **`1`** and schema version **`1`**.
 
-A longer insert/get example with **`typra.__version__`** is in [Quickstart](quickstart.md#python-models-insert-get) (verified in CI).
+A longer insert/get example with **`modelvault.__version__`** is in [Quickstart](quickstart.md#python-models-insert-get) (verified in CI).
 
 ## Backup and restore
 
 | Operation | API |
 |-----------|-----|
-| **Backup** | `db.export_snapshot("/path/to/backup.typra")` — checkpoints then copies (file-backed DBs) |
-| **Restore** | `typra.Database.restore_snapshot(backup, dest)` — atomic replace of destination |
+| **Backup** | `db.export_snapshot("/path/to/backup.modelvault")` — checkpoints then copies (file-backed DBs) |
+| **Restore** | `modelvault.Database.restore_snapshot(backup, dest)` — atomic replace of destination |
 
 ## Define schemas with classes
 
-The low-level API accepts **`fields_json`**. For application code, use **`typra.models`**.
+The low-level API accepts **`fields_json`**. For application code, use **`modelvault.models`**.
 
 ### Rules (1.0)
 
 - Class must be a **`@dataclass`** or **Pydantic `BaseModel`** (Pydantic is optional)
-- Declare primary key: `__typra_primary_key__ = "id"`
+- Declare primary key: `__modelvault_primary_key__ = "id"`
 - Collection name defaults to **snake_case plural** (`Book` → `"books"`)
-- Override with `__typra_collection__ = "my_name"`
+- Override with `__modelvault_collection__ = "my_name"`
 
 ### Constraints and indexes
 
@@ -87,26 +87,26 @@ from typing import Annotated, Optional
 from uuid import UUID
 from datetime import datetime
 
-import typra
+import modelvault
 
 
 @dataclass
 class Book:
-    __typra_primary_key__ = "title"
-    __typra_indexes__ = [
-        typra.models.index("year"),
-        typra.models.unique("title"),
+    __modelvault_primary_key__ = "title"
+    __modelvault_indexes__ = [
+        modelvault.models.index("year"),
+        modelvault.models.unique("title"),
     ]
 
     title: str
-    year: Annotated[int, typra.models.constrained(min_i64=0)]
+    year: Annotated[int, modelvault.models.constrained(min_i64=0)]
     rating: Optional[float] = None
     id: Optional[UUID] = None
     published_at: Optional[datetime] = None
 
 
-db = typra.Database.open_in_memory()
-books = typra.models.collection(db, Book)
+db = modelvault.Database.open_in_memory()
+books = modelvault.models.collection(db, Book)
 
 books.insert(Book(title="Hello", year=2020, rating=4.5))
 one = books.get("Hello")
@@ -122,8 +122,8 @@ just_titles = books.where(Book.title, "Hello").select(["title"]).all()
 ### Schema evolution
 
 ```python
-plan = typra.models.plan(db, Book)
-new_version = typra.models.apply(db, Book, force=False)
+plan = modelvault.models.plan(db, Book)
+new_version = modelvault.models.apply(db, Book, force=False)
 ```
 
 ### Updates (replace by primary key)
@@ -197,9 +197,9 @@ Design: [Query planner spec](../specs/query_planner.md).
 
 ```python
 # Setup: in-memory DB, schema, index, and one row.
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 fields = (
     '[{"path": ["title"], "type": "string"}, {"path": ["year"], "type": "int64"}]'
 )
@@ -231,11 +231,11 @@ Row order from `all()` is not guaranteed — sort in app code when needed.
 import tempfile
 from pathlib import Path
 
-import typra
+import modelvault
 
 with tempfile.TemporaryDirectory() as d:
-    path = Path(d) / "app.typra"
-    db = typra.Database.open(str(path))
+    path = Path(d) / "app.modelvault"
+    db = modelvault.Database.open(str(path))
     fields = """[
       {"path": ["id"], "type": "int64"},
       {"path": ["sku"], "type": "string"},
@@ -271,7 +271,7 @@ with tempfile.TemporaryDirectory() as d:
         key=lambda r: r["id"],
     )
     print("subset:", short)
-    db2 = typra.Database.open(str(path))
+    db2 = modelvault.Database.open(str(path))
     row = db2.get("order_lines", 1)
     print("reopen_qty:", row["qty"] if row else None)
 ```
@@ -290,7 +290,7 @@ For tests, use a temp file as above. For fixed paths, create parent directories 
 
 ## DB-API 2.0 (PEP 249)
 
-Read-only adapter at **`typra.dbapi`**. Maps to the typed query AST — not a full SQL engine.
+Read-only adapter at **`modelvault.dbapi`**. Maps to the typed query AST — not a full SQL engine.
 
 ### Supported SQL (1.0)
 
@@ -303,9 +303,9 @@ Read-only adapter at **`typra.dbapi`**. Maps to the typed query AST — not a fu
 Anything else → `ValueError`.
 
 ```python
-import typra
+import modelvault
 
-conn = typra.dbapi.connect("app.typra")
+conn = modelvault.dbapi.connect("app.modelvault")
 cur = conn.cursor()
 cur.execute(
     "SELECT id,title FROM books WHERE year >= ? ORDER BY id DESC LIMIT 10",
@@ -342,15 +342,15 @@ Unknown names → **`ValueError`**.
 {"enum": ["draft", "published"]}
 ```
 
-More examples: [python/typra README on GitHub](https://github.com/eddiethedean/typra/blob/main/python/typra/README.md).
+More examples: [python/modelvault README on GitHub](https://github.com/eddiethedean/modelvault/blob/main/python/modelvault/README.md).
 
 ### Example: multiple top-level fields
 
 ```python
 # Setup: in-memory DB and a multi-field `books` schema (PK `title`).
-import typra
+import modelvault
 
-db = typra.Database.open_in_memory()
+db = modelvault.Database.open_in_memory()
 fields = """[
   {"path": ["title"], "type": "string"},
   {"path": ["year"], "type": "int64"},
@@ -389,7 +389,7 @@ Registrations are **durable**: reopen the same path and `collection_names()` ref
 | I/O (missing parent, permissions, directory path) | **`OSError`** |
 | Unsupported engine path | **`RuntimeError`** |
 
-Also see typed subclasses in [Debugging](../ops/debugging.md): `TypraValidationError`, `TypraSchemaError`, etc.
+Also see typed subclasses in [Debugging](../ops/debugging.md): `ModelVaultValidationError`, `ModelVaultSchemaError`, etc.
 
 Catch **`ValueError`** and **`OSError`** around `open`, `register_collection`, and `insert` in production.
 
@@ -399,7 +399,7 @@ Catch **`ValueError`** and **`OSError`** around `open`, `register_collection`, a
 - Rich migration workflows beyond `plan` / `apply` helpers
 - Automatic Pydantic → schema inference without explicit model metadata
 
-See the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
+See the [roadmap](https://github.com/eddiethedean/modelvault/blob/main/ROADMAP.md).
 
 ## Development (from this repo)
 
@@ -407,9 +407,9 @@ See the [roadmap](https://github.com/eddiethedean/typra/blob/main/ROADMAP.md).
 python3 -m venv .venv
 .venv/bin/python -m pip install -U pip
 .venv/bin/python -m pip install -U "maturin>=1.5,<2" pytest
-cd python/typra
+cd python/modelvault
 maturin develop --release
 pytest -q
 ```
 
-Or from repo root: **`make check-full`**. See [python/README on GitHub](https://github.com/eddiethedean/typra/blob/main/python/README.md).
+Or from repo root: **`make check-full`**. See [python/README on GitHub](https://github.com/eddiethedean/modelvault/blob/main/python/README.md).

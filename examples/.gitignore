@@ -1,3 +1,3 @@
-*.typra
-*.typra.writer.lock
+*.modelvault
+*.modelvault.writer.lock
 desktop_app/.smoke-data/

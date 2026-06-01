@@ -25,7 +25,7 @@ The primary key field must remain a **primitive** [`Type`](./typed_embedded_db_s
 
 ### Value encoding (type-driven)
 
-Primitives reuse v1 tags `0`–`7` (see [`crates/typra-core/src/record/scalar.rs`](../crates/typra-core/src/record/scalar.rs)).
+Primitives reuse v1 tags `0`–`7` (see [`crates/modelvault-core/src/record/scalar.rs`](../crates/modelvault-core/src/record/scalar.rs)).
 
 - **`Optional(inner)`**: `u8` presence — `0` = absent; `1` = present, then `encode_row_value(inner)`.
 - **`List(inner)`**: `u32` element count, then each element encoded as `inner`.

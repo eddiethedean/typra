@@ -12,17 +12,17 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import typra
+import modelvault
 
-APP_NAME = "TypraDesktopDemo"
+APP_NAME = "ModelVaultDesktopDemo"
 
 
 def data_dir() -> Path:
     """OS-appropriate per-user app data (desktop convention).
 
-    Override with ``TYPRA_EXAMPLE_DATA_DIR`` for CI smoke tests (isolated directory).
+    Override with ``MODELVAULT_EXAMPLE_DATA_DIR`` for CI smoke tests (isolated directory).
     """
-    override = os.environ.get("TYPRA_EXAMPLE_DATA_DIR")
+    override = os.environ.get("MODELVAULT_EXAMPLE_DATA_DIR")
     if override:
         return Path(override)
     if sys.platform == "win32":
@@ -37,12 +37,12 @@ def data_dir() -> Path:
 def db_path() -> Path:
     d = data_dir()
     d.mkdir(parents=True, exist_ok=True)
-    return d / "app.typra"
+    return d / "app.modelvault"
 
 
 @dataclass
 class AppSettings:
-    __typra_primary_key__ = "key"
+    __modelvault_primary_key__ = "key"
 
     key: str
     value: str
@@ -51,8 +51,8 @@ class AppSettings:
 def main() -> None:
     path = db_path()
     print("database:", path)
-    db = typra.Database.open(str(path))
-    settings = typra.models.collection(db, AppSettings)
+    db = modelvault.Database.open(str(path))
+    settings = modelvault.models.collection(db, AppSettings)
 
     row = settings.get("theme")
     if row is None:

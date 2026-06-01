@@ -1,6 +1,6 @@
 # Glossary
 
-Quick definitions for Typra terms. For deeper detail, see [Core concepts](guides/concepts.md) and [Specifications](specs/index.md).
+Quick definitions for ModelVault terms. For deeper detail, see [Core concepts](guides/concepts.md) and [Specifications](specs/index.md).
 
 ## Collection
 
@@ -24,7 +24,7 @@ The field that identifies a record within a collection. Used for `get` and repla
 
 ## Index
 
-Secondary lookup structure maintained and persisted by Typra. Supports equality lookups and query acceleration for supported predicate shapes. Kinds: **unique** and **non-unique**.
+Secondary lookup structure maintained and persisted by ModelVault. Supports equality lookups and query acceleration for supported predicate shapes. Kinds: **unique** and **non-unique**.
 
 ## Row / record
 

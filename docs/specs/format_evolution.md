@@ -2,13 +2,13 @@
 
 **Audience:** engine contributors and release maintainers
 
-Rules for changing the `.typra` on-disk format during the **1.x** release line without breaking files users ship with their apps.
+Rules for changing the `.modelvault` on-disk format during the **1.x** release line without breaking files users ship with their apps.
 
 ## Promise (1.x)
 
 For **`FORMAT_MAJOR = 0`** and any **1.y.z** engine release:
 
-1. **Read compatibility** — Typra **1.y** can open and replay any `.typra` file written by **1.0+** (format minors **3–6**), including:
+1. **Read compatibility** — ModelVault **1.y** can open and replay any `.modelvault` file written by **1.0+** (format minors **3–6**), including:
    - Catalog payloads **v1–v4**
    - Record payloads **v1, v2, v3**
    - Index payloads **v1–v2**
@@ -16,7 +16,7 @@ For **`FORMAT_MAJOR = 0`** and any **1.y.z** engine release:
 2. **Semantic stability** — Replay of an unchanged file prefix yields the same logical rows, indexes, and catalog state as when the file was written (subject to [Recovery modes](../reference/compatibility.md#recovery-modes-contract)).
 3. **Write compatibility** — Opening an older file and performing supported operations **must not destroy** existing committed data. Lazy header upgrade (minor → 6) is allowed; whole-file silent rewrite is not.
 
-Breaking any of the above requires **`FORMAT_MAJOR` bump** and Typra **2.0** (new SemVer major).
+Breaking any of the above requires **`FORMAT_MAJOR` bump** and ModelVault **2.0** (new SemVer major).
 
 ## Allowed in 1.x (additive)
 
@@ -39,7 +39,7 @@ Breaking any of the above requires **`FORMAT_MAJOR` bump** and Typra **2.0** (ne
 
 ## Release checklist (format touch)
 
-When a PR changes `crates/typra-core/src/{file_format,superblock,segments,catalog,record,index,txn,checkpoint,publish,db/replay,db/recover}.rs`:
+When a PR changes `crates/modelvault-core/src/{file_format,superblock,segments,catalog,record,index,txn,checkpoint,publish,db/replay,db/recover}.rs`:
 
 1. Update [Compatibility](../reference/compatibility.md) if read/write policy changes.
 2. Update wire specs under [`specs/`](index.md) if layouts change.
@@ -51,9 +51,9 @@ When a PR changes `crates/typra-core/src/{file_format,superblock,segments,catalo
 
 | Test | Enforces |
 |------|----------|
-| `crates/typra-core/tests/integration/format_back_compat_1x.rs` | 1.0-shaped files: read, append, reopen |
-| `crates/typra-core/tests/unit/src_db_replay_tests.rs` | Minor 6 replay of unframed legacy log |
-| `crates/typra-core/tests/integration/record_payload_v1_v2_delete_edges.rs` | Record v1/v2 decode |
-| `crates/typra-core/tests/integration/schema_paths_multi_segment.rs` | Record v3 + nested paths |
+| `crates/modelvault-core/tests/integration/format_back_compat_1x.rs` | 1.0-shaped files: read, append, reopen |
+| `crates/modelvault-core/tests/unit/src_db_replay_tests.rs` | Minor 6 replay of unframed legacy log |
+| `crates/modelvault-core/tests/integration/record_payload_v1_v2_delete_edges.rs` | Record v1/v2 decode |
+| `crates/modelvault-core/tests/integration/schema_paths_multi_segment.rs` | Record v3 + nested paths |
 
-Committed golden files: `crates/typra-core/tests/fixtures/format/` (see README there).
+Committed golden files: `crates/modelvault-core/tests/fixtures/format/` (see README there).
