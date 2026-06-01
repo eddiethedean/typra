@@ -20,7 +20,7 @@ def test_module_docstring() -> None:
 def test_version_is_semver() -> None:
     v = modelvault.__version__
     assert isinstance(v, str)
-    # Workspace / Cargo release versions (e.g. 0.14.0)
+    # Workspace / Cargo release versions (e.g. 0.15.0)
     assert re.match(r"^\d+\.\d+\.\d+", v), f"unexpected __version__: {v!r}"
 
 

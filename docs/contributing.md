@@ -75,7 +75,7 @@ The **1.0 readiness** gate (`make check-2p0-ready`) runs `check-full` plus async
 
 ## Versioning
 
-Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.14.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.15.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Coverage (practical 100%)
 
@@ -143,7 +143,7 @@ make check-2p0-ready   # 1.0 gate: check-full + async facade tests
 make check-full
 ```
 
-For a **0.14.0** cut, also follow the release checklist in [`docs/reference/readiness.md`](../reference/readiness.md#release-cut-checklist) (tag **`v0.14.0`**, changelog, post-publish smoke tests).
+For a release cut, follow the checklist in [`docs/reference/readiness.md`](../reference/readiness.md#release-cut-checklist) (tag **`vX.Y.Z`**, changelog, post-publish smoke tests).
 
 That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guides/quickstart.md`**, **`docs/guides/python.md`**, and **`python/modelvault/README.md`** still matches `cargo run -p modelvault --example open` and every Python snippet that has a paired **text** output block in those files (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
 

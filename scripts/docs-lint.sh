@@ -15,7 +15,7 @@ if git ls-files "site/**" | grep -q .; then
   fail "site/ is tracked by git; remove it from the index (build output only)."
 fi
 
-# Stale branding / install ranges after the ModelVault rebrand (0.14.x).
+# Stale branding / install ranges after the ModelVault rebrand (0.15.x).
 STALE_PATTERNS=(
   "\\btypra\\b"
   "modelvault>=1\\.0\\.0,<2"

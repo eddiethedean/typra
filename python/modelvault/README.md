@@ -28,7 +28,7 @@ Store dataclasses and **Pydantic v2** models with validation, indexes, migration
 **CPython 3.9+** · stable ABI wheels (`cp39-abi3`)
 
 ```bash
-pip install "modelvault>=0.14.0,<0.15"
+pip install "modelvault>=0.15.0,<0.16"
 ```
 
 ## Quick start (Pydantic)
@@ -53,7 +53,7 @@ Output:
 
 ```text
 title='ModelVault' year=2020
-0.14.0
+0.15.0
 ```
 
 Dataclass example and indexed queries: **[Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/)** · **[Python guide](https://modelvault.readthedocs.io/en/latest/guides/python/)**

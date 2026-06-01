@@ -16,15 +16,15 @@ Via facade (recommended):
 
 ```toml
 [dependencies]
-modelvault = "0.14"
+modelvault = "0.15"
 ```
 
 Direct:
 
 ```toml
 [dependencies]
-modelvault-derive = "0.14"
-modelvault-core = "0.14"
+modelvault-derive = "0.15"
+modelvault-core = "0.15"
 ```
 
 ## Example

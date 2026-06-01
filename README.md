@@ -31,7 +31,7 @@ More: [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_mo
 Store a Pydantic model — no low-level schema JSON:
 
 ```python
-# pip install "modelvault>=0.14.0,<0.15" pydantic
+# pip install "modelvault>=0.15.0,<0.16" pydantic
 from pydantic import BaseModel
 import modelvault
 
@@ -54,7 +54,7 @@ Output:
 
 ```text
 title='Hello' year=2020
-0.14.0
+0.15.0
 ```
 
 Also works with **dataclasses** — see the [Pydantic guide](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) and [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/).
@@ -71,12 +71,12 @@ Also works with **dataclasses** — see the [Pydantic guide](https://modelvault.
 ## Install
 
 ```bash
-pip install "modelvault>=0.14.0,<0.15"
+pip install "modelvault>=0.15.0,<0.16"
 ```
 
 ```toml
 [dependencies]
-modelvault = "0.14"
+modelvault = "0.15"
 ```
 
 ## Documentation (by goal)

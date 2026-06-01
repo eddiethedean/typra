@@ -2,9 +2,9 @@
 
 This document is the **project roadmap** for ModelVault: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.14.0` (see [`CHANGELOG.md`](CHANGELOG.md)) — **ModelVault** package rename (0.14.x on crates.io/PyPI)
+- **Current release**: `0.15.0` (see [`CHANGELOG.md`](CHANGELOG.md)) — Python async API + concurrent reads on one handle
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0**.
-- **Next milestone**: `0.15.0` — planner/operator growth + query hardening. **`0.14.0`** rebrand is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Next milestone**: `0.16.0` — planner/operator growth + query hardening (see [1.1.0](#110--engine-hardening--operator-growth) below). **`0.15.0`** async/concurrency work is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Patch versions are bugfix-only; minor versions (`1.x`) may add features without breaking stable APIs.
 - **1.x `.modelvault` compatibility**: any **1.y** release must read files written by **1.0+** (and supported pre-1.0 minors); breaking on-disk changes require **2.0** / `FORMAT_MAJOR` bump. Policy: [`docs/reference/compatibility.md`](docs/reference/compatibility.md), [`docs/specs/format_evolution.md`](docs/specs/format_evolution.md); CI: `make test-format-compat`.
 

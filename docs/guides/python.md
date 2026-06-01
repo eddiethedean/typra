@@ -22,7 +22,7 @@ ModelVault is **the database for application models**: store **dataclasses** and
 **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`): one wheel per platform, compatible with 3.9+ on that platform.
 
 ```bash
-pip install "modelvault>=0.14.0,<0.15"
+pip install "modelvault>=0.15.0,<0.16"
 ```
 
 Pin the major range you test against. ModelVault 1.x follows SemVer (breaking changes require 2.0).

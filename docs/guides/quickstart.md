@@ -17,7 +17,7 @@ This guide walks through install, open a database, define a schema, and read a r
     **Requires CPython 3.9+.** Wheels use the stable ABI (`cp39-abi3`).
 
     ```bash
-    pip install "modelvault>=0.14.0,<0.15"
+    pip install "modelvault>=0.15.0,<0.16"
     ```
 
 === "Rust"
@@ -26,7 +26,7 @@ This guide walks through install, open a database, define a schema, and read a r
 
     ```toml
     [dependencies]
-    modelvault = "0.14"
+    modelvault = "0.15"
     ```
 
 ## Python: models, insert, get (recommended) {#python-models-insert-get}
@@ -75,7 +75,7 @@ Output:
 
 ```text
 get: Book(title='Hello', year=2020, rating=4.5)
-modelvault 0.14.0
+modelvault 0.15.0
 ```
 
 For a durable file, use `Database.open("app.modelvault")` instead of `open_in_memory()`. Pydantic follows the same pattern—see the [Pydantic guide](pydantic.md).

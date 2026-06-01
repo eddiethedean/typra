@@ -110,14 +110,14 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
 - **Index vs scan, replay idempotence, unique index**
   - Rust: `crates/modelvault-core/tests/integration/property_invariants.rs`
 
-## Release cut checklist (0.14.0) {#release-cut-checklist}
+## Release cut checklist {#release-cut-checklist}
 
-Use this before tagging **`v0.14.0`** and publishing to crates.io / PyPI.
+Use this before tagging **`vX.Y.Z`** (e.g. **`v0.15.0`**) and publishing to crates.io / PyPI.
 
 ### Pre-flight (local)
 
-1. **Workspace version** — root [`Cargo.toml`](https://github.com/eddiethedean/modelvault/blob/main/Cargo.toml) `[workspace.package] version = "0.14.0"` matches the intended tag.
-2. **Changelog** — [`CHANGELOG.md`](https://github.com/eddiethedean/modelvault/blob/main/CHANGELOG.md) has a dated **`[0.14.0]`** section; **`[Unreleased]`** is empty or only future work.
+1. **Workspace version** — root [`Cargo.toml`](https://github.com/eddiethedean/modelvault/blob/main/Cargo.toml) `[workspace.package] version` matches the intended tag (currently **0.15.0**).
+2. **Changelog** — [`CHANGELOG.md`](https://github.com/eddiethedean/modelvault/blob/main/CHANGELOG.md) has a dated section for the release; **`[Unreleased]`** is empty or only future work.
 3. **Readiness pipeline** — from repo root:
 
    ```bash
@@ -134,28 +134,28 @@ Use this before tagging **`v0.14.0`** and publishing to crates.io / PyPI.
 2. **Tag** (must match `Cargo.toml` exactly):
 
    ```bash
-   git tag -a v0.14.0 -m "ModelVault 1.0.0"
+   git tag -a v0.15.0 -m "ModelVault 0.15.0"
    git push origin main
-   git push origin v0.14.0
+   git push origin v0.15.0
    ```
 
-3. **CI publish** — pushing **`v0.14.0`** triggers [`.github/workflows/publish.yml`](https://github.com/eddiethedean/modelvault/blob/main/.github/workflows/publish.yml) (crates.io then PyPI wheels). Requires repository secrets **`CARGO_REGISTRY_TOKEN`** and **`PYPI_API_TOKEN`**.
+3. **CI publish** — pushing the version tag triggers [`.github/workflows/publish.yml`](https://github.com/eddiethedean/modelvault/blob/main/.github/workflows/publish.yml) (crates.io then PyPI wheels). Requires repository secrets **`CARGO_REGISTRY_TOKEN`** and **`PYPI_API_TOKEN`**.
 
    Manual fallback: [Contributing → Publishing](../dev/contributing_guide.md#publishing) and `./scripts/publish-all.sh`.
 
-4. **GitHub release** — create a release from tag **`v0.14.0`** using the **`[0.14.0]`** changelog section (package rename + upgrade notes). The **`[1.0.0]`** section documents the underlying stable feature milestone.
+4. **GitHub release** — create a release from the tag using the matching **`[X.Y.Z]`** changelog section.
 
 ### Post-publish verification
 
-- **crates.io**: `modelvault`, `modelvault-core`, `modelvault-derive`, and `modelvault-cli` at **0.14.0**.
-- **PyPI**: `pip index versions modelvault` shows **0.14.0**; `pip install "modelvault>=0.14.0,<0.15"` succeeds on your platform.
+- **crates.io**: `modelvault`, `modelvault-core`, `modelvault-derive`, and `modelvault-cli` at the released version.
+- **PyPI**: `pip index versions modelvault` shows the new version; `pip install "modelvault>=0.15.0,<0.16"` succeeds on your platform.
 - **Smoke test**:
 
   ```bash
-  pip install "modelvault>=0.14.0,<0.15"
+  pip install "modelvault>=0.15.0,<0.16"
   python -c "import modelvault; print(modelvault.__version__)"
   ```
 
-### Known state before first 0.14.0 publish
+### After shipping 0.15.0
 
-If PyPI / crates.io still show **0.13.0** as latest, the code is release-ready but the **`v0.14.0`** tag has not been pushed yet — complete the steps above to ship.
+Document any post-release fixes in **`[Unreleased]`** or a patch **`0.15.x`** section as appropriate.

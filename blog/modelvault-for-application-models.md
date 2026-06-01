@@ -82,7 +82,7 @@ Full ISO SQL and SQLAlchemy integration are on the roadmap; ModelVault 1.0 is **
 ## Try it in five minutes
 
 ```bash
-pip install "modelvault>=0.14.0,<0.15" pydantic
+pip install "modelvault>=0.15.0,<0.16" pydantic
 ```
 
 Docs: [modelvault.readthedocs.io](https://modelvault.readthedocs.io/en/latest/)
@@ -93,7 +93,7 @@ Rust:
 
 ```toml
 [dependencies]
-modelvault = "0.14"
+modelvault = "0.15"
 ```
 
 ## The goal

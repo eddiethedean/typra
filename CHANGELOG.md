@@ -7,14 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.15.0] - 2026-06-02
+
 ### Added
 
-- **Concurrent reads on one handle** (Python `Database` / `AsyncDatabase`, Rust `AsyncDatabase` with `async` feature): `get`, `query`, and other read paths use a shared lock; writes and open transactions remain exclusive. Multiple `asyncio.gather` read tasks or blocking-thread reads can overlap engine work (~2× throughput vs sequential awaits for read-heavy batches in typical probes).
+- **Python `AsyncDatabase`** (experimental): asyncio surface (`await AsyncDatabase.open(...)`, `AsyncTransaction`, `AsyncCollection` / `AsyncQuery`, `modelvault.models.async_collection` / `async_plan` / `async_apply`) on a thread pool via Tokio `spawn_blocking`.
+- **Concurrent reads on one handle** (Python `Database` / `AsyncDatabase`, Rust `AsyncDatabase` with `async` feature): `get`, `query`, and other read paths use a shared lock; writes and open transactions remain exclusive.
+- **FastAPI async example**: [`examples/fastapi_app/main_async.py`](examples/fastapi_app/main_async.py).
 
 ### Changed
 
 - **Python bindings**: replaced process-wide `Mutex` on the engine with `RwLock` + transaction-depth tracking (reads upgrade to exclusive lock while a transaction is open).
-- **Docs / READMEs**: concurrency model documented in [async policy](docs/reference/async_policy.md), [operations runbook](docs/ops/operations_and_failure_modes.md), and guides.
+- **Docs / READMEs**: concurrency and async policy documented across guides and READMEs.
+- **CI / dev**: `pytest-asyncio` installed for `make check-full` and GitHub Actions.
+
+### Notes
+
+- **Upgrading from 0.14.x:** on-disk format unchanged; pin `modelvault>=0.15.0,<0.16` (Python) or `modelvault = "0.15"` (Rust).
 
 ## [0.14.0] - 2026-06-01
 
@@ -245,5 +256,6 @@ See the release notes above for details.
 [0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
 [0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
 [0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
+[0.15.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.15.0
 [0.14.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.14.0
 [1.0.0]: https://github.com/eddiethedean/modelvault/releases/tag/v1.0.0

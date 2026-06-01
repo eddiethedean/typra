@@ -15,7 +15,7 @@ Most applications should depend on **`modelvault`**:
 
 ```toml
 [dependencies]
-modelvault = "0.14"
+modelvault = "0.15"
 ```
 
 It re-exports the engine and (by default) enables `#[derive(DbModel)]`.
