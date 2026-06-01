@@ -1,4 +1,4 @@
-# modelvault (Python)
+# ModelVault
 
 [![CI](https://github.com/eddiethedean/modelvault/actions/workflows/ci.yml/badge.svg)](https://github.com/eddiethedean/modelvault/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/modelvault.svg)](https://pypi.org/project/modelvault/)
