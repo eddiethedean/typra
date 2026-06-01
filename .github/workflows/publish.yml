@@ -132,7 +132,8 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum modelvault-* | tee SHA256SUMS
+          sha256sum modelvault-* > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Publish to PyPI (twine)
         shell: bash
