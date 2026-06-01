@@ -1,5 +1,6 @@
     use super::*;
     use crate::segments::header::{SegmentHeader, SegmentType};
+    use crate::segments::reader::read_segment_header_at;
     use crate::segments::writer::SegmentWriter;
     use crate::storage::VecStore;
     use crate::txn::encode_txn_payload_v0;
@@ -53,8 +54,9 @@
                 &p2,
             )
             .unwrap();
-        let err = truncate_end_for_recovery(&mut store, 0, FORMAT_MINOR_V6).unwrap_err();
-        assert!(matches!(err, DbError::Format(FormatError::InvalidTxnPayload { .. })));
+        let (safe_end, reason) = truncate_end_for_recovery(&mut store, 0, FORMAT_MINOR_V6).unwrap();
+        assert_eq!(safe_end, 0);
+        assert_eq!(reason, Some("uncommitted_transaction"));
 
         // TxnCommit outside transaction.
         let mut store2 = VecStore::new();
@@ -148,19 +150,17 @@
                 b"abc",
             )
             .unwrap();
+        drop(w);
 
-        // Corrupt the stored header CRC so the scan detects it.
         let mut metas = scan_segments_allow_tail_tear(&mut store, 0).unwrap();
+        assert_eq!(metas.len(), 1);
         let meta = metas.pop().unwrap();
         let mut hdr = meta.header;
         hdr.payload_crc32c = hdr.payload_crc32c.wrapping_add(1);
         store.write_all_at(meta.offset, &hdr.encode()).unwrap();
 
-        let err = scan_segments_allow_tail_tear(&mut store, 0).unwrap_err();
-        assert!(matches!(
-            err,
-            DbError::Format(FormatError::BadSegmentPayloadChecksum)
-        ));
+        let metas = scan_segments_allow_tail_tear(&mut store, 0).unwrap();
+        assert!(metas.is_empty());
     }
 
     #[test]
@@ -236,6 +236,46 @@
         let (safe_end, reason) = truncate_end_for_recovery(&mut store, 0, FORMAT_MINOR_V6).unwrap();
         assert_eq!(reason, Some("torn_tail"));
         assert!(safe_end < store.len().unwrap());
+    }
+
+    #[test]
+    fn scan_segments_allow_tail_tear_stops_at_bad_crc() {
+        let mut store = VecStore::new();
+        let mut w = SegmentWriter::new(&mut store, 0);
+        let _ = w
+            .append(
+                SegmentHeader {
+                    segment_type: SegmentType::Temp,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                b"good",
+            )
+            .unwrap();
+        drop(w);
+        let good_end = store.len().unwrap();
+
+        let mut w2 = SegmentWriter::new(&mut store, good_end);
+        let off = w2
+            .append(
+                SegmentHeader {
+                    segment_type: SegmentType::Manifest,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                b"bad!",
+            )
+            .unwrap();
+        drop(w2);
+        let mut hdr = read_segment_header_at(&mut store, off).unwrap().1;
+        hdr.payload_crc32c = hdr.payload_crc32c.wrapping_add(1);
+        store.write_all_at(off, &hdr.encode()).unwrap();
+
+        let metas = scan_segments_allow_tail_tear(&mut store, 0).unwrap();
+        assert_eq!(metas.len(), 1);
+        let (safe_end, reason) = truncate_end_for_recovery(&mut store, 0, FORMAT_MINOR_V6).unwrap();
+        assert_eq!(safe_end, good_end);
+        assert_eq!(reason, Some("torn_tail"));
     }
 
     #[test]

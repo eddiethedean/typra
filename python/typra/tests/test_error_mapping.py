@@ -61,3 +61,21 @@ def test_dbapi_parse_error_raises_typra_query_error(tmp_path: pathlib.Path) -> N
     with pytest.raises(typra.TypraQueryError) as e:
         cur.execute("SELECT FROM")
     assert isinstance(e.value, ValueError)
+
+
+def test_unique_index_violation_raises_typra_schema_error() -> None:
+    db = typra.Database.open_in_memory()
+    fields = (
+        '[{"path": ["id"], "type": "string"}, {"path": ["title"], "type": "string"}]'
+    )
+    indexes = '[{"name": "title_unique", "path": ["title"], "kind": "unique"}]'
+    db.register_collection("books", fields, "id", indexes)
+    db.insert("books", {"id": "a", "title": "A"})
+    with pytest.raises(typra.TypraSchemaError):
+        db.insert("books", {"id": "b", "title": "A"})
+
+
+def test_compact_to_maps_format_errors(tmp_path: pathlib.Path) -> None:
+    db = typra.Database.open_in_memory()
+    with pytest.raises(ValueError):
+        db.compact_to(str(tmp_path / "out.typra"))

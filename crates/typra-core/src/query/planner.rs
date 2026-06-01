@@ -16,6 +16,21 @@ use super::ast::{OrderBy, OrderDirection};
 use super::ast::{Predicate, Query};
 use super::operators::{LimitOp, RowKey, RowSource};
 
+fn row_for_index_pk(
+    latest: &crate::db::LatestMap,
+    collection_id: u32,
+    pk_key: Vec<u8>,
+    index_name: &str,
+) -> Result<BTreeMap<String, RowValue>, DbError> {
+    latest
+        .get(&(collection_id, pk_key))
+        .cloned()
+        .ok_or(DbError::Schema(SchemaError::IndexRowMissing {
+            collection_id,
+            index_name: index_name.to_string(),
+        }))
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Plan {
     IndexLookup {
@@ -121,22 +136,27 @@ pub fn execute_query(
             order_by,
         } => {
             let mut out = Vec::new();
-            let push_row = |out: &mut Vec<BTreeMap<String, RowValue>>, pk_key: Vec<u8>| {
-                if let Some(row) = latest.get(&(collection_id, pk_key)).cloned() {
-                    out.push(row);
-                }
-            };
 
             match kind {
                 IndexKind::Unique => {
                     if let Some(pk) = indexes.unique_lookup(collection_id, &index_name, &key) {
-                        push_row(&mut out, pk.to_vec());
+                        out.push(row_for_index_pk(
+                            latest,
+                            collection_id,
+                            pk.to_vec(),
+                            &index_name,
+                        )?);
                     }
                 }
                 IndexKind::NonUnique => {
                     if let Some(pks) = indexes.non_unique_lookup(collection_id, &index_name, &key) {
                         for pk in pks {
-                            push_row(&mut out, pk);
+                            out.push(row_for_index_pk(
+                                latest,
+                                collection_id,
+                                pk,
+                                &index_name,
+                            )?);
                         }
                     }
                 }
@@ -225,6 +245,7 @@ impl<'a> Iterator for QueryRowIter<'a> {
 struct IndexUniqueSource<'a> {
     latest: &'a crate::db::LatestMap,
     collection_id: u32,
+    index_name: String,
     pk: Option<Vec<u8>>,
     residual: Option<Predicate>,
     done: bool,
@@ -237,9 +258,17 @@ impl RowSource for IndexUniqueSource<'_> {
         }
         self.done = true;
         let pk_key = self.pk.take()?;
-        let row = self.latest.get(&(self.collection_id, pk_key.clone()))?;
+        let row = match row_for_index_pk(
+            self.latest,
+            self.collection_id,
+            pk_key.clone(),
+            &self.index_name,
+        ) {
+            Ok(r) => r,
+            Err(e) => return Some(Err(e)),
+        };
         if let Some(pred) = &self.residual {
-            if !eval_predicate(row, pred) {
+            if !eval_predicate(&row, pred) {
                 return None;
             }
         }
@@ -250,6 +279,7 @@ impl RowSource for IndexUniqueSource<'_> {
 struct IndexNonUniqueSource<'a> {
     latest: &'a crate::db::LatestMap,
     collection_id: u32,
+    index_name: String,
     pks: std::vec::IntoIter<Vec<u8>>,
     residual: Option<Predicate>,
 }
@@ -257,11 +287,17 @@ struct IndexNonUniqueSource<'a> {
 impl RowSource for IndexNonUniqueSource<'_> {
     fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
         for pk_key in self.pks.by_ref() {
-            let Some(row) = self.latest.get(&(self.collection_id, pk_key.clone())) else {
-                continue;
+            let row = match row_for_index_pk(
+                self.latest,
+                self.collection_id,
+                pk_key.clone(),
+                &self.index_name,
+            ) {
+                Ok(r) => r,
+                Err(e) => return Some(Err(e)),
             };
             if let Some(pred) = &self.residual {
-                if !eval_predicate(row, pred) {
+                if !eval_predicate(&row, pred) {
                     continue;
                 }
             }
@@ -332,6 +368,7 @@ pub fn execute_query_iter<'a>(
                 Box::new(IndexUniqueSource {
                     latest,
                     collection_id,
+                    index_name,
                     pk,
                     residual,
                     done: false,
@@ -345,6 +382,7 @@ pub fn execute_query_iter<'a>(
                 Box::new(IndexNonUniqueSource {
                     latest,
                     collection_id,
+                    index_name,
                     pks,
                     residual,
                 })
@@ -478,17 +516,14 @@ fn open_sorted_query_spill_store(path: &std::path::Path) -> Result<SortedQuerySp
             return r.map(SortedQuerySpillStore::File);
         }
     }
-    let spill_file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(false)
-        .open(path)
-        .map_err(DbError::Io)?;
+    let _ = path;
+    // Never spill into the live DB file: a second handle would race with truncate-on-drop.
+    let spill_file = tempfile::tempfile().map_err(DbError::Io)?;
     Ok(SortedQuerySpillStore::File(FileStore::new(spill_file)))
 }
 
 /// Like [`execute_query_iter`], but when `q.order_by` is set this will attempt a bounded-memory
-/// external sort by spilling ephemeral `Temp` segments to the underlying DB file.
+/// external sort by spilling ephemeral `Temp` segments to a dedicated temporary file.
 ///
 /// If `db_path` is `None` (e.g. in-memory), this falls back to the in-memory sort path.
 pub fn execute_query_iter_with_spill_path<'a>(
@@ -535,6 +570,7 @@ pub fn execute_query_iter_with_spill_path<'a>(
             IndexKind::Unique => Box::new(IndexUniqueSource {
                 latest,
                 collection_id,
+                index_name: index_name.clone(),
                 pk: indexes
                     .unique_lookup(collection_id, &index_name, &key)
                     .map(|p| p.to_vec()),
@@ -544,6 +580,7 @@ pub fn execute_query_iter_with_spill_path<'a>(
             IndexKind::NonUnique => Box::new(IndexNonUniqueSource {
                 latest,
                 collection_id,
+                index_name: index_name.clone(),
                 pks: indexes
                     .non_unique_lookup(collection_id, &index_name, &key)
                     .unwrap_or_default()

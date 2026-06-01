@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyDict, PyList, PyString, PyTuple};
+use pyo3::types::{PyAnyMethods, PyDict, PyList, PyModule, PyString, PyTuple};
 
 use typra_core::schema::{FieldPath, Type};
 use typra_core::{validate_model_fields_against_catalog, FieldDef};
@@ -548,14 +548,47 @@ fn row_dict_for_model<'py>(
     d: &Bound<'py, PyDict>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let names = model_top_level_field_names(py, cls)?;
+    let hints = get_type_hints(py, cls)?;
+    let dt_mod = PyModule::import(py, "datetime")?;
+    let dt_cls = dt_mod.getattr("datetime")?;
     let out = PyDict::new(py);
     for (k, v) in d.iter() {
         let key: String = k.extract()?;
-        if names.contains(&key) {
-            out.set_item(k, v)?;
+        if !names.contains(&key) {
+            continue;
         }
+        let mut val = v.clone();
+        if let Some(hint) = hints.bind(py).get_item(&key)? {
+            if is_datetime_hint(py, &hint, &dt_cls)? {
+                if let Ok(micros) = val.extract::<i64>() {
+                    val = crate::row_values::timestamp_to_py(py, micros)?.into_any();
+                }
+            }
+        }
+        out.set_item(k, val)?;
     }
     Ok(out)
+}
+
+fn is_datetime_hint(
+    py: Python<'_>,
+    hint: &Bound<'_, PyAny>,
+    dt_cls: &Bound<'_, PyAny>,
+) -> PyResult<bool> {
+    if hint.is(dt_cls) {
+        return Ok(true);
+    }
+    let (origin, args) = origin_and_args(py, hint)?;
+    if let Some(o) = origin {
+        let typing = typing_mod(py)?;
+        if o.is(&typing.getattr("Union")?) {
+            return Ok(args.iter().any(|a| a.is(dt_cls)));
+        }
+        if o.is(&typing.getattr("Annotated")?) && !args.is_empty() {
+            return is_datetime_hint(py, &args[0], dt_cls);
+        }
+    }
+    Ok(false)
 }
 
 fn dict_to_obj(
@@ -684,6 +717,19 @@ impl ModelCollection {
         Ok(Some(obj))
     }
 
+    fn delete(&self, py: Python<'_>, pk_or_obj: &Bound<'_, PyAny>) -> PyResult<()> {
+        let cls = self.model_cls.bind(py);
+        let pk = if pk_or_obj.is_instance(cls)? {
+            let pk_name = primary_key_for(&cls)?;
+            pk_or_obj.getattr(&pk_name)?
+        } else {
+            pk_or_obj.clone()
+        };
+        let db = self.db.bind(py);
+        db.call_method1("delete", (&self.name, pk))?;
+        Ok(())
+    }
+
     #[pyo3(name = "where")]
     fn where_(
         &self,
@@ -762,11 +808,20 @@ impl ModelCollection {
 #[pymethods]
 impl ModelQuery {
     fn select(&self, py: Python<'_>, fields: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let fields = if let Ok(list) = fields.cast::<PyList>() {
+            let out = PyList::empty(py);
+            for item in list.iter() {
+                out.append(path_any_to_py(py, &item)?)?;
+            }
+            out.into_any().unbind()
+        } else {
+            path_any_to_py(py, fields)?.unbind()
+        };
         Ok(Self {
             inner: self.inner.clone_ref(py),
             model_cls: self.model_cls.clone_ref(py),
             is_pydantic: self.is_pydantic,
-            selected_fields: Some(fields.clone().unbind()),
+            selected_fields: Some(fields),
         })
     }
 

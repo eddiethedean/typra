@@ -64,6 +64,48 @@
     }
 
     #[test]
+    fn try_load_checkpoint_state_rejects_replay_from_before_segment_end() {
+        use crate::checkpoint::{encode_checkpoint_payload_v0, CheckpointV0, CHECKPOINT_VERSION_V0};
+
+        let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
+        let mut store = VecStore::new();
+        store.truncate(segment_start + 4096).unwrap();
+
+        let cp = CheckpointV0 {
+            replay_from_offset: 0,
+            catalog_records: vec![],
+            record_payloads: vec![],
+            index_entries: vec![],
+        };
+        let payload = encode_checkpoint_payload_v0(&cp);
+        assert_eq!(
+            &payload[..2],
+            CHECKPOINT_VERSION_V0.to_le_bytes().as_slice()
+        );
+        let mut w = SegmentWriter::new(&mut store, segment_start);
+        let off = w
+            .append(
+                SegmentHeader {
+                    segment_type: SegmentType::Checkpoint,
+                    payload_len: 0,
+                    payload_crc32c: 0,
+                },
+                &payload,
+            )
+            .unwrap();
+        drop(w);
+
+        let mut sb = Superblock::empty();
+        sb.checkpoint_offset = off;
+        sb.checkpoint_len = payload.len() as u32;
+        let err = try_load_checkpoint_state(&mut store, &sb, segment_start).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Format(FormatError::InvalidCheckpointPayload { .. })
+        ));
+    }
+
+    #[test]
     fn strict_open_rejects_torn_tail_as_unclean_log_tail() {
         let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
 

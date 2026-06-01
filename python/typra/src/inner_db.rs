@@ -12,6 +12,8 @@ use typra_core::storage::{FileStore, VecStore};
 use typra_core::Database as CoreDatabase;
 use typra_core::MigrationPlan;
 
+use crate::errors::db_error_to_py;
+
 pub(crate) enum InnerDb {
     File(CoreDatabase<FileStore>),
     Mem(CoreDatabase<VecStore>),
@@ -204,9 +206,7 @@ impl InnerDb {
 
     pub(crate) fn compact_to(&self, dest_path: &str) -> Result<(), PyErr> {
         match self {
-            InnerDb::File(d) => d
-                .compact_to(dest_path)
-                .map_err(|e| PyValueError::new_err(format!("{e}"))),
+            InnerDb::File(d) => d.compact_to(dest_path).map_err(db_error_to_py),
             InnerDb::Mem(_) => Err(PyValueError::new_err(
                 "compact_to is only supported for file-backed databases",
             )),
@@ -215,9 +215,7 @@ impl InnerDb {
 
     pub(crate) fn compact_in_place(&mut self) -> Result<(), PyErr> {
         match self {
-            InnerDb::File(d) => d
-                .compact_in_place()
-                .map_err(|e| PyValueError::new_err(format!("{e}"))),
+            InnerDb::File(d) => d.compact_in_place().map_err(db_error_to_py),
             InnerDb::Mem(_) => Err(PyValueError::new_err(
                 "compact_in_place is only supported for file-backed databases",
             )),
@@ -226,12 +224,8 @@ impl InnerDb {
 
     pub(crate) fn export_snapshot_to_path(&mut self, dest_path: &str) -> PyResult<()> {
         match self {
-            InnerDb::File(d) => d
-                .export_snapshot_to_path(dest_path)
-                .map_err(|e| PyValueError::new_err(format!("{e}"))),
-            InnerDb::Mem(d) => d
-                .export_snapshot_to_path(dest_path)
-                .map_err(|e| PyValueError::new_err(format!("{e}"))),
+            InnerDb::File(d) => d.export_snapshot_to_path(dest_path).map_err(db_error_to_py),
+            InnerDb::Mem(d) => d.export_snapshot_to_path(dest_path).map_err(db_error_to_py),
         }
     }
 
@@ -243,7 +237,7 @@ impl InnerDb {
             snapshot_path,
             dest_path,
         )
-        .map_err(|e| PyValueError::new_err(format!("{e}")))
+        .map_err(db_error_to_py)
     }
 
     pub(crate) fn begin_transaction(&mut self) -> Result<(), typra_core::DbError> {

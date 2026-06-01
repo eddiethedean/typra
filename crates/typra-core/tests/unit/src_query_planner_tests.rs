@@ -64,6 +64,7 @@ fn index_unique_source_done_and_residual_paths() {
     let mut s = super::IndexUniqueSource {
         latest: &latest,
         collection_id: 1,
+        index_name: "idx".to_string(),
         pk: Some(b"pk".to_vec()),
         residual: Some(Predicate::Eq {
             path: FieldPath(vec![Cow::Borrowed("x")]),
@@ -77,6 +78,7 @@ fn index_unique_source_done_and_residual_paths() {
     let mut s2 = super::IndexUniqueSource {
         latest: &latest,
         collection_id: 1,
+        index_name: "idx".to_string(),
         pk: Some(b"pk".to_vec()),
         residual: None,
         done: true,
@@ -85,7 +87,7 @@ fn index_unique_source_done_and_residual_paths() {
 }
 
 #[test]
-fn index_non_unique_source_skips_missing_rows_and_returns_none_at_end() {
+fn index_non_unique_source_errors_on_missing_row() {
     let mut latest = LatestMap::default();
     latest.insert(
         (1, b"present".to_vec()),
@@ -95,13 +97,15 @@ fn index_non_unique_source_skips_missing_rows_and_returns_none_at_end() {
     let mut s = super::IndexNonUniqueSource {
         latest: &latest,
         collection_id: 1,
+        index_name: "idx".to_string(),
         pks: vec![b"missing".to_vec(), b"present".to_vec()].into_iter(),
         residual: None,
     };
-    let rk = s.next_key().unwrap().unwrap();
-    assert_eq!(rk.0 .0, 1);
-    assert_eq!(rk.1, b"present".to_vec());
-    assert!(s.next_key().is_none());
+    let err = s.next_key().unwrap().unwrap_err();
+    assert!(matches!(
+        err,
+        DbError::Schema(crate::SchemaError::IndexRowMissing { .. })
+    ));
 }
 
 struct OneMissingThenEnd {
@@ -267,6 +271,7 @@ fn index_unique_source_success_then_done() {
     let mut s = super::IndexUniqueSource {
         latest: &latest,
         collection_id: 1,
+        index_name: "idx".to_string(),
         pk: Some(b"pk".to_vec()),
         residual: Some(Predicate::Eq {
             path: FieldPath(vec![Cow::Borrowed("x")]),
@@ -288,6 +293,7 @@ fn index_non_unique_source_residual_filter_skips_row() {
     let mut s = super::IndexNonUniqueSource {
         latest: &latest,
         collection_id: 1,
+        index_name: "idx".to_string(),
         pks: vec![b"present".to_vec()].into_iter(),
         residual: Some(Predicate::Eq {
             path: FieldPath(vec![Cow::Borrowed("x")]),
@@ -311,6 +317,7 @@ fn index_non_unique_source_residual_filter_continues_then_returns_next_match() {
     let mut s = super::IndexNonUniqueSource {
         latest: &latest,
         collection_id: 1,
+        index_name: "idx".to_string(),
         pks: vec![b"a".to_vec(), b"b".to_vec()].into_iter(),
         residual: Some(Predicate::Eq {
             path: FieldPath(vec![Cow::Borrowed("x")]),
@@ -959,16 +966,21 @@ fn sorted_query_spill_file_path_handles_empty_sorted_run_when_snapshot_empty() {
 }
 
 #[test]
-fn index_unique_source_returns_none_when_pk_row_missing() {
+fn index_unique_source_errors_when_pk_row_missing() {
     let latest = LatestMap::default();
     let mut src = super::IndexUniqueSource {
         latest: &latest,
         collection_id: 1,
+        index_name: "idx".to_string(),
         pk: Some(b"k".to_vec()),
         residual: None,
         done: false,
     };
-    assert!(src.next_key().is_none());
+    let err = src.next_key().unwrap().unwrap_err();
+    assert!(matches!(
+        err,
+        DbError::Schema(crate::SchemaError::IndexRowMissing { .. })
+    ));
 }
 
 #[test]
@@ -1028,8 +1040,11 @@ fn execute_query_unique_index_lookup_with_missing_pk_does_not_push_row() {
         order_by: None,
     };
 
-    let out = super::execute_query(&cat, &idx, &latest, &q).unwrap();
-    assert!(out.is_empty());
+    let err = super::execute_query(&cat, &idx, &latest, &q).unwrap_err();
+    assert!(matches!(
+        err,
+        DbError::Schema(crate::SchemaError::IndexRowMissing { .. })
+    ));
 }
 
 #[test]
@@ -1064,7 +1079,7 @@ fn sorted_query_spill_path_some_propagates_unknown_collection_error() {
 }
 
 #[test]
-fn sorted_query_spill_open_missing_file_maps_to_io_error() {
+fn sorted_query_spill_uses_tempfile_not_db_path() {
     let mut cat = Catalog::default();
     cat.apply_record(CatalogRecordWire::CreateCollection {
         collection_id: 1,
@@ -1090,22 +1105,15 @@ fn sorted_query_spill_open_missing_file_maps_to_io_error() {
 
     let dir = tempfile::tempdir().unwrap();
     let missing = dir.path().join("does_not_exist.typra");
-    let err = match super::execute_query_iter_with_spill_path(
+    let mut it = super::execute_query_iter_with_spill_path(
         &cat,
         &indexes,
         &latest,
         &q,
         Some(&missing),
     )
-    {
-        Ok(_) => panic!("expected Err"),
-        Err(e) => e,
-    };
-
-    match err {
-        DbError::Io(_) => {}
-        other => panic!("expected Io, got {other:?}"),
-    }
+    .unwrap();
+    assert!(it.next().is_none());
 }
 
 #[test]

@@ -28,7 +28,7 @@ See the [Python guide → Models](../guides/python.md) and the package README on
   - `open_in_memory() -> Database`
   - `open_snapshot_bytes(data: bytes) -> Database`
   - `open_snapshot(path: str) -> Database`
-  - `restore_snapshot(path: str) -> None`
+  - `restore_snapshot(snapshot_path: str, dest_path: str) -> None`
   - `path() -> str`
   - `register_collection(name, fields_json, primary_field, indexes_json=None) -> (collection_id, schema_version)`
   - `register_schema_version(name, fields_json, indexes_json=None, *, force=False) -> schema_version`
@@ -59,6 +59,9 @@ Typra maps engine errors to standard Python exceptions (`ValueError`, `OSError`,
 
 - `where(path, value)` (equality)
 - `and_where(path, value)`
+- `lt_where(path, value)`, `lte_where`, `gt_where`, `gte_where`
+- `or_where(other_query)`
+- `order_by(path, *, desc=False)`
 - `limit(n)`
 - `explain() -> str`
 - `all(fields: list[str] | None = None) -> list[dict]` (subset projection)

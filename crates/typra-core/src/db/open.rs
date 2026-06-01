@@ -72,7 +72,17 @@ fn try_load_checkpoint_state(
     let payload = read_segment_payload(store, &meta)?;
     let crc = crate::checksum::crc32c(&payload);
     if crc != header.payload_crc32c { return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum)); }
+    let checkpoint_end = sb.checkpoint_offset
+        + crate::segments::header::SEGMENT_HEADER_LEN as u64
+        + header.payload_len as u64;
     let (replay_from, catalog, latest, indexes) = crate::checkpoint::state_from_checkpoint_payload(&payload)?;
+    if replay_from < checkpoint_end {
+        return Err(DbError::Format(FormatError::InvalidCheckpointPayload {
+            message: format!(
+                "replay_from_offset {replay_from} is before checkpoint segment end {checkpoint_end}"
+            ),
+        }));
+    }
     Ok(Some((replay_from, catalog, latest, indexes)))
 }
 
@@ -150,6 +160,7 @@ pub(crate) fn open_with_store<S: Store>(
                 let (cat, lat, idx) = replay::load_catalog_latest_and_indexes(&mut store, segment_start, format_minor)?;
                 (cat, lat, idx, store.len()?)
             }
+            Err(e @ DbError::Format(FormatError::InvalidCheckpointPayload { .. })) => return Err(e),
             Err(e) => match opts.recovery {
                 RecoveryMode::Strict => return Err(e),
                 RecoveryMode::AutoTruncate => {

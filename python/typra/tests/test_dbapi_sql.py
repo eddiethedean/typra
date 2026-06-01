@@ -1,6 +1,30 @@
 import typra
 
 
+def test_dbapi_connect_uses_read_only_handle(tmp_path):
+    db_path = tmp_path / "app.typra"
+    db = typra.Database.open(str(db_path))
+    db.register_collection(
+        "books",
+        '[{"path": ["id"], "type": "int64"}]',
+        "id",
+    )
+    del db
+    import gc
+
+    gc.collect()
+
+    conn = typra.dbapi.connect(str(db_path))
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM books")
+    assert cur.fetchall() == []
+    cur.close()
+    conn.close()
+
+    db2 = typra.Database.open(str(db_path))
+    assert db2.path().endswith("app.typra")
+
+
 def test_dbapi_connect_execute_fetch_and_description(tmp_path):
     db_path = tmp_path / "app.typra"
     db = typra.Database.open(str(db_path))
@@ -82,7 +106,6 @@ def test_dbapi_commit_and_rollback_are_callable(tmp_path):
     cur.execute("SELECT * FROM books", None)
     assert cur.fetchone() == (1,)
 
-    # Read-only adapter: commit/rollback should be no-ops but callable.
     conn.commit()
     conn.rollback()
 

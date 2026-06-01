@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Optional
 
+import gc
 import pytest
 
 import typra
@@ -192,3 +194,61 @@ def test_models_incompatible_primary_key_raises_schema_error() -> None:
 
     with pytest.raises(typra.TypraSchemaError):
         typra.models.collection(db, BadBook)
+
+
+def test_models_datetime_insert_and_roundtrip() -> None:
+    @dataclass
+    class Event:
+        __typra_primary_key__ = "id"
+        id: str
+        published_at: datetime
+
+    from datetime import timezone
+
+    db = typra.Database.open_in_memory()
+    events = typra.models.collection(db, Event)
+    when = datetime(2020, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    events.insert(Event(id="e1", published_at=when))
+    got = events.get("e1")
+    assert got is not None
+    assert got.published_at == when
+
+
+def test_models_delete_by_pk_and_object() -> None:
+    db = typra.Database.open_in_memory()
+    books = typra.models.collection(db, Book)
+    books.insert(Book(title="Hello", year=2020))
+    books.delete("Hello")
+    assert books.get("Hello") is None
+
+    books.insert(Book(title="World", year=2021))
+    books.delete(Book(title="World", year=2021))
+    assert books.get("World") is None
+
+
+def test_database_delete_and_read_only(tmp_path) -> None:
+    path = tmp_path / "t.typra"
+    db = typra.Database.open(str(path))
+    fields = '[{"path":["id"],"type":"string"},{"path":["v"],"type":"int64"}]'
+    db.register_collection("t", fields, "id")
+    db.insert("t", {"id": "k1", "v": 1})
+    db.delete("t", "k1")
+    assert db.get("t", "k1") is None
+    del db
+    gc.collect()
+
+    db2 = typra.Database.open(str(path), read_only=True)
+    assert db2.get("t", "k1") is None
+
+
+def test_database_rebuild_indexes(tmp_path) -> None:
+    path = tmp_path / "idx.typra"
+    db = typra.Database.open(str(path))
+    fields = '[{"path":["id"],"type":"string"},{"path":["year"],"type":"int64"}]'
+    indexes = '[{"name": "year_idx", "path": ["year"], "kind": "index"}]'
+    db.register_collection("books", fields, "id", indexes)
+    db.insert("books", {"id": "a", "year": 2020})
+    db.rebuild_indexes("books")
+    rows = db.collection("books").where("year", 2020).all()
+    assert len(rows) == 1
+    assert rows[0]["id"] == "a"

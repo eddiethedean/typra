@@ -237,7 +237,7 @@ pub fn scalar_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>, ty: &Type) -> PyRe
             arr.copy_from_slice(&bytes);
             Ok(ScalarValue::Uuid(arr))
         }
-        Type::Timestamp => obj.extract::<i64>().map(ScalarValue::Timestamp),
+        Type::Timestamp => timestamp_from_py(py, obj),
         Type::Optional(_) | Type::List(_) | Type::Object(_) | Type::Enum(_) => Err(
             PyValueError::new_err("internal: scalar_from_py called on composite type"),
         ),
@@ -292,4 +292,30 @@ fn row_value_to_py(py: Python<'_>, v: &RowValue) -> PyResult<Py<PyAny>> {
             Ok(d.into_any().unbind())
         }
     }
+}
+
+fn timestamp_from_py(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<ScalarValue> {
+    if let Ok(v) = obj.extract::<i64>() {
+        return Ok(ScalarValue::Timestamp(v));
+    }
+    let dt_mod = py.import("datetime")?;
+    let dt_cls = dt_mod.getattr("datetime")?;
+    if obj.is_instance(&dt_cls)? {
+        let secs: f64 = obj.call_method0("timestamp")?.extract()?;
+        return Ok(ScalarValue::Timestamp((secs * 1_000_000.0).round() as i64));
+    }
+    Err(PyValueError::new_err(
+        "timestamp field expects int64 (Unix microseconds) or datetime.datetime",
+    ))
+}
+
+pub(crate) fn timestamp_to_py(py: Python<'_>, micros: i64) -> PyResult<Bound<'_, PyAny>> {
+    let dt_mod = py.import("datetime")?;
+    let dt_cls = dt_mod.getattr("datetime")?;
+    let tz_mod = dt_mod.getattr("timezone")?;
+    let utc = tz_mod.getattr("utc")?;
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("tz", utc)?;
+    let secs = micros as f64 / 1_000_000.0;
+    dt_cls.call_method("fromtimestamp", (secs,), Some(&kwargs))
 }

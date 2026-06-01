@@ -136,3 +136,72 @@ fn order_by_is_correct_after_reopen_on_disk() {
         .collect();
     assert_eq!(years, vec![2, 3, 4]);
 }
+
+#[test]
+fn order_by_spill_on_disk_matches_query_for_large_inputs() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("t.typra");
+    let mut db = Database::open(&path).unwrap();
+    let fields = vec![field("title", Type::String), field("year", Type::Int64)];
+    let (cid, _) = db.register_collection("books", fields, "title").unwrap();
+    for i in 0..6000i64 {
+        insert_book(&mut db, cid, &format!("t{i}"), i);
+    }
+
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: Some(50),
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("year")]),
+            direction: OrderDirection::Desc,
+        }),
+    };
+    let from_vec = db.query(&q).unwrap();
+    let from_iter: Vec<_> = db.query_iter(&q).unwrap().map(|r| r.unwrap()).collect();
+    assert_eq!(from_iter, from_vec);
+    assert_eq!(from_iter[0].get("year"), Some(&RowValue::Int64(5999)));
+}
+
+#[test]
+fn order_by_spill_does_not_truncate_concurrent_writes() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("t.typra");
+    {
+        let mut db = Database::open(&path).unwrap();
+        let fields = vec![field("title", Type::String), field("year", Type::Int64)];
+        let (cid, _) = db.register_collection("books", fields, "title").unwrap();
+        for i in 0..6000i64 {
+            insert_book(&mut db, cid, &format!("t{i}"), i);
+        }
+    }
+
+    let mut db_a = Database::open(&path).unwrap();
+    let mut db_b = Database::open(&path).unwrap();
+    let cid = db_a.collection_id_named("books").unwrap();
+
+    let q = Query {
+        collection: cid,
+        predicate: None,
+        limit: None,
+        order_by: Some(OrderBy {
+            path: FieldPath(vec![Cow::Borrowed("year")]),
+            direction: OrderDirection::Asc,
+        }),
+    };
+    let mut iter = db_a.query_iter(&q).unwrap();
+    for _ in 0..10 {
+        assert!(iter.next().is_some());
+    }
+
+    insert_book(&mut db_b, cid, "concurrent_insert", 9999);
+
+    let _: Vec<_> = iter.map(|r| r.unwrap()).collect();
+
+    let db_check = Database::open(&path).unwrap();
+    let row = db_check
+        .get(cid, &ScalarValue::String("concurrent_insert".to_string()))
+        .unwrap();
+    assert!(row.is_some());
+    assert_eq!(row.unwrap().get("year"), Some(&RowValue::Int64(9999)));
+}

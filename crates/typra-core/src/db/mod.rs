@@ -82,8 +82,9 @@ fn plan_insert_row(
         .fields
         .iter()
         .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-        // Catalog invariants guarantee the declared primary key exists in fields.
-        .unwrap();
+        .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+            name: pk_name.to_string(),
+        }))?;
     let pk_ty = &pk_def.ty;
     validation::ensure_pk_type_primitive(pk_ty)?;
     let mut pk_path = vec![pk_name.to_string()];
@@ -243,7 +244,11 @@ impl<S: Store> Database<S> {
         let mut cols = self.catalog_for_read().collections();
         cols.sort_by_key(|c| c.id.0);
         for c in &cols {
-            let pk = c.primary_field.as_deref().unwrap();
+            let pk = c.primary_field.as_deref().ok_or(DbError::Schema(
+                SchemaError::NoPrimaryKey {
+                    collection_id: c.id.0,
+                },
+            ))?;
             let (new_id, _v1) = out.register_collection_with_indexes(
                 &c.name,
                 c.fields.clone(),
@@ -577,8 +582,7 @@ impl<S: Store> Database<S> {
             .get(id)
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
         // `classify_schema_update` only returns `Ok(...)` variants today; keep it infallible here.
-        match classify_schema_update(&current.fields, &current.indexes, &fields, &indexes).unwrap()
-        {
+        match classify_schema_update(&current.fields, &current.indexes, &fields, &indexes)? {
             SchemaChange::Safe => {}
             SchemaChange::NeedsMigration { reason, .. } => {
                 return Err(DbError::Schema(SchemaError::MigrationRequired {
@@ -634,7 +638,7 @@ impl<S: Store> Database<S> {
             .ok_or(DbError::Schema(SchemaError::UnknownCollection { id: id.0 }))?;
         // Same infallibility contract as `register_schema_version_with_indexes` above.
         let change =
-            classify_schema_update(&current.fields, &current.indexes, &fields, &indexes).unwrap();
+            classify_schema_update(&current.fields, &current.indexes, &fields, &indexes)?;
         let mut steps = Vec::new();
         match &change {
             SchemaChange::Safe => {}

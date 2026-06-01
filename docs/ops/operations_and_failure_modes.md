@@ -42,10 +42,10 @@ On open, choose how to handle corrupt or partial writes:
 
 | Mode | Behavior |
 |------|----------|
-| **`AutoTruncate`** (default for RW) | Truncate torn tails to last committed prefix |
+| **`AutoTruncate`** (default for RW) | Truncate torn tails and stop at first mid-log CRC failure; salvage committed prefix |
 | **`Strict`** | Fail if recovery would require truncation |
 
-Read-only opens use **`Strict`** by default (never truncate).
+Read-only opens use **`Strict`** by default (never truncate). Under **`AutoTruncate`**, a CRC error in the middle of the log is treated like a torn tail: segments before the failure remain readable; bytes from the failure offset onward are discarded. Nested uncommitted transactions (`TxnBegin` without `Commit`) are truncated as well.
 
 Details: [Compatibility → recovery](../reference/compatibility.md#recovery-modes-contract).
 

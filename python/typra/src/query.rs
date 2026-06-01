@@ -4,7 +4,7 @@ use pyo3::types::{PyDict, PyList, PyTuple};
 use std::borrow::Cow;
 
 use typra_core::db::row_subset_by_field_defs;
-use typra_core::query::{Predicate, Query};
+use typra_core::query::{OrderBy, OrderDirection, Predicate, Query};
 use typra_core::schema::{FieldDef, FieldPath, Type};
 
 use crate::database::Database;
@@ -29,8 +29,19 @@ fn parse_path(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
         return Ok(parts);
     }
     Err(PyValueError::new_err(
-        "path must be a dotted string (\"a.b\") or a tuple of strings (\"a\",\"b\")",
+        "path must be a dotted string (\"a.b\") or list[str]",
     ))
+}
+
+fn parse_path_or_field_ref(obj: &Bound<'_, PyAny>) -> PyResult<Vec<String>> {
+    if let Ok(path) = obj.getattr("path") {
+        if let Ok(parts) = path.extract::<Vec<String>>() {
+            if !parts.is_empty() && !parts.iter().any(|p| p.is_empty()) {
+                return Ok(parts);
+            }
+        }
+    }
+    parse_path(obj)
 }
 
 fn to_field_path(parts: &[String]) -> PyResult<FieldPath> {
@@ -46,8 +57,6 @@ fn resolve_leaf_type<'a>(
     col: &'a typra_core::catalog::CollectionInfo,
     fp: &FieldPath,
 ) -> Option<&'a Type> {
-    // If the schema defines this exact path as a field def (including multi-segment paths),
-    // prefer it directly.
     if let Some(def) = col.fields.iter().find(|f| f.path == *fp) {
         return Some(&def.ty);
     }
@@ -80,25 +89,27 @@ fn type_at_nested_segments<'a>(ty: &'a Type, segs: &[Cow<'static, str>]) -> Opti
     }
 }
 
-fn build_predicate(
-    predicates: &[(Vec<String>, typra_core::ScalarValue)],
-) -> PyResult<Option<Predicate>> {
-    if predicates.is_empty() {
-        return Ok(None);
+fn merge_and(existing: Option<Predicate>, new: Predicate) -> Predicate {
+    match existing {
+        None => new,
+        Some(Predicate::And(mut items)) => {
+            items.push(new);
+            Predicate::And(items)
+        }
+        Some(p) => Predicate::And(vec![p, new]),
     }
-    let mut items = Vec::with_capacity(predicates.len());
-    for (parts, value) in predicates {
-        let path = to_field_path(parts)?;
-        items.push(Predicate::Eq {
-            path,
-            value: value.clone(),
-        });
-    }
-    Ok(if items.len() == 1 {
-        Some(items.remove(0))
-    } else {
-        Some(Predicate::And(items))
-    })
+}
+
+fn scalar_for_path(
+    py: Python<'_>,
+    col: &typra_core::catalog::CollectionInfo,
+    parts: &[String],
+    value: &Bound<'_, PyAny>,
+) -> PyResult<typra_core::ScalarValue> {
+    let field_path = to_field_path(parts)?;
+    let leaf_ty = resolve_leaf_type(col, &field_path)
+        .ok_or_else(|| PyValueError::new_err("unknown field path"))?;
+    row_values::scalar_from_py(py, value, leaf_ty)
 }
 
 fn field_defs_allowlist(
@@ -130,7 +141,7 @@ fn one_path_to_field_def(
     col: &typra_core::catalog::CollectionInfo,
     obj: &Bound<'_, PyAny>,
 ) -> PyResult<FieldDef> {
-    let parts = parse_path(obj)?;
+    let parts = parse_path_or_field_ref(obj)?;
     let fp = to_field_path(&parts)?;
     let Some(ty) = resolve_leaf_type(col, &fp) else {
         return Err(PyValueError::new_err(format!(
@@ -160,20 +171,7 @@ impl Collection {
         path: &Bound<'_, PyAny>,
         value: &Bound<'_, PyAny>,
     ) -> PyResult<QueryBuilder> {
-        let parts = parse_path(path)?;
-        let db_ref = self.db.borrow(py);
-        let col = super::database::collection_info(&db_ref.inner, &self.name)?;
-        let field_path = to_field_path(&parts)?;
-        let leaf_ty = resolve_leaf_type(&col, &field_path)
-            .ok_or_else(|| PyValueError::new_err("unknown field path"))?;
-        let scalar = row_values::scalar_from_py(py, value, leaf_ty)?;
-        let db = self.db.clone_ref(py);
-        Ok(QueryBuilder {
-            db,
-            collection_name: self.name.clone(),
-            predicates: vec![(parts, scalar)],
-            limit: None,
-        })
+        self.start_query_with_cmp(py, path, value, |path, value| Predicate::Eq { path, value })
     }
 
     #[pyo3(signature = (fields=None))]
@@ -181,10 +179,43 @@ impl Collection {
         QueryBuilder {
             db: self.db.clone_ref(py),
             collection_name: self.name.clone(),
-            predicates: Vec::new(),
+            predicate: None,
             limit: None,
+            order_by: None,
         }
         .all_impl(py, fields)
+    }
+
+    fn gte_where(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<QueryBuilder> {
+        self.start_query_with_cmp(py, path, value, |path, value| Predicate::Gte { path, value })
+    }
+}
+
+impl Collection {
+    fn start_query_with_cmp(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+        make: fn(FieldPath, typra_core::ScalarValue) -> Predicate,
+    ) -> PyResult<QueryBuilder> {
+        let parts = parse_path_or_field_ref(path)?;
+        let db_ref = self.db.borrow(py);
+        let col = super::database::collection_info(&db_ref.inner, &self.name)?;
+        let scalar = scalar_for_path(py, &col, &parts, value)?;
+        let path_fp = to_field_path(&parts)?;
+        Ok(QueryBuilder {
+            db: self.db.clone_ref(py),
+            collection_name: self.name.clone(),
+            predicate: Some(make(path_fp, scalar)),
+            limit: None,
+            order_by: None,
+        })
     }
 }
 
@@ -192,8 +223,9 @@ impl Collection {
 pub struct QueryBuilder {
     db: Py<Database>,
     collection_name: String,
-    predicates: Vec<(Vec<String>, typra_core::ScalarValue)>,
+    predicate: Option<Predicate>,
     limit: Option<usize>,
+    order_by: Option<OrderBy>,
 }
 
 impl QueryBuilder {
@@ -216,12 +248,11 @@ impl QueryBuilder {
             let cid = g
                 .collection_id_named(&self.collection_name)
                 .map_err(db_error_to_py)?;
-            let pred = build_predicate(&self.predicates)?;
             let q = Query {
                 collection: cid,
-                predicate: pred,
+                predicate: self.predicate.clone(),
                 limit: self.limit,
-                order_by: None,
+                order_by: self.order_by.clone(),
             };
             g.query(&q).map_err(db_error_to_py)?
         };
@@ -238,6 +269,30 @@ impl QueryBuilder {
         }
         Ok(out)
     }
+
+    fn with_cmp(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+        make: fn(FieldPath, typra_core::ScalarValue) -> Predicate,
+    ) -> PyResult<Self> {
+        let parts = parse_path_or_field_ref(path)?;
+        let db_ref = self.db.borrow(py);
+        let col = super::database::collection_info(&db_ref.inner, &self.collection_name)?;
+        let scalar = scalar_for_path(py, &col, &parts, value)?;
+        let path_fp = to_field_path(&parts)?;
+        Ok(Self {
+            db: self.db.clone_ref(py),
+            collection_name: self.collection_name.clone(),
+            predicate: Some(merge_and(
+                self.predicate.clone(),
+                make(path_fp, scalar),
+            )),
+            limit: self.limit,
+            order_by: self.order_by.clone(),
+        })
+    }
 }
 
 #[pymethods]
@@ -246,32 +301,100 @@ impl QueryBuilder {
         Ok(Self {
             db: self.db.clone_ref(py),
             collection_name: self.collection_name.clone(),
-            predicates: self.predicates.clone(),
+            predicate: self.predicate.clone(),
             limit: Some(n),
+            order_by: self.order_by.clone(),
         })
     }
 
-    /// Add another equality predicate; combined with previous filters using logical AND.
     fn and_where(
         &self,
         py: Python<'_>,
         path: &Bound<'_, PyAny>,
         value: &Bound<'_, PyAny>,
     ) -> PyResult<Self> {
-        let mut preds = self.predicates.clone();
-        let parts = parse_path(path)?;
-        let db_ref = self.db.borrow(py);
-        let col = super::database::collection_info(&db_ref.inner, &self.collection_name)?;
-        let field_path = to_field_path(&parts)?;
-        let leaf_ty = resolve_leaf_type(&col, &field_path)
-            .ok_or_else(|| PyValueError::new_err("unknown field path"))?;
-        let scalar = row_values::scalar_from_py(py, value, leaf_ty)?;
-        preds.push((parts, scalar));
+        self.with_cmp(py, path, value, |path, value| Predicate::Eq { path, value })
+    }
+
+    fn lt_where(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        self.with_cmp(py, path, value, |path, value| Predicate::Lt { path, value })
+    }
+
+    fn lte_where(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        self.with_cmp(py, path, value, |path, value| Predicate::Lte { path, value })
+    }
+
+    fn gt_where(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        self.with_cmp(py, path, value, |path, value| Predicate::Gt { path, value })
+    }
+
+    fn gte_where(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        self.with_cmp(py, path, value, |path, value| Predicate::Gte { path, value })
+    }
+
+    fn or_where(&self, py: Python<'_>, other: &QueryBuilder) -> PyResult<Self> {
+        if self.collection_name != other.collection_name {
+            return Err(PyValueError::new_err(
+                "or_where requires the same collection",
+            ));
+        }
+        let left = self.predicate.clone();
+        let right = other.predicate.clone();
+        let combined = match (left, right) {
+            (None, None) => None,
+            (Some(p), None) | (None, Some(p)) => Some(p),
+            (Some(a), Some(b)) => Some(Predicate::Or(vec![a, b])),
+        };
         Ok(Self {
             db: self.db.clone_ref(py),
             collection_name: self.collection_name.clone(),
-            predicates: preds,
+            predicate: combined,
+            limit: self.limit.or(other.limit),
+            order_by: self.order_by.clone().or(other.order_by.clone()),
+        })
+    }
+
+    #[pyo3(signature = (path, *, desc=false))]
+    fn order_by(
+        &self,
+        py: Python<'_>,
+        path: &Bound<'_, PyAny>,
+        desc: bool,
+    ) -> PyResult<Self> {
+        let parts = parse_path_or_field_ref(path)?;
+        Ok(Self {
+            db: self.db.clone_ref(py),
+            collection_name: self.collection_name.clone(),
+            predicate: self.predicate.clone(),
             limit: self.limit,
+            order_by: Some(OrderBy {
+                path: to_field_path(&parts)?,
+                direction: if desc {
+                    OrderDirection::Desc
+                } else {
+                    OrderDirection::Asc
+                },
+            }),
         })
     }
 
@@ -281,12 +404,11 @@ impl QueryBuilder {
         let cid = g
             .collection_id_named(&self.collection_name)
             .map_err(db_error_to_py)?;
-        let pred = build_predicate(&self.predicates)?;
         let q = Query {
             collection: cid,
-            predicate: pred,
+            predicate: self.predicate.clone(),
             limit: self.limit,
-            order_by: None,
+            order_by: self.order_by.clone(),
         };
         g.explain_query(&q).map_err(db_error_to_py)
     }

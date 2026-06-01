@@ -101,6 +101,8 @@ pub enum FormatError {
     TrailingRecordPayload,
     /// Transaction marker segment payload was malformed.
     InvalidTxnPayload { message: String },
+    /// Checkpoint payload references a replay offset before the checkpoint segment end.
+    InvalidCheckpointPayload { message: String },
     /// On-disk log ends with an incomplete transaction or torn write; strict open refuses to modify.
     UncleanLogTail {
         /// First byte offset that may be discarded to reach a committed prefix (truncate target).
@@ -177,6 +179,11 @@ pub enum SchemaError {
     /// Proposed schema update is supported, but requires an explicit migration step.
     MigrationRequired {
         message: String,
+    },
+    /// Secondary index references a primary key with no row in `latest`.
+    IndexRowMissing {
+        collection_id: u32,
+        index_name: String,
     },
 }
 
@@ -282,6 +289,9 @@ impl fmt::Display for FormatError {
             FormatError::InvalidTxnPayload { message } => {
                 write!(f, "invalid transaction marker payload: {message}")
             }
+            FormatError::InvalidCheckpointPayload { message } => {
+                write!(f, "invalid checkpoint payload: {message}")
+            }
             FormatError::UncleanLogTail { safe_end, reason } => {
                 write!(
                     f,
@@ -348,6 +358,15 @@ impl fmt::Display for SchemaError {
             }
             SchemaError::MigrationRequired { message } => {
                 write!(f, "migration required: {message}")
+            }
+            SchemaError::IndexRowMissing {
+                collection_id,
+                index_name,
+            } => {
+                write!(
+                    f,
+                    "index {index_name:?} on collection {collection_id} references missing row"
+                )
             }
         }
     }

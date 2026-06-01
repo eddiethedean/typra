@@ -13,7 +13,13 @@ use crate::row_values;
 
 #[pyfunction]
 pub fn connect(py: Python<'_>, path: String) -> PyResult<Connection> {
-    let db = typra_core::Database::open(&path).map_err(db_error_to_py)?;
+    // Prefer a read-only engine handle when no writer lock is held in this process.
+    // Fall back to a writable open so callers can still query after using `Database`
+    // in the same interpreter (SQL execution remains SELECT-only).
+    let db = match typra_core::Database::open_read_only(&path) {
+        Ok(db) => db,
+        Err(_) => typra_core::Database::open(&path).map_err(db_error_to_py)?,
+    };
     let py_db = Py::new(
         py,
         Database {
@@ -21,14 +27,14 @@ pub fn connect(py: Python<'_>, path: String) -> PyResult<Connection> {
         },
     )?;
     Ok(Connection {
-        db: py_db,
+        db: Some(py_db),
         closed: false,
     })
 }
 
 #[pyclass]
 pub struct Connection {
-    db: Py<Database>,
+    db: Option<Py<Database>>,
     closed: bool,
 }
 
@@ -38,8 +44,12 @@ impl Connection {
         if self.closed {
             return Err(PyRuntimeError::new_err("connection is closed"));
         }
+        let db = self
+            .db
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("connection is closed"))?;
         Ok(Cursor {
-            conn: self.db.clone_ref(py),
+            conn: Some(db.clone_ref(py)),
             planned: None,
             buffer: Vec::new(),
             offset: 0,
@@ -50,6 +60,7 @@ impl Connection {
 
     fn close(&mut self) {
         self.closed = true;
+        self.db = None;
     }
 
     fn commit(&self) -> PyResult<()> {
@@ -65,7 +76,7 @@ impl Connection {
 
 #[pyclass]
 pub struct Cursor {
-    conn: Py<Database>,
+    conn: Option<Py<Database>>,
     // Streaming-ish DB-API cursor: re-run the underlying iterator and skip `offset`
     // to fetch the next chunk. Avoids materializing full result sets in Rust.
     planned: Option<PlannedSelect>,
@@ -230,6 +241,7 @@ impl Cursor {
 
     fn close(&mut self) {
         self.closed = true;
+        self.conn = None;
         self.planned = None;
         self.buffer.clear();
         self.offset = 0;
@@ -247,7 +259,11 @@ impl Cursor {
         let start = self.offset;
         let take = want - self.buffer.len();
 
-        let db_ref = self.conn.borrow(py);
+        let conn = self
+            .conn
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("cursor is closed"))?;
+        let db_ref = conn.borrow(py);
         let g = super::database::lock_inner(&db_ref.inner)?;
         let it = g.query_iter(&plan.query).map_err(db_error_to_py)?;
 
@@ -305,7 +321,11 @@ impl Cursor {
         }
 
         let (col, q) = {
-            let db_ref = self.conn.borrow(py);
+            let conn = self
+                .conn
+                .as_ref()
+                .ok_or_else(|| PyRuntimeError::new_err("cursor is closed"))?;
+            let db_ref = conn.borrow(py);
             let col = super::database::collection_info(&db_ref.inner, &parsed.collection)?;
             let g = super::database::lock_inner(&db_ref.inner)?;
             let cid = g

@@ -45,7 +45,8 @@ pub(crate) fn scan_segments_allow_tail_tear(
             && header.segment_type != SegmentType::Temp
             && crc != header.payload_crc32c
         {
-            return Err(DbError::Format(FormatError::BadSegmentPayloadChecksum));
+            // Treat mid-log corruption like a torn tail: keep the prefix scanned so far.
+            break;
         }
 
         out.push(SegmentMeta { offset, header });
@@ -84,9 +85,10 @@ pub(crate) fn truncate_end_for_recovery(
         match meta.header.segment_type {
             SegmentType::TxnBegin => {
                 if txn_base.is_some() {
-                    return Err(DbError::Format(FormatError::InvalidTxnPayload {
-                        message: "nested TxnBegin before TxnCommit".into(),
-                    }));
+                    if let Some(base) = txn_base {
+                        return Ok((base, Some("uncommitted_transaction")));
+                    }
+                    return Ok((meta.offset, Some("uncommitted_transaction")));
                 }
                 let payload = read_segment_payload(store, meta)?;
                 let id = decode_txn_payload_v0(&payload)?;
