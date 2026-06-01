@@ -6,7 +6,7 @@
 
 ## Application-focused embedded database
 
-**SQLite simplicity, with real types.** The recommended Rust crate for Typra — **the database for application models**.
+**Schema-first typed storage for application models.** The recommended Rust crate for Typra — **the database for application models**.
 
 - **Model-driven schemas** — collections from field definitions or `#[derive(DbModel)]`
 - **Validation on write** — types and constraints enforced before persistence
@@ -20,7 +20,7 @@
 |--|--|
 | [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) | When to choose Typra |
 | [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | First collection |
-| [Comparisons](https://typra.readthedocs.io/en/latest/comparisons/) | vs SQLite, JSON, DuckDB |
+| [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) | Positioning and design goals |
 | [Python bindings](https://typra.readthedocs.io/en/latest/guides/python/) | Pydantic / dataclass path |
 
 ## Install

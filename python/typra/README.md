@@ -6,7 +6,7 @@
 
 ## Store Pydantic models directly
 
-**SQLite simplicity, with real types.** Official **CPython** bindings for Typra (PyO3).
+**Schema-first typed storage for application models.** Official **CPython** bindings for Typra (PyO3).
 
 Store dataclasses and **Pydantic v2** models with validation, indexes, migrations, and single-file deployment — no low-level schema JSON required for the recommended path.
 
@@ -18,7 +18,7 @@ Store dataclasses and **Pydantic v2** models with validation, indexes, migration
 | [Pydantic guide](https://typra.readthedocs.io/en/latest/guides/pydantic/) | Model-first schemas |
 | [FastAPI guide](https://typra.readthedocs.io/en/latest/guides/fastapi/) | Small API services |
 | [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) | First insert in minutes |
-| [Comparisons](https://typra.readthedocs.io/en/latest/comparisons/) | vs SQLite, JSON, TinyDB, DuckDB |
+| [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) | Positioning and design goals |
 
 ## Install
 

@@ -5,11 +5,13 @@
 [![crates.io](https://img.shields.io/crates/v/typra.svg)](https://crates.io/crates/typra)
 [![PyPI](https://img.shields.io/pypi/v/typra.svg)](https://pypi.org/project/typra/)
 
-## SQLite simplicity, with real types
+## Typed embedded storage for application models
 
-**Typra is the database for application models** — a typed embedded database for application data.
+**Typra is the database for application models** — a schema-first, typed embedded database for application data.
 
 Store dataclasses and Pydantic models directly with validation, indexes, migrations, and single-file deployment. Same engine in **Rust** and **Python**.
+
+**Non-goals:** Typra does **not** aim to support **SQL**, **SQLAlchemy**, or to compete with relational databases like SQLite. Typra’s supported interfaces are its typed Rust APIs and the model-first Python APIs.
 
 **Documentation:** **[typra.readthedocs.io](https://typra.readthedocs.io/en/latest/)**
 
@@ -17,12 +19,12 @@ Store dataclasses and Pydantic models directly with validation, indexes, migrati
 
 | Alternative | Limitation | Typra |
 |-------------|------------|-------|
-| **SQLite** | SQL schemas and migrations; loose typing for app objects | Model-first schemas; validation on write; nested objects native |
+| **Relational DBs** | App models must be mapped into tables/rows; schema friction | Model-first schemas; validation on write; nested objects native |
 | **JSON files** | No indexes, weak queries, manual integrity | Typed storage, indexes, queries, durability |
 | **TinyDB** | Document store without production-grade validation or evolution | Strict schemas, migrations, indexes, crash-safe file format |
 | **DuckDB** | Built for analytics (OLAP), not app CRUD | Embedded OLTP for application models (complementary, not competing) |
 
-Deeper comparisons: [Typra vs SQLite](https://typra.readthedocs.io/en/latest/comparisons/sqlite/) · [JSON](https://typra.readthedocs.io/en/latest/comparisons/json/) · [TinyDB](https://typra.readthedocs.io/en/latest/comparisons/tinydb/) · [DuckDB](https://typra.readthedocs.io/en/latest/comparisons/duckdb/) · [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/)
+More: [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/)
 
 ## 60-second example (Python)
 
@@ -84,7 +86,6 @@ typra = "1.0"
 | Understand why Typra exists | [Why Typra](https://typra.readthedocs.io/en/latest/guides/why_typra/) |
 | Store my first model in 5 minutes | [Quickstart](https://typra.readthedocs.io/en/latest/guides/quickstart/) |
 | Use Pydantic or FastAPI | [Pydantic](https://typra.readthedocs.io/en/latest/guides/pydantic/) · [FastAPI](https://typra.readthedocs.io/en/latest/guides/fastapi/) |
-| Compare to SQLite / JSON / TinyDB | [Comparisons](https://typra.readthedocs.io/en/latest/comparisons/) |
 | Run sample apps | [Examples](https://typra.readthedocs.io/en/latest/examples/) · [examples/](https://github.com/eddiethedean/typra/tree/main/examples) |
 | Build with Python or Rust | [Python guide](https://typra.readthedocs.io/en/latest/guides/python/) · [Rust API](https://typra.readthedocs.io/en/latest/reference/rust_api/) |
 | Run backups and recovery | [Operations runbook](https://typra.readthedocs.io/en/latest/ops/operations_and_failure_modes/) |
