@@ -58,10 +58,7 @@ mod tests {
     fn build_non_pk_values_errors_when_required_path_missing() {
         let row = BTreeMap::from([("id".to_string(), RowValue::Int64(1))]);
         let defs = [FieldDef {
-            path: FieldPath(vec![
-                Cow::Borrowed("meta"),
-                Cow::Borrowed("tag"),
-            ]),
+            path: FieldPath(vec![Cow::Borrowed("meta"), Cow::Borrowed("tag")]),
             ty: Type::String,
             constraints: vec![],
         }];

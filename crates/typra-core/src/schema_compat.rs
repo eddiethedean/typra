@@ -186,8 +186,8 @@ mod tests {
 
     use crate::catalog::CollectionInfo;
     use crate::error::{DbError, SchemaError};
-    use crate::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
     use crate::schema::SchemaVersion;
+    use crate::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
     use crate::CollectionId;
 
     fn field(name: &str, ty: Type) -> FieldDef {

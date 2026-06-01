@@ -4,14 +4,14 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use typra_core::catalog::CollectionInfo;
-use typra_core::checkpoint::{decode_checkpoint_payload, encode_checkpoint_payload_v0, CheckpointV0};
+use typra_core::checkpoint::{
+    decode_checkpoint_payload, encode_checkpoint_payload_v0, CheckpointV0,
+};
 use typra_core::error::{DbError, SchemaError};
 use typra_core::record::RowValue;
 use typra_core::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
 use typra_core::validation::validate_multiseg_row;
-use typra_core::{
-    validate_model_fields_against_catalog, CollectionId, Database, ScalarValue,
-};
+use typra_core::{validate_model_fields_against_catalog, CollectionId, Database, ScalarValue};
 
 fn field(name: &str, ty: Type) -> FieldDef {
     FieldDef {
@@ -176,11 +176,8 @@ fn compact_to_hits_tracing_span_on_disk_db() {
     let (cid, _) = db
         .register_collection("t", vec![field("id", Type::Int64)], "id")
         .unwrap();
-    db.insert(
-        cid,
-        BTreeMap::from([("id".into(), RowValue::Int64(1))]),
-    )
-    .unwrap();
+    db.insert(cid, BTreeMap::from([("id".into(), RowValue::Int64(1))]))
+        .unwrap();
     db.compact_to(&dst).unwrap();
     let db2 = Database::open(&dst).unwrap();
     assert!(db2.get(cid, &ScalarValue::Int64(1)).unwrap().is_some());
