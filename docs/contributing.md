@@ -143,7 +143,7 @@ make check-2p0-ready   # 1.0 gate: check-full + async facade tests
 make check-full
 ```
 
-For a **1.0.0** cut, also follow the release checklist in [`docs/reference/readiness.md`](../reference/readiness.md#release-cut-checklist-100) (tag **`v0.14.0`**, changelog, post-publish smoke tests).
+For a **0.14.0** cut, also follow the release checklist in [`docs/reference/readiness.md`](../reference/readiness.md#release-cut-checklist) (tag **`v0.14.0`**, changelog, post-publish smoke tests).
 
 That includes **`make verify-doc-examples`**, which checks that command output shown in the root README, **`docs/guides/quickstart.md`**, **`docs/guides/python.md`**, and **`python/modelvault/README.md`** still matches `cargo run -p modelvault --example open` and every Python snippet that has a paired **text** output block in those files (update **`scripts/verify-doc-examples.sh`** when intentional output changes).
 

@@ -23,8 +23,8 @@ Direct:
 
 ```toml
 [dependencies]
-modelvault-derive = "1.0"
-modelvault-core = "1.0"
+modelvault-derive = "0.14"
+modelvault-core = "0.14"
 ```
 
 ## Example

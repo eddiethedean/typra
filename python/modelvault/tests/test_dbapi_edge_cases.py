@@ -74,3 +74,51 @@ def test_dbapi_select_star_column_order_matches_schema_field_order(
     assert cur.description is not None
     assert [d[0] for d in cur.description] == ["b", "a", "c"]
     assert cur.fetchone() == ("k", 1, True)
+
+
+def test_dbapi_connect_missing_file_does_not_create(tmp_path: pathlib.Path) -> None:
+    p = tmp_path / "missing.modelvault"
+    assert not p.exists()
+    with pytest.raises(OSError):
+        modelvault.dbapi.connect(str(p))
+    assert not p.exists()
+
+
+def test_dbapi_connect_after_database_open_same_process(tmp_path: pathlib.Path) -> None:
+    p = tmp_path / "t.modelvault"
+    db = modelvault.Database.open(str(p))
+    fields = """[
+      {"path": ["id"], "type": "string"},
+      {"path": ["n"], "type": "int64"}
+    ]"""
+    db.register_collection("t", fields, "id")
+    db.insert("t", {"id": "k1", "n": 1})
+
+    conn = modelvault.dbapi.connect(str(p))
+    cur = conn.cursor()
+    cur.execute("SELECT id, n FROM t WHERE id = ?", ("k1",))
+    assert cur.fetchone() == ("k1", 1)
+
+
+def test_dbapi_select_star_includes_multi_segment_fields(
+    tmp_path: pathlib.Path,
+) -> None:
+    p = tmp_path / "m.modelvault"
+    db = modelvault.Database.open(str(p))
+    fields = """[
+      {"path": ["id"], "type": "string"},
+      {"path": ["profile", "timezone"], "type": "string"},
+      {"path": ["profile", "age"], "type": "int64"}
+    ]"""
+    db.register_collection("users", fields, "id")
+    db.insert(
+        "users",
+        {"id": "u1", "profile": {"timezone": "UTC", "age": 30}},
+    )
+
+    conn = modelvault.dbapi.connect(str(p))
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE id = ?", ("u1",))
+    assert cur.description is not None
+    assert [d[0] for d in cur.description] == ["id", "profile.timezone", "profile.age"]
+    assert cur.fetchone() == ("u1", "UTC", 30)

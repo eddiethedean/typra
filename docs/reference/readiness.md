@@ -108,7 +108,7 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
 - **Index vs scan, replay idempotence, unique index**
   - Rust: `crates/modelvault-core/tests/integration/property_invariants.rs`
 
-## Release cut checklist (0.14.0)
+## Release cut checklist (0.14.0) {#release-cut-checklist}
 
 Use this before tagging **`v0.14.0`** and publishing to crates.io / PyPI.
 

@@ -84,11 +84,8 @@ pub(crate) fn truncate_end_for_recovery(
         let e = meta.offset + SEGMENT_HEADER_LEN as u64 + meta.header.payload_len;
         match meta.header.segment_type {
             SegmentType::TxnBegin => {
-                if txn_base.is_some() {
-                    if let Some(base) = txn_base {
-                        return Ok((base, Some("uncommitted_transaction")));
-                    }
-                    return Ok((meta.offset, Some("uncommitted_transaction")));
+                if let Some(base) = txn_base {
+                    return Ok((base, Some("uncommitted_transaction")));
                 }
                 let payload = read_segment_payload(store, meta)?;
                 let id = decode_txn_payload_v0(&payload)?;

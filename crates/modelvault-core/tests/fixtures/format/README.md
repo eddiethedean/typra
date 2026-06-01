@@ -1,6 +1,6 @@
 # Format compatibility fixtures
 
-Golden database files used by `tests/integration/format_back_compat_1x.rs` to ensure **2.x** keeps reading **Typra 1.0-shaped** on-disk data (`.typra` extension; `TDB0` format).
+Golden database files used by `tests/integration/format_back_compat_1x.rs` to ensure **ModelVault 0.14.x** keeps reading **Typra 1.x / legacy** on-disk data (`.typra` extension; `TDB0` format).
 
 ## Regenerate
 

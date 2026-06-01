@@ -20,10 +20,10 @@ Most applications should use the **[`modelvault`](https://github.com/eddiethedea
 
 ```toml
 [dependencies]
-modelvault-core = "1.0"
+modelvault-core = "0.14"
 ```
 
-Optional tracing: `modelvault-core = { version = "1.0", features = ["tracing"] }`
+Optional tracing: `modelvault-core = { version = "0.14", features = ["tracing"] }`
 
 ## Example
 

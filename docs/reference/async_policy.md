@@ -15,7 +15,7 @@ The `modelvault` crate exposes an **optional**, **experimental** async wrapper b
 
 ```toml
 [dependencies]
-modelvault = { version = "1.0", features = ["async"] }
+modelvault = { version = "0.14", features = ["async"] }
 ```
 
 ```rust

@@ -25,6 +25,9 @@ pub const ENTRY_KIND_NEW_SCHEMA_VERSION: u16 = 2;
 /// Maximum nesting depth for `Type` when encoding/decoding (prevents stack overflow on hostile input).
 pub const MAX_TYPE_NESTING_DEPTH: u32 = 32;
 
+/// Maximum field definitions per schema version in a catalog payload.
+pub const MAX_FIELDS_PER_SCHEMA: u32 = 4096;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CatalogDecodeError {
     UnexpectedEof,
@@ -259,7 +262,13 @@ fn encode_fields_v3(out: &mut Vec<u8>, fields: &[FieldDef]) {
 }
 
 fn decode_fields(cur: &mut Cursor<'_>, catalog_ver: u16) -> Result<Vec<FieldDef>, DbError> {
-    let n = cur.take_u32()? as usize;
+    let n = cur.take_u32()?;
+    if n > MAX_FIELDS_PER_SCHEMA {
+        return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+            message: format!("field count {n} exceeds maximum {MAX_FIELDS_PER_SCHEMA}"),
+        }));
+    }
+    let n = n as usize;
     let mut v = Vec::with_capacity(n.min(1024));
     for _ in 0..n {
         let path = decode_field_path(cur)?;

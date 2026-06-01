@@ -4,7 +4,8 @@ use std::borrow::Cow;
 
 use modelvault_core::catalog::{
     decode_catalog_payload, encode_catalog_payload, CatalogRecordWire, CATALOG_PAYLOAD_VERSION,
-    CATALOG_PAYLOAD_VERSION_V1, ENTRY_KIND_CREATE_COLLECTION, MAX_COLLECTION_NAME_BYTES,
+    CATALOG_PAYLOAD_VERSION_V1, ENTRY_KIND_CREATE_COLLECTION, ENTRY_KIND_NEW_SCHEMA_VERSION,
+    MAX_COLLECTION_NAME_BYTES, MAX_FIELDS_PER_SCHEMA,
 };
 use modelvault_core::error::FormatError;
 use modelvault_core::schema::{FieldDef, FieldPath, Type};
@@ -379,5 +380,22 @@ fn decode_rejects_optional_type_when_inner_tag_missing() {
     assert!(matches!(
         err,
         DbError::Format(FormatError::InvalidCatalogPayload { .. })
+    ));
+}
+
+#[test]
+fn decode_rejects_excessive_field_count() {
+    let mut b = Vec::new();
+    b.extend_from_slice(&CATALOG_PAYLOAD_VERSION.to_le_bytes());
+    b.extend_from_slice(&ENTRY_KIND_NEW_SCHEMA_VERSION.to_le_bytes());
+    b.extend_from_slice(&1u32.to_le_bytes()); // collection_id
+    b.extend_from_slice(&2u32.to_le_bytes()); // schema_version
+    b.extend_from_slice(&(MAX_FIELDS_PER_SCHEMA + 1).to_le_bytes());
+    b.extend_from_slice(&0u32.to_le_bytes()); // indexes (v4+)
+    let err = decode_catalog_payload(&b).unwrap_err();
+    assert!(matches!(
+        err,
+        DbError::Format(FormatError::InvalidCatalogPayload { message })
+            if message.contains("field count")
     ));
 }

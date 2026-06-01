@@ -40,7 +40,7 @@ cargo build -p modelvault --features tracing
 
 ```toml
 [dependencies]
-modelvault = { version = "1.0", features = ["tracing"] }
+modelvault = { version = "0.14", features = ["tracing"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```
 

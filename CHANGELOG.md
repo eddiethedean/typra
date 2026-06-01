@@ -24,9 +24,7 @@ _Nothing yet._
 
 ## [1.0.0] - 2026-05-31
 
-First **stable 1.x** release (shipped as **Typra**): semver + on-disk compatibility policy, production-oriented operations, and **`typra.models`** as the primary Python API.
-
-First **stable 1.x** release: semver + on-disk compatibility policy, production-oriented operations, and **`modelvault.models`** as the primary Python API.
+First **stable 1.x** product release (shipped on crates.io/PyPI as **Typra** `1.0.x`, later rebranded to **ModelVault** `0.14.x`): semver + on-disk compatibility policy, production-oriented operations, and **`modelvault.models`** as the primary Python API.
 
 ### Added
 
@@ -238,4 +236,5 @@ See the release notes above for details.
 [0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
 [0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
 [0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
+[0.14.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.14.0
 [1.0.0]: https://github.com/eddiethedean/modelvault/releases/tag/v1.0.0

@@ -7,18 +7,31 @@ use modelvault_core::db::row_subset_by_field_defs;
 use modelvault_core::query::{Predicate, Query};
 use modelvault_core::schema::{FieldDef, FieldPath, Type};
 
+use modelvault_core::DbError;
+
 use crate::database::Database;
 use crate::errors::db_error_to_py;
 use crate::row_values;
 
+/// Same message as [`modelvault_core::storage::FileStore::open_locked`] read-only path.
+const READ_ONLY_BLOCKED_SAME_PROCESS: &str =
+    "cannot open read-only while holding writer lock in the same process";
+
+fn open_read_only_fallback_to_writable(err: &DbError) -> bool {
+    matches!(err, DbError::Io(e) if e.to_string().contains(READ_ONLY_BLOCKED_SAME_PROCESS))
+}
+
 #[pyfunction]
 pub fn connect(py: Python<'_>, path: String) -> PyResult<Connection> {
     // Prefer a read-only engine handle when no writer lock is held in this process.
-    // Fall back to a writable open so callers can still query after using `Database`
-    // in the same interpreter (SQL execution remains SELECT-only).
+    // Fall back to a writable open only when this process already holds the writer lock
+    // (e.g. after `Database.open` in the same interpreter). SQL execution remains SELECT-only.
     let db = match modelvault_core::Database::open_read_only(&path) {
         Ok(db) => db,
-        Err(_) => modelvault_core::Database::open(&path).map_err(db_error_to_py)?,
+        Err(e) if open_read_only_fallback_to_writable(&e) => {
+            modelvault_core::Database::open(&path).map_err(db_error_to_py)?
+        }
+        Err(e) => return Err(db_error_to_py(e)),
     };
     let py_db = Py::new(
         py,
@@ -181,12 +194,16 @@ fn projection_field_defs(col: &CollectionInfo, paths: &[FieldPath]) -> PyResult<
     Ok(defs)
 }
 
-fn schema_top_level_paths(col: &CollectionInfo) -> Vec<FieldPath> {
-    col.fields
+fn schema_all_field_paths(col: &CollectionInfo) -> Vec<FieldPath> {
+    col.fields.iter().map(|f| f.path.clone()).collect()
+}
+
+fn field_path_display(path: &FieldPath) -> String {
+    path.0
         .iter()
-        .filter(|f| f.path.0.len() == 1)
-        .map(|f| f.path.clone())
-        .collect()
+        .map(|s| s.as_ref())
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 fn py_get_at_path(
@@ -347,11 +364,8 @@ impl Cursor {
         // Projection: define column order + description.
         let (paths, names, allow_defs) = match &parsed.columns {
             modelvault_core::sql::SqlColumns::Star => {
-                let p = schema_top_level_paths(&col);
-                let n = p
-                    .iter()
-                    .map(|fp| fp.0[0].as_ref().to_string())
-                    .collect::<Vec<_>>();
+                let p = schema_all_field_paths(&col);
+                let n = p.iter().map(field_path_display).collect::<Vec<_>>();
                 (p, n, None)
             }
             modelvault_core::sql::SqlColumns::Paths(paths) => {

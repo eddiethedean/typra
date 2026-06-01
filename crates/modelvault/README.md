@@ -32,8 +32,8 @@ modelvault = "0.14"
 
 | Variant | Dependency |
 |---------|------------|
-| Engine only (no macros) | `modelvault = { version = "1.0", default-features = false }` |
-| Experimental async | `modelvault = { version = "1.0", features = ["async"] }` |
+| Engine only (no macros) | `modelvault = { version = "0.14", default-features = false }` |
+| Experimental async | `modelvault = { version = "0.14", features = ["async"] }` |
 
 Features: **`derive`** (default, `#[derive(DbModel)]`) · **`async`** (`AsyncDatabase`, experimental) — see [async policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/).
 

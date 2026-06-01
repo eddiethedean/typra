@@ -76,13 +76,6 @@ exclude_docs: |
   06_record_encoding_v1.md
   07_record_encoding_v2.md
   typed_embedded_db_spec.md
-  guide_storage_modes.md
-  guide_getting_started.md
-  guide_operations_and_failure_modes.md
-  guide_python.md
-  compatibility_matrix.md
-  security_threat_model.md
-  types_matrix.md
   contributing.md
   MODELVAULT_DOCUMENTATION_POSITIONING_MASTER_PLAN.md
 

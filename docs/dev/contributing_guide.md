@@ -122,7 +122,7 @@ GitHub Actions [publish workflow](https://github.com/eddiethedean/modelvault/blo
 **Before tagging:**
 
 1. `make check-2p0-ready`
-2. [Release checklist](../reference/readiness.md#release-cut-checklist-100)
+2. [Release checklist](../reference/readiness.md#release-cut-checklist)
 3. Update `CHANGELOG.md`
 
 Publish order for crates.io: **`modelvault-core`** → **`modelvault-derive`** → **`modelvault`** → **`modelvault-python`**.

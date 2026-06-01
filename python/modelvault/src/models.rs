@@ -613,6 +613,28 @@ fn dict_to_obj(
     Ok(v.unbind())
 }
 
+/// Merge `patch` into `base` at one dict level; nested dict values are merged recursively.
+fn deep_merge_dicts<'py>(
+    py: Python<'py>,
+    base: &Bound<'py, PyDict>,
+    patch: &Bound<'py, PyDict>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let out = PyDict::new(py);
+    for (k, v) in base.iter() {
+        out.set_item(k, v)?;
+    }
+    for (k, v) in patch.iter() {
+        if let Some(existing) = out.get_item(&k)? {
+            if let (Ok(cur_d), Ok(patch_d)) = (existing.cast::<PyDict>(), v.cast::<PyDict>()) {
+                out.set_item(&k, deep_merge_dicts(py, cur_d, patch_d)?)?;
+                continue;
+            }
+        }
+        out.set_item(&k, v)?;
+    }
+    Ok(out)
+}
+
 /// A registered model-backed collection.
 #[pyclass]
 pub struct ModelCollection {
@@ -800,7 +822,15 @@ impl ModelCollection {
             merged.set_item(k, v)?;
         }
         for (k, v) in patch_dict.iter() {
-            merged.set_item(k, v)?;
+            let key = k.cast::<PyString>()?;
+            if let Some(existing) = merged.get_item(key)? {
+                if let (Ok(cur_d), Ok(patch_d)) = (existing.cast::<PyDict>(), v.cast::<PyDict>()) {
+                    let nested = deep_merge_dicts(py, cur_d, patch_d)?;
+                    merged.set_item(key, nested)?;
+                    continue;
+                }
+            }
+            merged.set_item(key, v)?;
         }
         db.call_method1("insert", (&self.name, merged))?;
         Ok(())

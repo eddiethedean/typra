@@ -31,6 +31,20 @@ class OrderLine:
     sku: str
 
 
+@dataclass
+class UserProfile:
+    timezone: str
+    age: int
+
+
+@dataclass
+class UserWithProfile:
+    __modelvault_primary_key__ = "id"
+
+    id: str
+    profile: UserProfile
+
+
 def test_models_dataclass_register_insert_get_and_query_roundtrip() -> None:
     db = modelvault.Database.open_in_memory()
 
@@ -55,6 +69,22 @@ def test_models_dataclass_register_insert_get_and_query_roundtrip() -> None:
     got2 = books.get("Hello")
     assert got2 is not None
     assert got2.rating == 5.0
+
+
+def test_models_update_deep_merges_nested_dicts(tmp_path) -> None:
+    db = modelvault.Database.open(str(tmp_path / "nested.modelvault"))
+    users = modelvault.models.collection(db, UserWithProfile)
+    users.insert(UserWithProfile(id="u1", profile=UserProfile(timezone="UTC", age=30)))
+    users.update("u1", {"profile": {"age": 31}})
+    got = users.get("u1")
+    assert got is not None
+    profile = got.profile
+    if isinstance(profile, dict):
+        assert profile["timezone"] == "UTC"
+        assert profile["age"] == 31
+    else:
+        assert profile.timezone == "UTC"
+        assert profile.age == 31
 
 
 def test_models_constraints_surface_engine_value_error() -> None:

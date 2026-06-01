@@ -7,7 +7,7 @@ pub use codec::{
     decode_catalog_payload, encode_catalog_payload, CatalogDecodeError, CatalogRecordWire,
     CATALOG_PAYLOAD_VERSION, CATALOG_PAYLOAD_VERSION_V1, CATALOG_PAYLOAD_VERSION_V4,
     ENTRY_KIND_CREATE_COLLECTION, ENTRY_KIND_NEW_SCHEMA_VERSION, MAX_COLLECTION_NAME_BYTES,
-    MAX_TYPE_NESTING_DEPTH,
+    MAX_FIELDS_PER_SCHEMA, MAX_TYPE_NESTING_DEPTH,
 };
 pub use state::{Catalog, CollectionInfo};
 

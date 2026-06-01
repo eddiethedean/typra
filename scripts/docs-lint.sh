@@ -20,10 +20,20 @@ STALE_PATTERNS=(
   "\\btypra\\b"
   "modelvault>=1\\.0\\.0,<2"
   "modelvault = \"1\\.0\""
+  "modelvault-core = \"1\\.0\""
+  "modelvault-derive = \"1\\.0\""
+  "version = \"1\\.0\""
   "pip install \"typra"
 )
 
-DOC_PATHS=(README.md docs python/modelvault/README.md crates/modelvault/README.md)
+DOC_PATHS=(
+  README.md
+  docs
+  python/modelvault/README.md
+  crates/modelvault/README.md
+  crates/modelvault-core/README.md
+  crates/modelvault-derive/README.md
+)
 DOC_EXCLUDE=(--exclude=MODELVAULT_REBRAND_PLAN.md)
 
 for pat in "${STALE_PATTERNS[@]}"; do
