@@ -134,9 +134,8 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           set -euo pipefail
-          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
           sha256sum dist/modelvault-* || true
-          python -m twine upload --skip-existing dist/modelvault-*.whl dist/modelvault-*.tar.gz
+          ./scripts/twine-upload-retry.sh dist/modelvault-*.whl dist/modelvault-*.tar.gz
 
   publish-pypi-manylinux-aarch64:
     name: PyPI manylinux aarch64
@@ -162,8 +161,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
-          python -m twine upload --skip-existing dist/modelvault-*.whl
+          ./scripts/twine-upload-retry.sh dist/modelvault-*.whl
 
   publish-pypi-mac:
     name: PyPI macOS ${{ matrix.target }}
@@ -192,8 +190,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
-          python -m twine upload --skip-existing dist/modelvault-*.whl
+          ./scripts/twine-upload-retry.sh dist/modelvault-*.whl
 
   publish-pypi-musllinux-x86_64:
     name: PyPI musllinux x86_64
@@ -223,8 +220,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
-          python -m twine upload --skip-existing dist/modelvault-*.whl
+          ./scripts/twine-upload-retry.sh dist/modelvault-*.whl
 
   publish-pypi-musllinux-aarch64:
     name: PyPI musllinux aarch64
@@ -254,8 +250,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
-          python -m twine upload --skip-existing dist/modelvault-*.whl
+          ./scripts/twine-upload-retry.sh dist/modelvault-*.whl
 
   publish-pypi-windows-x86_64:
     name: PyPI Windows x86_64
@@ -283,8 +278,7 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
-          python -m twine upload --skip-existing dist/modelvault-*.whl
+          ./scripts/twine-upload-retry.sh dist/modelvault-*.whl
 
   # GHA does not ship CPython 3.9 for Windows ARM64; abi3 wheel still supports 3.9+ on that platform.
   publish-pypi-windows-arm64:
@@ -313,5 +307,4 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python -m pip install --upgrade pip "twine>=5,<6" "pkginfo>=1.12.1.2"
-          python -m twine upload --skip-existing dist/modelvault-*.whl
+          ./scripts/twine-upload-retry.sh dist/modelvault-*.whl
