@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-06-06
+
+### Changed
+
+- **Tests:** Strengthen recovery, superblock selection, auto-truncate, checkpoint, and publish assertions; add Python recovery, writer-lock, and dbapi coverage; CLI tests for `checkpoint`/`compact`/`backup`; derive compile-fail UI tests.
+
+### Fixed
+
+- **Python `Database.open` / `AsyncDatabase.open`:** when `recovery` is omitted, read-write opens now default to `auto_truncate` (matching Rust `OpenOptions` and docs); read-only opens still default to `strict`.
+
 ## [0.15.1] - 2026-06-01
 
 ### Fixed
@@ -285,6 +295,7 @@ See the release notes above for details.
 [0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
 [0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
 [0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
+[0.15.2]: https://github.com/eddiethedean/modelvault/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/eddiethedean/modelvault/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.15.0
 [0.14.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.14.0

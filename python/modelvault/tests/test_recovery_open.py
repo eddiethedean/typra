@@ -20,6 +20,35 @@ def test_open_accepts_recovery_auto_truncate(tmp_path: Path) -> None:
     db.insert("t", {"id": 1})
 
 
+def test_default_recovery_auto_truncates_torn_tail(tmp_path: Path) -> None:
+    """Read-write open with recovery omitted matches Rust AutoTruncate default."""
+    path = tmp_path / "db.modelvault"
+    db = modelvault.Database.open(str(path))
+    db.register_collection("t", '[{"path": ["id"], "type": "int64"}]', "id")
+    db.insert("t", {"id": 42})
+    del db
+
+    data = path.read_bytes()
+    assert len(data) > 10
+    path.write_bytes(data[:-7])
+
+    db2 = modelvault.Database.open(str(path))
+    assert db2.get("t", 42) == {"id": 42}
+
+
+def test_read_only_open_defaults_to_strict_recovery(tmp_path: Path) -> None:
+    path = tmp_path / "db.modelvault"
+    db = modelvault.Database.open(str(path))
+    db.register_collection("t", '[{"path": ["id"], "type": "int64"}]', "id")
+    db.insert("t", {"id": 1})
+    del db
+
+    path.write_bytes(path.read_bytes() + b"garbage")
+
+    with pytest.raises(modelvault.ModelVaultFormatError):
+        modelvault.Database.open(str(path), read_only=True)
+
+
 def test_auto_truncate_recovers_torn_tail_preserving_data(tmp_path: Path) -> None:
     path = tmp_path / "db.modelvault"
     db = modelvault.Database.open(str(path))

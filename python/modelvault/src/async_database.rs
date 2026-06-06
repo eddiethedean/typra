@@ -82,7 +82,7 @@ impl AsyncDatabase {
         read_only: bool,
         recovery: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let recovery_mode = InnerDb::parse_recovery_mode(recovery)?;
+        let recovery_mode = InnerDb::resolve_recovery_mode(read_only, recovery)?;
         future_into_blocking(py, move || {
             Ok(Self {
                 inner: Arc::new(DbHandle::new(InnerDb::open_path_with_recovery(

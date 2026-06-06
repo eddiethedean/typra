@@ -599,7 +599,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "modelvault"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "modelvault-core",
  "modelvault-derive",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "modelvault-cli"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -622,7 +622,7 @@ dependencies = [
 
 [[package]]
 name = "modelvault-core"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "crc32c",
  "criterion",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "modelvault-derive"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "modelvault-core",
  "proc-macro2",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "modelvault-python"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "modelvault-core",
  "pyo3",

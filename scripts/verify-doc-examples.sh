@@ -45,7 +45,7 @@ ACTUAL_RUST=$(cargo run -q -p modelvault --example open | strip_cr)
 # --- Python: docs/guides/quickstart.md "Run it (from this repo)" ---
 read -r -d '' EXPECT_PY_GUIDE <<'EOF' || true
 get: Book(title='Hello', year=2020, rating=4.5)
-modelvault 0.15.1
+modelvault 0.15.2
 
 EOF
 ACTUAL_PY_GUIDE=$("$PYTHON" <<'PY' | strip_cr
@@ -87,7 +87,7 @@ PY
 # --- Python: root README.md (Pydantic 60-second example) ---
 read -r -d '' EXPECT_PY_ROOT <<'EOF' || true
 title='Hello' year=2020
-0.15.1
+0.15.2
 
 EOF
 ACTUAL_PY_ROOT=$("$PYTHON" <<'PY' | strip_cr
@@ -115,7 +115,7 @@ PY
 # --- Python: python/modelvault/README.md quick start (Pydantic) ---
 read -r -d '' EXPECT_PY_PKG <<'EOF' || true
 title='ModelVault' year=2020
-0.15.1
+0.15.2
 
 EOF
 ACTUAL_PY_PKG=$("$PYTHON" <<'PY' | strip_cr

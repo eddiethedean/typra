@@ -2,7 +2,7 @@
 
 This document is the **project roadmap** for ModelVault: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.15.1` (see [`CHANGELOG.md`](CHANGELOG.md)) — patch: decode hardening, collection error path, async get parity
+- **Current release**: `0.15.2` (see [`CHANGELOG.md`](CHANGELOG.md)) — patch: test suite hardening (recovery, publish, Python bindings)
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0**.
 - **Next milestone**: `0.16.0` — planner/operator growth + query hardening (see [1.1.0](#110--engine-hardening--operator-growth) below). **`0.15.0`** async/concurrency work is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Patch versions are bugfix-only; minor versions (`1.x`) may add features without breaking stable APIs.

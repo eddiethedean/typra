@@ -23,11 +23,24 @@ pub(crate) enum InnerDb {
 impl InnerDb {
     pub(crate) fn parse_recovery_mode(recovery: Option<&str>) -> Result<RecoveryMode, PyErr> {
         match recovery {
-            None | Some("strict") => Ok(RecoveryMode::Strict),
+            Some("strict") => Ok(RecoveryMode::Strict),
             Some("auto_truncate") => Ok(RecoveryMode::AutoTruncate),
             Some(other) => Err(PyValueError::new_err(format!(
                 "recovery must be 'strict' or 'auto_truncate', got {other:?}"
             ))),
+            None => Ok(RecoveryMode::AutoTruncate),
+        }
+    }
+
+    /// Match Rust defaults: read-write opens salvage torn tails; read-only opens stay strict.
+    pub(crate) fn resolve_recovery_mode(
+        read_only: bool,
+        recovery: Option<&str>,
+    ) -> Result<RecoveryMode, PyErr> {
+        match (read_only, recovery) {
+            (true, None) => Ok(RecoveryMode::Strict),
+            (_, Some(_)) => Self::parse_recovery_mode(recovery),
+            (false, None) => Ok(RecoveryMode::AutoTruncate),
         }
     }
 
@@ -36,7 +49,11 @@ impl InnerDb {
         read_only: bool,
         recovery: Option<&str>,
     ) -> Result<Self, PyErr> {
-        Self::open_path_with_recovery(path, read_only, Self::parse_recovery_mode(recovery)?)
+        Self::open_path_with_recovery(
+            path,
+            read_only,
+            Self::resolve_recovery_mode(read_only, recovery)?,
+        )
     }
 
     pub(crate) fn open_path_with_recovery(
