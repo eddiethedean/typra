@@ -19,6 +19,7 @@ async = ["dep:tokio"]
 
 [dev-dependencies]
 tempfile = "3"
+trybuild = "1"
 
 [lints]
 workspace = true

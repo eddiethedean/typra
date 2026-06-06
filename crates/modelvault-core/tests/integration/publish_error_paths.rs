@@ -32,7 +32,7 @@ impl Store for FailingStore {
 fn publish_returns_error_when_store_write_fails() {
     let mut store = FailingStore;
     let res = append_manifest_and_publish(&mut store, 0);
-    assert!(res.is_err());
+    assert!(matches!(res, Err(DbError::NotImplemented)));
 }
 
 struct FailOnce<S: Store> {
@@ -120,7 +120,7 @@ fn publish_returns_error_when_store_len_fails() {
         fail_sync: false,
     };
     let res = append_manifest_and_publish(&mut store, 0);
-    assert!(res.is_err());
+    assert!(matches!(res, Err(DbError::NotImplemented)));
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn publish_returns_error_when_superblock_read_fails() {
         fail_sync: false,
     };
     let res = append_manifest_and_publish(&mut store, 0);
-    assert!(res.is_err());
+    assert!(matches!(res, Err(DbError::NotImplemented)));
 }
 
 #[test]
@@ -146,5 +146,5 @@ fn publish_returns_error_when_sync_fails() {
         fail_sync: true,
     };
     let res = append_manifest_and_publish(&mut store, 0);
-    assert!(res.is_err());
+    assert!(matches!(res, Err(DbError::NotImplemented)));
 }

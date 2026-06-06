@@ -1,7 +1,7 @@
 import modelvault
 
 
-def test_dbapi_connect_uses_read_only_handle(tmp_path):
+def test_dbapi_connect_select_works_without_writer_lock(tmp_path):
     db_path = tmp_path / "app.modelvault"
     db = modelvault.Database.open(str(db_path))
     db.register_collection(
@@ -23,6 +23,27 @@ def test_dbapi_connect_uses_read_only_handle(tmp_path):
 
     db2 = modelvault.Database.open(str(db_path))
     assert db2.path().endswith("app.modelvault")
+
+
+def test_dbapi_strict_read_only_allows_select_while_writer_held(tmp_path):
+    """When this process holds the writer lock, read-only dbapi open reuses it (no fallback)."""
+    db_path = tmp_path / "app.modelvault"
+    db = modelvault.Database.open(str(db_path))
+    db.register_collection(
+        "books",
+        '[{"path": ["id"], "type": "int64"}, {"path": ["title"], "type": "string"}]',
+        "id",
+    )
+    db.insert("books", {"id": 1, "title": "A"})
+
+    conn = modelvault.dbapi.connect(str(db_path), strict_read_only=True)
+    cur = conn.cursor()
+    cur.execute("SELECT id, title FROM books")
+    assert cur.fetchone() == (1, "A")
+    cur.close()
+    conn.close()
+
+    del db
 
 
 def test_dbapi_connect_execute_fetch_and_description(tmp_path):

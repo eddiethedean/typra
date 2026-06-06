@@ -55,13 +55,17 @@ def test_multiple_collections_stable_ids(tmp_path) -> None:
 
 def test_register_empty_name_after_trim_raises(tmp_path) -> None:
     db = modelvault.Database.open(str(tmp_path / "emptyname.modelvault"))
-    with pytest.raises(ValueError, match="."):
+    with pytest.raises(
+        modelvault.ModelVaultSchemaError, match="invalid collection name"
+    ):
         db.register_collection("", '[{"path": ["a"], "type": "string"}]', "a")
 
 
 def test_register_whitespace_only_name_raises(tmp_path) -> None:
     db = modelvault.Database.open(str(tmp_path / "wsname.modelvault"))
-    with pytest.raises(ValueError, match="."):
+    with pytest.raises(
+        modelvault.ModelVaultSchemaError, match="invalid collection name"
+    ):
         db.register_collection("   ", '[{"path": ["a"], "type": "string"}]', "a")
 
 

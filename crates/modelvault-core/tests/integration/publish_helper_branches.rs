@@ -44,7 +44,7 @@ fn publish_selects_b_when_b_generation_higher() {
 
     let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
     let sb = append_manifest_and_publish(&mut store, segment_start).unwrap();
-    assert!(sb.generation >= 3);
+    assert_eq!(sb.generation, 3);
 }
 
 #[test]

@@ -1,0 +1,11 @@
+error: missing primary key: mark one field with #[db(primary)]
+ --> tests/ui/derive_missing_primary.rs:4:8
+  |
+4 | struct MissingPrimary {
+  |        ^^^^^^^^^^^^^^
+
+error[E0601]: `main` function not found in crate `$CRATE`
+ --> tests/ui/derive_missing_primary.rs:6:2
+  |
+6 | }
+  |  ^ consider adding a `main` function to `$DIR/tests/ui/derive_missing_primary.rs`

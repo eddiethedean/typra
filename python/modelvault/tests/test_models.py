@@ -96,10 +96,14 @@ def test_models_constraints_surface_engine_value_error() -> None:
 
 def test_models_plan_and_apply_schema_version() -> None:
     db = modelvault.Database.open_in_memory()
-    _ = modelvault.models.collection(db, Book)
-    _plan = modelvault.models.plan(db, Book)
+    books = modelvault.models.collection(db, Book)
+    plan = modelvault.models.plan(db, Book)
+    assert isinstance(plan, dict)
+    assert "steps" in plan
     ver = modelvault.models.apply(db, Book, force=False)
-    assert isinstance(ver, int)
+    assert ver >= 1
+    books.insert(Book(title="Applied", year=2024))
+    assert books.get("Applied") is not None
 
 
 def test_models_default_collection_naming_snake_case_plural() -> None:

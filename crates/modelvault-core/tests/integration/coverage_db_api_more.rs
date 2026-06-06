@@ -17,12 +17,29 @@ fn field(name: &str, ty: Type) -> FieldDef {
 
 #[test]
 fn commit_empty_transaction_updates_shadow_without_segments() {
-    let mut db = Database::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty_txn.modelvault");
+    let mut db = Database::open(&path).unwrap();
     db.register_collection("books", vec![field("title", Type::String)], "title")
         .unwrap();
+    let cid = CollectionId(1);
 
     db.begin_transaction().unwrap();
     db.commit_transaction().unwrap();
+
+    let mut row = BTreeMap::new();
+    row.insert(
+        "title".into(),
+        RowValue::String("after_empty_commit".into()),
+    );
+    db.insert(cid, row).unwrap();
+
+    drop(db);
+    let db2 = Database::open(&path).unwrap();
+    assert!(db2
+        .get(cid, &ScalarValue::String("after_empty_commit".into()))
+        .unwrap()
+        .is_some());
 }
 
 #[test]

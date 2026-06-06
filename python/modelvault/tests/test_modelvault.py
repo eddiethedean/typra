@@ -43,13 +43,13 @@ def test_attributes_are_not_none(name: str) -> None:
 
 def test_register_collection_invalid_json_raises(tmp_path) -> None:
     db = modelvault.Database.open(str(tmp_path / "badjson.modelvault"))
-    with pytest.raises(ValueError, match="."):
+    with pytest.raises(ValueError, match="expected ident"):
         db.register_collection("x", "not json", "a")
 
 
 def test_register_collection_not_array_raises(tmp_path) -> None:
     db = modelvault.Database.open(str(tmp_path / "notarr.modelvault"))
-    with pytest.raises(ValueError, match="."):
+    with pytest.raises(ValueError, match="JSON array"):
         db.register_collection("x", '{"path": ["a"], "type": "string"}', "a")
 
 
@@ -68,7 +68,7 @@ def test_register_duplicate_collection_name_raises(tmp_path) -> None:
     db = modelvault.Database.open(str(path))
     fields = '[{"path": ["t"], "type": "string"}]'
     db.register_collection("same", fields, "t")
-    with pytest.raises(ValueError, match="."):
+    with pytest.raises(modelvault.ModelVaultSchemaError, match="duplicate collection"):
         db.register_collection("same", fields, "t")
 
 

@@ -1,0 +1,11 @@
+error: exactly one field must be marked #[db(primary)]
+ --> tests/ui/derive_duplicate_primary.rs:8:5
+  |
+8 |     b: String,
+  |     ^
+
+error[E0601]: `main` function not found in crate `$CRATE`
+ --> tests/ui/derive_duplicate_primary.rs:9:2
+  |
+9 | }
+  |  ^ consider adding a `main` function to `$DIR/tests/ui/derive_duplicate_primary.rs`

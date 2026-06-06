@@ -132,3 +132,132 @@ fn migrate_plan_then_apply_force_backfill_works() {
         Some(&modelvault_core::RowValue::String("unknown".to_string()))
     );
 }
+
+fn seed_db_with_row(path: &std::path::Path) -> modelvault_core::CollectionId {
+    let mut db = modelvault_core::Database::open(path).unwrap();
+    let (cid, _) = db
+        .register_collection(
+            "books",
+            vec![
+                modelvault_core::FieldDef {
+                    path: modelvault_core::schema::FieldPath(vec![std::borrow::Cow::Borrowed(
+                        "id",
+                    )]),
+                    ty: modelvault_core::Type::Int64,
+                    constraints: vec![],
+                },
+                modelvault_core::FieldDef {
+                    path: modelvault_core::schema::FieldPath(vec![std::borrow::Cow::Borrowed(
+                        "title",
+                    )]),
+                    ty: modelvault_core::Type::String,
+                    constraints: vec![],
+                },
+            ],
+            "id",
+        )
+        .unwrap();
+    let mut row = std::collections::BTreeMap::new();
+    row.insert("id".to_string(), modelvault_core::RowValue::Int64(1));
+    row.insert(
+        "title".to_string(),
+        modelvault_core::RowValue::String("A".to_string()),
+    );
+    db.insert(cid, row).unwrap();
+    cid
+}
+
+#[test]
+fn checkpoint_command_writes_durable_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.modelvault");
+    seed_db_with_row(&path);
+
+    Command::cargo_bin("modelvault")
+        .unwrap()
+        .args(["checkpoint", path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok: checkpoint written"));
+
+    let db = modelvault_core::Database::open(&path).unwrap();
+    let cid = db.collection_id_named("books").unwrap();
+    let got = db
+        .get(cid, &modelvault_core::ScalarValue::Int64(1))
+        .unwrap()
+        .expect("row survives checkpoint");
+    assert_eq!(
+        got.get("title"),
+        Some(&modelvault_core::RowValue::String("A".to_string()))
+    );
+}
+
+#[test]
+fn compact_to_and_backup_with_verify_work() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.modelvault");
+    let compact_dst = dir.path().join("compact.modelvault");
+    let backup_dst = dir.path().join("backup.modelvault");
+    seed_db_with_row(&path);
+
+    Command::cargo_bin("modelvault")
+        .unwrap()
+        .args([
+            "compact",
+            path.to_str().unwrap(),
+            "--to",
+            compact_dst.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok: compacted_to"));
+
+    assert!(compact_dst.exists());
+    let db = modelvault_core::Database::open(&compact_dst).unwrap();
+    let cid = db.collection_id_named("books").unwrap();
+    assert!(db
+        .get(cid, &modelvault_core::ScalarValue::Int64(1))
+        .unwrap()
+        .is_some());
+
+    Command::cargo_bin("modelvault")
+        .unwrap()
+        .args([
+            "backup",
+            path.to_str().unwrap(),
+            "--to",
+            backup_dst.to_str().unwrap(),
+            "--verify",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok: backup_written"));
+
+    assert!(backup_dst.exists());
+    Command::cargo_bin("modelvault")
+        .unwrap()
+        .args(["verify", backup_dst.to_str().unwrap()])
+        .assert()
+        .success();
+}
+
+#[test]
+fn compact_in_place_rewrites_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.modelvault");
+    seed_db_with_row(&path);
+
+    Command::cargo_bin("modelvault")
+        .unwrap()
+        .args(["compact", path.to_str().unwrap(), "--in-place"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ok: compacted_in_place"));
+
+    let db = modelvault_core::Database::open(&path).unwrap();
+    let cid = db.collection_id_named("books").unwrap();
+    assert!(db
+        .get(cid, &modelvault_core::ScalarValue::Int64(1))
+        .unwrap()
+        .is_some());
+}

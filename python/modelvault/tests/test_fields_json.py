@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 import modelvault
@@ -20,7 +22,21 @@ def test_register_all_primitive_types_in_one_collection(tmp_path) -> None:
         '{"path": ["h"], "type": "timestamp"}]'
     )
     db.register_collection("t", payload, "a")
-    assert db.collection_names() == ["t"]
+    row = {
+        "a": True,
+        "b": -1,
+        "c": 42,
+        "d": 2.5,
+        "e": "hi",
+        "f": b"\x00\xff",
+        "g": uuid.UUID("12345678-1234-5678-1234-567812345678"),
+        "h": 1_700_000_000_000_000,
+    }
+    db.insert("t", row)
+    got = db.get("t", True)
+    assert got is not None
+    assert got["b"] == -1
+    assert got["g"] == uuid.UUID("12345678-1234-5678-1234-567812345678")
 
 
 def test_register_optional_list_object_enum(tmp_path) -> None:
@@ -42,7 +58,7 @@ def test_register_optional_list_object_enum(tmp_path) -> None:
 
 def test_empty_fields_array_rejected_for_primary(tmp_path) -> None:
     db = modelvault.Database.open(str(tmp_path / "emptyfields.modelvault"))
-    with pytest.raises(ValueError, match="."):
+    with pytest.raises(modelvault.ModelVaultSchemaError, match="primary field"):
         db.register_collection("empty_schema", "[]", "id")
 
 
@@ -71,5 +87,5 @@ def test_fields_json_validation_errors(tmp_path, bad_json: str, needle: str) -> 
 def test_nested_path_segments_rejected_as_primary(tmp_path) -> None:
     db = modelvault.Database.open(str(tmp_path / "deep.modelvault"))
     fields = '[{"path": ["profile", "addr", "zip"], "type": "string"}]'
-    with pytest.raises(ValueError, match="."):
+    with pytest.raises(modelvault.ModelVaultSchemaError, match="primary field"):
         db.register_collection("users", fields, "profile")

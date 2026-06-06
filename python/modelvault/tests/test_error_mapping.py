@@ -10,17 +10,15 @@ def test_open_garbage_file_raises_modelvault_format_error(
 ) -> None:
     p = tmp_path / "bad.modelvault"
     p.write_bytes(b"this is not a modelvault file")
-    with pytest.raises(modelvault.ModelVaultFormatError) as e:
+    with pytest.raises(modelvault.ModelVaultFormatError, match="truncated header"):
         modelvault.Database.open(str(p))
-    assert isinstance(e.value, ValueError)
 
 
 def test_register_invalid_primary_key_raises_modelvault_schema_error() -> None:
     db = modelvault.Database.open_in_memory()
     fields_json = '[{"path":["title"],"type":"string"}]'
-    with pytest.raises(modelvault.ModelVaultSchemaError) as e:
+    with pytest.raises(modelvault.ModelVaultSchemaError, match="primary field"):
         db.register_collection("books", fields_json, "id")
-    assert isinstance(e.value, ValueError)
 
 
 def test_insert_type_mismatch_raises_modelvault_validation_error(
@@ -36,9 +34,8 @@ def test_insert_type_mismatch_raises_modelvault_validation_error(
     ]
     """
     db.register_collection("events", fields_json, "id")
-    with pytest.raises(modelvault.ModelVaultValidationError) as e:
+    with pytest.raises(modelvault.ModelVaultValidationError, match="below minimum"):
         db.insert("events", {"id": "e1", "year": 1990})
-    assert isinstance(e.value, ValueError)
 
 
 def test_nested_transaction_raises_modelvault_transaction_error(
@@ -48,10 +45,9 @@ def test_nested_transaction_raises_modelvault_transaction_error(
     fields_json = '[{"path":["id"],"type":"string"}]'
     db.register_collection("x", fields_json, "id")
     with db.transaction():
-        with pytest.raises(modelvault.ModelVaultTransactionError) as e:
+        with pytest.raises(modelvault.ModelVaultTransactionError, match="nested"):
             with db.transaction():
                 pass
-        assert isinstance(e.value, RuntimeError)
 
 
 def test_dbapi_parse_error_raises_modelvault_query_error(
@@ -62,9 +58,8 @@ def test_dbapi_parse_error_raises_modelvault_query_error(
     modelvault.Database.open(str(p))
     conn = modelvault.dbapi.connect(str(p))
     cur = conn.cursor()
-    with pytest.raises(modelvault.ModelVaultQueryError) as e:
+    with pytest.raises(modelvault.ModelVaultQueryError, match="from"):
         cur.execute("SELECT FROM")
-    assert isinstance(e.value, ValueError)
 
 
 def test_unique_index_violation_raises_modelvault_schema_error() -> None:
@@ -75,11 +70,11 @@ def test_unique_index_violation_raises_modelvault_schema_error() -> None:
     indexes = '[{"name": "title_unique", "path": ["title"], "kind": "unique"}]'
     db.register_collection("books", fields, "id", indexes)
     db.insert("books", {"id": "a", "title": "A"})
-    with pytest.raises(modelvault.ModelVaultSchemaError):
+    with pytest.raises(modelvault.ModelVaultSchemaError, match="unique"):
         db.insert("books", {"id": "b", "title": "A"})
 
 
 def test_compact_to_maps_format_errors(tmp_path: pathlib.Path) -> None:
     db = modelvault.Database.open_in_memory()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="file-backed"):
         db.compact_to(str(tmp_path / "out.modelvault"))

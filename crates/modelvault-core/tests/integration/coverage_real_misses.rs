@@ -143,7 +143,9 @@ fn checkpoint_payload_roundtrip_exercises_tracing_encode_decode_paths() {
 
 #[test]
 fn checkpoint_from_state_on_multiseg_db_hits_tracing_ok_path() {
-    let mut db = Database::open_in_memory().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("checkpoint.modelvault");
+    let mut db = Database::open(&db_path).unwrap();
     let fields = vec![
         field("id", Type::Int64),
         FieldDef {
@@ -165,6 +167,18 @@ fn checkpoint_from_state_on_multiseg_db_hits_tracing_ok_path() {
     ]);
     db.insert(cid, row).unwrap();
     db.checkpoint().unwrap();
+
+    drop(db);
+    let db2 = Database::open(&db_path).unwrap();
+    let got = db2.get(cid, &ScalarValue::Int64(1)).unwrap();
+    assert!(got.is_some());
+    assert_eq!(
+        got.unwrap().get("meta"),
+        Some(&RowValue::Object(BTreeMap::from([(
+            "tag".into(),
+            RowValue::String("a".into()),
+        )])))
+    );
 }
 
 #[test]

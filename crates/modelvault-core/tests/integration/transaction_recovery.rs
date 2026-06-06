@@ -103,17 +103,21 @@ fn open_strict_rejects_uncommitted_txn_tail_and_autotruncate_recovers() {
     use modelvault_core::segments::header::{SegmentHeader, SegmentType};
     use modelvault_core::segments::writer::SegmentWriter;
     use modelvault_core::storage::FileStore;
-    use modelvault_core::superblock::SUPERBLOCK_SIZE;
     use modelvault_core::{DbError, FormatError};
     use std::fs::OpenOptions as FsOpenOptions;
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("unclean_txn.modelvault");
+    let len_after_corruption;
     {
         // Create a valid DB then append a BEGIN + invalid RECORD without COMMIT.
         let mut db = Database::open(&path).unwrap();
         db.register_collection("books", vec![title_field()], "title")
             .unwrap();
+        let cid = CollectionId(1);
+        let mut row = BTreeMap::new();
+        row.insert("title".into(), RowValue::String("survives".into()));
+        db.insert(cid, row).unwrap();
         drop(db);
 
         let file = FsOpenOptions::new()
@@ -145,6 +149,7 @@ fn open_strict_rejects_uncommitted_txn_tail_and_autotruncate_recovers() {
         )
         .unwrap();
         store.sync().unwrap();
+        len_after_corruption = std::fs::metadata(&path).unwrap().len();
     }
 
     // Strict mode refuses to mutate and errors with UncleanLogTail.
@@ -166,12 +171,32 @@ fn open_strict_rejects_uncommitted_txn_tail_and_autotruncate_recovers() {
         recovery: RecoveryMode::AutoTruncate,
         ..OpenOptions::default()
     };
-    let _ = Database::open_with_options(&path, auto).unwrap();
+    let db = Database::open_with_options(&path, auto).unwrap();
+    let len_after = std::fs::metadata(&path).unwrap().len();
+    assert!(
+        len_after < len_after_corruption,
+        "auto-truncate must remove the unclean tail"
+    );
+
+    let cid = CollectionId(1);
+    let got = db
+        .get(
+            cid,
+            &modelvault_core::ScalarValue::String("survives".into()),
+        )
+        .unwrap();
+    assert!(got.is_some(), "committed data must survive auto-truncate");
 
     // Reopen again (default opts) should succeed; file should be clean.
-    let _ = Database::open(&path).unwrap();
-
-    let _ = SUPERBLOCK_SIZE; // keep import used (future assertions may use it)
+    drop(db);
+    let db2 = Database::open(&path).unwrap();
+    assert!(db2
+        .get(
+            cid,
+            &modelvault_core::ScalarValue::String("survives".into())
+        )
+        .unwrap()
+        .is_some());
 }
 
 #[test]
@@ -182,6 +207,10 @@ fn open_strict_rejects_torn_segment_tail_and_autotruncate_recovers() {
         let mut db = Database::open(&path).unwrap();
         db.register_collection("books", vec![title_field()], "title")
             .unwrap();
+        let cid = CollectionId(1);
+        let mut row = BTreeMap::new();
+        row.insert("title".into(), RowValue::String("survives".into()));
+        db.insert(cid, row).unwrap();
     }
     // Tear the tail by truncating the file mid-segment header/payload.
     let bytes = std::fs::read(&path).unwrap();
@@ -208,8 +237,26 @@ fn open_strict_rejects_torn_segment_tail_and_autotruncate_recovers() {
         recovery: RecoveryMode::AutoTruncate,
         ..OpenOptions::default()
     };
-    let _ = Database::open_with_options(&path, auto).unwrap();
-    let _ = Database::open(&path).unwrap();
+    let db = Database::open_with_options(&path, auto).unwrap();
+
+    let cid = CollectionId(1);
+    let got = db
+        .get(
+            cid,
+            &modelvault_core::ScalarValue::String("survives".into()),
+        )
+        .unwrap();
+    assert!(got.is_some(), "committed data must survive auto-truncate");
+
+    drop(db);
+    let db2 = Database::open(&path).unwrap();
+    assert!(db2
+        .get(
+            cid,
+            &modelvault_core::ScalarValue::String("survives".into())
+        )
+        .unwrap()
+        .is_some());
 }
 
 #[test]
