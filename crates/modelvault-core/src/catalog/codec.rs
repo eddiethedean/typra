@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use crate::error::{DbError, FormatError};
+use crate::file_format::check_decode_entry_count;
 use crate::schema::{Constraint, FieldDef, FieldPath, IndexDef, IndexKind, Type};
 
 /// Maximum UTF-8 length for a collection name (exclusive upper bound is 1024 bytes).
@@ -229,6 +230,7 @@ fn encode_indexes(out: &mut Vec<u8>, indexes: &[IndexDef]) {
 
 fn decode_indexes(cur: &mut Cursor<'_>) -> Result<Vec<IndexDef>, DbError> {
     let n = cur.take_u32()? as usize;
+    check_decode_entry_count(n)?;
     let mut v = Vec::with_capacity(n.min(1024));
     for _ in 0..n {
         let kind_tag = cur.take_u8()?;
@@ -351,6 +353,7 @@ fn encode_constraints(out: &mut Vec<u8>, c: &[Constraint]) {
 
 fn decode_constraints(cur: &mut Cursor<'_>) -> Result<Vec<Constraint>, DbError> {
     let n = cur.take_u32()? as usize;
+    check_decode_entry_count(n)?;
     let mut v = Vec::with_capacity(n.min(4096));
     for _ in 0..n {
         let tag = cur.take_u8()?;

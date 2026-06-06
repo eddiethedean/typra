@@ -199,6 +199,76 @@ pub(crate) fn decode_record_payload_v3_body(
     })
 }
 
+fn truncate_top_level_non_pk_fields(
+    fields: &[FieldDef],
+    pk_name: &str,
+    non_pk_count: usize,
+) -> Vec<FieldDef> {
+    let mut out = Vec::new();
+    let mut kept = 0usize;
+    for f in fields {
+        if f.path.0.len() == 1 {
+            if f.path.0[0] == pk_name {
+                out.push(f.clone());
+            } else if kept < non_pk_count {
+                out.push(f.clone());
+                kept += 1;
+            }
+        } else {
+            out.push(f.clone());
+        }
+    }
+    out
+}
+
+/// Read the declared non-PK field count from a record payload header/body.
+pub(crate) fn peek_record_non_pk_field_count(bytes: &[u8], pk_ty: &Type) -> Result<usize, DbError> {
+    if bytes.len() < 2 {
+        return Err(DbError::Format(FormatError::TruncatedRecordPayload));
+    }
+    let ver = u16::from_le_bytes([bytes[0], bytes[1]]);
+    let mut cur = Cursor::new(bytes);
+    cur.take_u16()?;
+    match ver {
+        RECORD_PAYLOAD_VERSION | RECORD_PAYLOAD_VERSION_V2 | RECORD_PAYLOAD_VERSION_V3 => {
+            cur.take_u32()?;
+            cur.take_u32()?;
+            let op = cur.take_u8()?;
+            let _pk = decode_tagged_scalar(&mut cur, pk_ty)?;
+            if op == OP_DELETE {
+                return Ok(0);
+            }
+            Ok(cur.take_u32()? as usize)
+        }
+        _ => Err(DbError::Format(FormatError::UnknownRecordPayloadVersion {
+            got: ver,
+        })),
+    }
+}
+
+/// Field layout used to decode a record segment that may predate the catalog's current version.
+pub(crate) fn fields_for_record_decode(
+    catalog_fields: &[FieldDef],
+    current_schema_version: u32,
+    payload: &[u8],
+    pk_name: &str,
+    pk_ty: &Type,
+) -> Result<Vec<FieldDef>, DbError> {
+    if payload.len() < 10 {
+        return Ok(catalog_fields.to_vec());
+    }
+    let payload_sv = u32::from_le_bytes([payload[6], payload[7], payload[8], payload[9]]);
+    if payload_sv >= current_schema_version {
+        return Ok(catalog_fields.to_vec());
+    }
+    let non_pk_count = peek_record_non_pk_field_count(payload, pk_ty)?;
+    Ok(truncate_top_level_non_pk_fields(
+        catalog_fields,
+        pk_name,
+        non_pk_count,
+    ))
+}
+
 /// Decode v1/v2/v3 record payload.
 pub fn decode_record_payload_any(
     bytes: &[u8],

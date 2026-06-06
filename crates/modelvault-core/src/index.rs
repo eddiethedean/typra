@@ -3,7 +3,9 @@
 use std::collections::{BTreeSet, HashMap};
 
 use crate::error::{DbError, FormatError, SchemaError};
-use crate::file_format::{check_decode_entry_count, MAX_SEGMENT_DECODE_ENTRIES};
+use crate::file_format::{
+    check_decode_entry_count, check_field_bytes_len, MAX_SEGMENT_DECODE_ENTRIES,
+};
 use crate::schema::IndexKind;
 
 pub const INDEX_PAYLOAD_VERSION_V1: u16 = 1;
@@ -313,6 +315,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn take_bytes(&mut self, n: usize) -> Result<Vec<u8>, DbError> {
+        check_field_bytes_len(n)?;
         if self.remaining() < n {
             return Err(DbError::Format(FormatError::InvalidCatalogPayload {
                 message: "unexpected eof".to_string(),

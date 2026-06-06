@@ -223,7 +223,7 @@ fn apply_order_by_and_limit_and_scalar_partial_cmp_mismatch() {
         path: FieldPath(vec![Cow::Borrowed("x")]),
         direction: OrderDirection::Asc,
     };
-    super::apply_order_by_and_limit(&mut rows, Some(&ob), Some(2));
+    super::apply_order_by_and_limit(&mut rows, Some(&ob), Some(2), None);
     assert_eq!(rows.len(), 2);
 
     // Mismatched types => None.
@@ -1568,7 +1568,7 @@ fn apply_order_by_and_limit_none_none_ordering_cases() {
         path: FieldPath(vec![Cow::Borrowed("x")]),
         direction: OrderDirection::Asc,
     };
-    super::apply_order_by_and_limit(&mut rows, Some(&ob), None);
+    super::apply_order_by_and_limit(&mut rows, Some(&ob), None, None);
     assert_eq!(rows.len(), 2);
 }
 
@@ -1844,7 +1844,7 @@ fn apply_order_by_some_none_branch_is_hit() {
         path: FieldPath(vec![Cow::Borrowed("x")]),
         direction: OrderDirection::Asc,
     };
-    super::apply_order_by_and_limit(&mut rows, Some(&ob), None);
+    super::apply_order_by_and_limit(&mut rows, Some(&ob), None, None);
     assert_eq!(rows.len(), 2);
 }
 
@@ -1860,7 +1860,7 @@ fn apply_order_by_hits_some_none_and_none_some_cases() {
         path: FieldPath(vec![Cow::Borrowed("x")]),
         direction: OrderDirection::Asc,
     };
-    super::apply_order_by_and_limit(&mut rows, Some(&ob), None);
+    super::apply_order_by_and_limit(&mut rows, Some(&ob), None, None);
     assert_eq!(rows.len(), 3);
 }
 

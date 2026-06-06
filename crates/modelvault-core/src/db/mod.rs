@@ -205,7 +205,10 @@ fn index_deletes_for_existing_row(
 }
 
 /// Rebuild in-memory index state from catalog + latest rows (insert semantics only).
-pub fn rebuild_indexes_from_latest(catalog: &Catalog, latest: &LatestMap) -> IndexState {
+pub fn rebuild_indexes_from_latest(
+    catalog: &Catalog,
+    latest: &LatestMap,
+) -> Result<IndexState, DbError> {
     let mut state = IndexState::default();
     for col in catalog.collections() {
         let Some(pk_name) = col.primary_field.as_deref() else {
@@ -237,18 +240,18 @@ pub fn rebuild_indexes_from_latest(catalog: &Catalog, latest: &LatestMap) -> Ind
                 let Some(v) = scalar_at_path(row, &idx.path) else {
                     continue;
                 };
-                let _ = state.apply(IndexEntry {
+                state.apply(IndexEntry {
                     collection_id: col.id.0,
                     index_name: idx.name.clone(),
                     kind: idx.kind,
                     op: IndexOp::Insert,
                     index_key: v.canonical_key_bytes(),
                     pk_key: pk_scalar.canonical_key_bytes(),
-                });
+                })?;
             }
         }
     }
-    state
+    Ok(state)
 }
 
 fn index_snapshot(entries: &mut [IndexEntry]) {
@@ -272,7 +275,7 @@ pub fn verify_indexes_match_rows(
     latest: &LatestMap,
     indexes: &IndexState,
 ) -> Result<(), DbError> {
-    let expected = rebuild_indexes_from_latest(catalog, latest);
+    let expected = rebuild_indexes_from_latest(catalog, latest)?;
     let mut got = indexes.entries_for_checkpoint();
     let mut want = expected.entries_for_checkpoint();
     index_snapshot(&mut got);
@@ -486,11 +489,34 @@ impl<S: Store> Database<S> {
             g.indexes = self.indexes.clone();
             g.segment_start = self.segment_start;
             g.format_minor = self.format_minor;
+            g.generation = g.generation.saturating_add(1);
+        }
+    }
+
+    fn with_live_snapshot<R>(
+        &self,
+        f: impl FnOnce(&Catalog, &IndexState, &LatestMap) -> R,
+    ) -> Result<R, DbError> {
+        if self.read_only_attached {
+            let shared = self.shared_mirror.as_ref().ok_or_else(|| {
+                DbError::Io(std::io::Error::other(
+                    "read-only attached handle missing shared state",
+                ))
+            })?;
+            let g = shared
+                .read()
+                .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?;
+            return Ok(f(&g.catalog, &g.indexes, &g.latest));
+        }
+        if let Some(st) = &self.txn_staging {
+            Ok(f(&st.shadow_catalog, &st.shadow_indexes, &st.shadow_latest))
+        } else {
+            Ok(f(&self.catalog, &self.indexes, &self.latest))
         }
     }
 
     fn catalog_for_read(&self) -> &Catalog {
-        if let Some(ref st) = self.txn_staging {
+        if let Some(st) = &self.txn_staging {
             &st.shadow_catalog
         } else {
             &self.catalog
@@ -498,7 +524,7 @@ impl<S: Store> Database<S> {
     }
 
     fn indexes_for_read(&self) -> &IndexState {
-        if let Some(ref st) = self.txn_staging {
+        if let Some(st) = &self.txn_staging {
             &st.shadow_indexes
         } else {
             &self.indexes
@@ -506,7 +532,7 @@ impl<S: Store> Database<S> {
     }
 
     fn latest_for_read(&self) -> &LatestMap {
-        if let Some(ref st) = self.txn_staging {
+        if let Some(st) = &self.txn_staging {
             &st.shadow_latest
         } else {
             &self.latest
@@ -525,21 +551,29 @@ impl<S: Store> Database<S> {
 
     /// Rebuild secondary indexes from `latest` rows and compare to replayed index state.
     pub fn verify_index_consistency(&self) -> Result<(), DbError> {
-        verify_indexes_match_rows(
-            self.catalog_for_read(),
-            self.latest_for_read(),
-            self.indexes_for_read(),
-        )
+        self.with_live_snapshot(|catalog, indexes, latest| {
+            verify_indexes_match_rows(catalog, latest, indexes)
+        })?
     }
 
     /// Read-only view of the schema catalog built from `Schema` segments.
+    ///
+    /// On same-process attached read-only handles, prefer [`Self::collection_names`] and
+    /// [`Self::collection_id_named`] for live metadata; this borrows the open-time snapshot.
     pub fn catalog(&self) -> &Catalog {
         self.catalog_for_read()
     }
 
+    /// Clone of the live schema catalog (always current on attached read-only handles).
+    pub fn snapshot_catalog(&self) -> Catalog {
+        self.with_live_snapshot(|c, _, _| c.clone())
+            .expect("live snapshot")
+    }
+
     /// All registered collection names in lexicographic order.
     pub fn collection_names(&self) -> Vec<String> {
-        self.catalog_for_read().collection_names()
+        self.with_live_snapshot(|catalog, _, _| catalog.collection_names())
+            .expect("live snapshot")
     }
 
     /// Read-only access to the in-memory secondary index state (rebuilt from `Index` segments).
@@ -552,28 +586,14 @@ impl<S: Store> Database<S> {
         &self,
         q: &crate::query::Query,
     ) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
-        if self.read_only_attached {
-            let shared = self.shared_mirror.as_ref().ok_or_else(|| {
-                DbError::Io(std::io::Error::other(
-                    "read-only attached handle missing shared state",
-                ))
-            })?;
-            let g = shared
-                .read()
-                .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?;
-            return crate::query::execute_query(&g.catalog, &g.indexes, &g.latest, q);
-        }
-        crate::query::execute_query(
-            self.catalog_for_read(),
-            self.indexes_for_read(),
-            self.latest_for_read(),
-            q,
-        )
+        self.with_live_snapshot(|catalog, indexes, latest| {
+            crate::query::execute_query(catalog, indexes, latest, q)
+        })?
     }
 
     /// Return a human-readable explanation of the chosen plan for `q`.
     pub fn explain_query(&self, q: &crate::query::Query) -> Result<String, DbError> {
-        crate::query::explain_query(self.catalog_for_read(), q)
+        self.with_live_snapshot(|catalog, _, _| crate::query::explain_query(catalog, q))?
     }
 
     /// Lazy iterator over query rows (same semantics as [`Self::query`]).
@@ -584,6 +604,10 @@ impl<S: Store> Database<S> {
         &self,
         q: &crate::query::Query,
     ) -> Result<crate::query::QueryRowIter<'_>, DbError> {
+        if self.read_only_attached {
+            let rows = self.query(q)?;
+            return Ok(crate::query::QueryRowIter::from_materialized_rows(rows));
+        }
         crate::query::execute_query_iter_with_spill_path(
             self.catalog_for_read(),
             self.indexes_for_read(),
@@ -610,26 +634,32 @@ impl<S: Store> Database<S> {
         &'a self,
     ) -> Result<Collection<'a, S, T>, DbError> {
         let cid = self.collection_id_named(T::collection_name())?;
-        let col = self.catalog_for_read().get(cid).ok_or(DbError::Schema(
-            SchemaError::UnknownCollection { id: cid.0 },
-        ))?;
-        validate_subset_model::<T>(col)?;
-        Ok(Collection {
-            db: self,
-            collection_id: cid,
-            _marker: PhantomData,
-        })
+        self.with_live_snapshot(|catalog, _, _| {
+            let col = catalog
+                .get(cid)
+                .ok_or(DbError::Schema(SchemaError::UnknownCollection {
+                    id: cid.0,
+                }))?;
+            validate_subset_model::<T>(col)?;
+            Ok(Collection {
+                db: self,
+                collection_id: cid,
+                _marker: PhantomData,
+            })
+        })?
     }
 
     /// Look up [`CollectionId`] by collection name (leading/trailing whitespace trimmed).
     ///
     /// Returns [`SchemaError::UnknownCollectionName`] when the name is not registered.
     pub fn collection_id_named(&self, name: &str) -> Result<CollectionId, DbError> {
-        self.catalog_for_read()
-            .lookup_name(name)
-            .ok_or(DbError::Schema(SchemaError::UnknownCollectionName {
-                name: name.trim().to_string(),
-            }))
+        self.with_live_snapshot(|catalog, _, _| {
+            catalog
+                .lookup_name(name)
+                .ok_or(DbError::Schema(SchemaError::UnknownCollectionName {
+                    name: name.trim().to_string(),
+                }))
+        })?
     }
 
     /// Create a new collection at schema version `1`.
@@ -697,6 +727,7 @@ impl<S: Store> Database<S> {
             )],
         )?;
         self.apply_catalog_record(wire)?;
+        self.push_shared_mirror();
         Ok((CollectionId(id), SchemaVersion(1)))
     }
 
@@ -754,16 +785,14 @@ impl<S: Store> Database<S> {
             self.rewrite_collection_rows_at_current_version(id)?;
             return Ok(SchemaVersion(next_v));
         }
-        let tid = self.next_txn_id();
-        self.commit_write_batch(
-            tid,
-            &[(
-                crate::segments::header::SegmentType::Schema,
-                payload.as_slice(),
-            )],
-        )?;
-        self.apply_catalog_record(wire)?;
+        self.begin_transaction()?;
+        if let Some(st) = &mut self.txn_staging {
+            st.shadow_catalog.apply_record(wire.clone())?;
+            st.pending
+                .push((crate::segments::header::SegmentType::Schema, payload));
+        }
         self.rewrite_collection_rows_at_current_version(id)?;
+        self.commit_transaction()?;
         Ok(SchemaVersion(next_v))
     }
 
@@ -881,6 +910,19 @@ impl<S: Store> Database<S> {
             }))?;
 
         let mut entries: Vec<IndexEntry> = Vec::new();
+        for e in self.indexes_for_read().entries_for_checkpoint() {
+            if e.collection_id != collection_id.0 {
+                continue;
+            }
+            entries.push(IndexEntry {
+                collection_id: e.collection_id,
+                index_name: e.index_name.clone(),
+                kind: e.kind,
+                op: IndexOp::Delete,
+                index_key: e.index_key.clone(),
+                pk_key: e.pk_key.clone(),
+            });
+        }
         for ((cid, _), row) in self.latest_for_read().iter() {
             if *cid != collection_id.0 {
                 continue;
@@ -968,10 +1010,9 @@ impl<S: Store> Database<S> {
             )],
         )?;
         self.apply_catalog_record(wire)?;
+        self.push_shared_mirror();
         Ok(SchemaVersion(next_v))
     }
-
-    /// Re-persist every row in `collection_id` at the catalog's current schema version.
     fn rewrite_collection_rows_at_current_version(
         &mut self,
         collection_id: CollectionId,
@@ -1265,44 +1306,34 @@ impl<S: Store> Database<S> {
         collection_id: CollectionId,
         pk: &ScalarValue,
     ) -> Result<Option<BTreeMap<String, RowValue>>, DbError> {
-        let col = self
-            .catalog_for_read()
-            .get(collection_id)
-            .ok_or(DbError::Schema(SchemaError::UnknownCollection {
-                id: collection_id.0,
-            }))?;
-        let pk_name =
-            col.primary_field
-                .as_deref()
-                .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
-                    collection_id: collection_id.0,
+        self.with_live_snapshot(|catalog, _, latest| {
+            let col = catalog.get(collection_id).ok_or(DbError::Schema(
+                SchemaError::UnknownCollection {
+                    id: collection_id.0,
+                },
+            ))?;
+            let pk_name =
+                col.primary_field
+                    .as_deref()
+                    .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                        collection_id: collection_id.0,
+                    }))?;
+            let pk_ty = col
+                .fields
+                .iter()
+                .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
+                .map(|f| &f.ty)
+                .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
+                    name: pk_name.to_string(),
                 }))?;
-        let pk_ty = col
-            .fields
-            .iter()
-            .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
-            .map(|f| &f.ty)
-            .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
-                name: pk_name.to_string(),
-            }))?;
-        if !pk.ty_matches(pk_ty) {
-            return Err(DbError::Schema(SchemaError::PrimaryKeyTypeMismatch {
-                collection_id: collection_id.0,
-            }));
-        }
-        let key = (collection_id.0, pk.canonical_key_bytes());
-        if self.read_only_attached {
-            let shared = self.shared_mirror.as_ref().ok_or_else(|| {
-                DbError::Io(std::io::Error::other(
-                    "read-only attached handle missing shared state",
-                ))
-            })?;
-            let g = shared
-                .read()
-                .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?;
-            return Ok(g.latest.get(&key).cloned());
-        }
-        Ok(self.latest_for_read().get(&key).cloned())
+            if !pk.ty_matches(pk_ty) {
+                return Err(DbError::Schema(SchemaError::PrimaryKeyTypeMismatch {
+                    collection_id: collection_id.0,
+                }));
+            }
+            let key = (collection_id.0, pk.canonical_key_bytes());
+            Ok(latest.get(&key).cloned())
+        })?
     }
 
     /// Write a durable checkpoint segment and publish it via the superblock.
@@ -1526,6 +1557,18 @@ impl Database<FileStore> {
             live_path.clone(),
         )?);
         *self = reopened;
+        self.shared_mirror = Some(handle_registry::register(
+            &live_path,
+            handle_registry::SharedDbState {
+                catalog: self.catalog.clone(),
+                latest: self.latest.clone(),
+                indexes: self.indexes.clone(),
+                segment_start: self.segment_start,
+                format_minor: self.format_minor,
+                generation: 0,
+            },
+        )?);
+        self.push_shared_mirror();
         #[cfg(feature = "tracing")]
         tracing::info!(bytes = bytes.len(), "database_compact_in_place_ok");
         Ok(())
@@ -1836,7 +1879,7 @@ impl Database<FileStore> {
         opts: crate::config::OpenOptions,
     ) -> Result<Self, DbError> {
         let path = path.as_ref().to_path_buf();
-        if opts.mode == OpenMode::ReadOnly {
+        if opts.mode == OpenMode::ReadOnly && writer_registry::is_writable_open(&path) {
             if let Some(shared) = handle_registry::get(&path) {
                 let g = shared.read().map_err(|_| {
                     DbError::Io(std::io::Error::other("shared database lock poisoned"))
@@ -1876,8 +1919,9 @@ impl Database<FileStore> {
                     indexes: db.indexes.clone(),
                     segment_start: db.segment_start,
                     format_minor: db.format_minor,
+                    generation: 0,
                 },
-            ));
+            )?);
         }
         Ok(db)
     }

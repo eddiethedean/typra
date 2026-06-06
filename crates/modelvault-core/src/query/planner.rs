@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 #[cfg(test)]
 use std::cell::RefCell;
 use std::collections::hash_map::Iter as HashMapIter;
@@ -9,7 +10,7 @@ use crate::error::{DbError, QueryError, SchemaError};
 use crate::file_format::MAX_QUERY_LIMIT;
 use crate::index::IndexState;
 use crate::record::RowValue;
-use crate::schema::{CollectionId, IndexKind};
+use crate::schema::{CollectionId, FieldPath, IndexKind};
 use crate::storage::{FileStore, Store};
 use crate::ScalarValue;
 
@@ -174,7 +175,12 @@ pub fn execute_query(
             if let Some(pred) = residual {
                 out.retain(|row| eval_predicate(row, &pred));
             }
-            apply_order_by_and_limit(&mut out, order_by.as_ref(), limit);
+            apply_order_by_and_limit(
+                &mut out,
+                order_by.as_ref(),
+                limit,
+                col.primary_field.as_deref(),
+            );
             Ok(out)
         }
         Plan::CollectionScan {
@@ -195,7 +201,12 @@ pub fn execute_query(
                 }
                 out.push(row.clone());
             }
-            apply_order_by_and_limit(&mut out, order_by.as_ref(), limit);
+            apply_order_by_and_limit(
+                &mut out,
+                order_by.as_ref(),
+                limit,
+                col.primary_field.as_deref(),
+            );
             Ok(out)
         }
     }
@@ -208,6 +219,14 @@ pub fn execute_query(
 /// materializing rows from `latest` at the edge.
 pub struct QueryRowIter<'a> {
     state: QueryRowIterState<'a>,
+}
+
+impl QueryRowIter<'_> {
+    pub(crate) fn from_materialized_rows(rows: Vec<BTreeMap<String, RowValue>>) -> Self {
+        Self {
+            state: QueryRowIterState::Vec { rows, pos: 0 },
+        }
+    }
 }
 
 enum QueryRowIterState<'a> {
@@ -686,7 +705,8 @@ fn scalar_sort_key_bytes(s: &ScalarValue) -> Vec<u8> {
             out
         }
         ScalarValue::Float64(v) => {
-            let mut bits = v.to_bits();
+            let n = if *v == 0.0 { 0.0f64 } else { *v };
+            let mut bits = n.to_bits();
             if bits & (1u64 << 63) != 0 {
                 bits = !bits;
             } else {
@@ -1043,19 +1063,34 @@ fn apply_order_by_and_limit(
     rows: &mut Vec<BTreeMap<String, RowValue>>,
     order_by: Option<&OrderBy>,
     limit: Option<usize>,
+    pk_field: Option<&str>,
 ) {
     if let Some(ob) = order_by {
+        let pk_path: Option<FieldPath> =
+            pk_field.map(|name| FieldPath(vec![Cow::Owned(name.to_string())]));
         rows.sort_by(|a, b| {
             let av = scalar_at_path(a, &ob.path);
             let bv = scalar_at_path(b, &ob.path);
-            let ord = match (av, bv) {
+            let mut ord = match (av, bv) {
                 (None, None) => std::cmp::Ordering::Equal,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (Some(_), None) => std::cmp::Ordering::Less,
-                (Some(x), Some(y)) => {
-                    scalar_partial_cmp(&x, &y).unwrap_or(std::cmp::Ordering::Equal)
-                }
+                (Some(x), Some(y)) => scalar_sort_key_bytes(&x).cmp(&scalar_sort_key_bytes(&y)),
             };
+            if ord == std::cmp::Ordering::Equal {
+                if let Some(ref path) = pk_path {
+                    let apk = scalar_at_path(a, path);
+                    let bpk = scalar_at_path(b, path);
+                    ord = match (apk, bpk) {
+                        (None, None) => std::cmp::Ordering::Equal,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (Some(x), Some(y)) => {
+                            scalar_sort_key_bytes(&x).cmp(&scalar_sort_key_bytes(&y))
+                        }
+                    };
+                }
+            }
             match ob.direction {
                 OrderDirection::Asc => ord,
                 OrderDirection::Desc => ord.reverse(),

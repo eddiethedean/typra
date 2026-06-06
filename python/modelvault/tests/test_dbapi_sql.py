@@ -46,6 +46,28 @@ def test_dbapi_strict_read_only_allows_select_while_writer_held(tmp_path):
     del db
 
 
+def test_dbapi_sees_post_attach_insert(tmp_path):
+    """SQL SELECT via query_iter must see rows inserted after read-only attach."""
+    db_path = tmp_path / "fresh.modelvault"
+    writer = modelvault.Database.open(str(db_path))
+    writer.register_collection(
+        "items",
+        '[{"path": ["id"], "type": "int64"}]',
+        "id",
+    )
+
+    conn = modelvault.dbapi.connect(str(db_path), strict_read_only=True)
+    writer.insert("items", {"id": 42})
+
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM items WHERE id = ?", (42,))
+    assert cur.fetchone() == (42,)
+    cur.close()
+    conn.close()
+
+    del writer
+
+
 def test_dbapi_connect_execute_fetch_and_description(tmp_path):
     db_path = tmp_path / "app.modelvault"
     db = modelvault.Database.open(str(db_path))

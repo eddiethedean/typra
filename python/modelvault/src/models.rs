@@ -697,8 +697,8 @@ pub fn collection(
     } else {
         let g = lock_inner_read(&db_ref.inner)?;
         let cid = g.collection_id_named(&name).map_err(db_error_to_py)?;
-        let col = g
-            .catalog()
+        let catalog = g.catalog();
+        let col = catalog
             .get(cid)
             .ok_or_else(|| PyValueError::new_err("internal: collection missing from catalog"))?;
         validate_model_fields_against_catalog(col, &pk, &fields, &indexes)
@@ -1125,8 +1125,8 @@ pub fn async_collection(
     } else {
         let g = lock_inner_read(inner.as_ref())?;
         let cid = g.collection_id_named(&name).map_err(db_error_to_py)?;
-        let col = g
-            .catalog()
+        let catalog = g.catalog();
+        let col = catalog
             .get(cid)
             .ok_or_else(|| PyValueError::new_err("internal: collection missing from catalog"))?;
         validate_model_fields_against_catalog(col, &pk, &fields, &indexes)

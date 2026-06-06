@@ -125,10 +125,10 @@ impl InnerDb {
         }
     }
 
-    pub(crate) fn catalog(&self) -> &modelvault_core::Catalog {
+    pub(crate) fn catalog(&self) -> modelvault_core::Catalog {
         match self {
-            InnerDb::File(d) => d.catalog(),
-            InnerDb::Mem(d) => d.catalog(),
+            InnerDb::File(d) => d.snapshot_catalog(),
+            InnerDb::Mem(d) => d.catalog().clone(),
         }
     }
 

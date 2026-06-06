@@ -53,7 +53,12 @@ fn reject_risky_regex_pattern(pattern: &str) -> Result<(), DbError> {
             _ => prev_quant = false,
         }
     }
-    let _ = depth;
+    if depth != 0 {
+        return Err(DbError::Validation(ValidationError {
+            path: vec![],
+            message: "regex pattern has unbalanced parentheses".into(),
+        }));
+    }
     Ok(())
 }
 

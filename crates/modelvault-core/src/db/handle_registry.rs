@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::catalog::Catalog;
+use crate::error::DbError;
 use crate::index::IndexState;
 
 use super::LatestMap;
@@ -17,6 +18,13 @@ pub struct SharedDbState {
     pub indexes: IndexState,
     pub segment_start: u64,
     pub format_minor: u16,
+    /// Monotonic generation bumped on each mirror push (attached readers detect staleness).
+    pub generation: u64,
+}
+
+/// Canonical registry key so `./db.modelvault` and `/abs/db.modelvault` share one entry.
+pub fn registry_key(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn map() -> &'static Mutex<HashMap<PathBuf, Arc<RwLock<SharedDbState>>>> {
@@ -24,21 +32,36 @@ fn map() -> &'static Mutex<HashMap<PathBuf, Arc<RwLock<SharedDbState>>>> {
     MAP.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub fn register(path: &Path, state: SharedDbState) -> Arc<RwLock<SharedDbState>> {
-    let key = path.to_path_buf();
-    let arc = Arc::new(RwLock::new(state));
-    if let Ok(mut g) = map().lock() {
-        g.insert(key, Arc::clone(&arc));
+pub fn register(path: &Path, state: SharedDbState) -> Result<Arc<RwLock<SharedDbState>>, DbError> {
+    let key = registry_key(path);
+    let mut g = map()
+        .lock()
+        .map_err(|_| DbError::Io(std::io::Error::other("handle registry lock poisoned")))?;
+    if let Some(existing) = g.get(&key) {
+        let mut w = existing
+            .write()
+            .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?;
+        let gen = w.generation.saturating_add(1);
+        *w = state;
+        w.generation = gen;
+        return Ok(Arc::clone(existing));
     }
-    arc
+    let mut state = state;
+    state.generation = 0;
+    let arc = Arc::new(RwLock::new(state));
+    g.insert(key, Arc::clone(&arc));
+    Ok(arc)
 }
 
 pub fn get(path: &Path) -> Option<Arc<RwLock<SharedDbState>>> {
-    map().lock().ok().and_then(|g| g.get(path).cloned())
+    let key = registry_key(path);
+    map().lock().ok().and_then(|g| g.get(&key).cloned())
 }
 
+#[allow(dead_code)]
 pub fn unregister(path: &Path) {
+    let key = registry_key(path);
     if let Ok(mut g) = map().lock() {
-        g.remove(path);
+        g.remove(&key);
     }
 }

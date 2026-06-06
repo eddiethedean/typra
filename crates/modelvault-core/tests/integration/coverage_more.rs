@@ -116,7 +116,9 @@ fn validation_constraints_cover_all_variants() {
             &[Constraint::Regex("(".into())],
             &RowValue::String("x".into())
         ),
-        Err(DbError::Validation(v)) if v.message.contains("invalid regex")
+        Err(DbError::Validation(v))
+            if v.message.contains("invalid regex")
+                || v.message.contains("unbalanced parentheses")
     ));
     assert!(matches!(
         validate_value(

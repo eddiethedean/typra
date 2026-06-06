@@ -439,12 +439,34 @@ fn apply_record_segment(
         .ok_or(DbError::Schema(SchemaError::PrimaryFieldNotFound {
             name: pk_name.to_string(),
         }))?;
-    let decoded = decode_record_payload(payload, pk_name, pk_ty, &col.fields)?;
+    let decode_fields = crate::record::fields_for_record_decode(
+        &col.fields,
+        col.current_version.0,
+        payload,
+        pk_name,
+        pk_ty,
+    )?;
+    let decoded = decode_record_payload(payload, pk_name, pk_ty, &decode_fields)?;
     if decoded.schema_version > col.current_version.0 {
         return Err(DbError::Schema(SchemaError::InvalidSchemaVersion {
             expected: col.current_version.0,
             got: decoded.schema_version,
         }));
+    }
+    if decoded.schema_version < col.current_version.0 {
+        let non_pk_count = col
+            .fields
+            .iter()
+            .filter(|f| f.path.0.len() == 1 && f.path.0[0] != pk_name)
+            .count();
+        if decoded.op != crate::record::OP_DELETE && decoded.fields.len() > non_pk_count {
+            return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+                message: format!(
+                    "stale record schema_version {} layout incompatible with catalog version {}",
+                    decoded.schema_version, col.current_version.0
+                ),
+            }));
+        }
     }
     let pk_key = decoded.pk.canonical_key_bytes();
     if decoded.op == crate::record::OP_DELETE {

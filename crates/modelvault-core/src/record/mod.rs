@@ -14,11 +14,11 @@ pub use payload_v2::{
     decode_record_payload, encode_record_payload_v2, encode_record_payload_v2_op,
     RECORD_PAYLOAD_VERSION_V2,
 };
-pub(crate) use payload_v3::insert_value_at_path;
 pub use payload_v3::{
     decode_record_payload_any, encode_record_payload_v3, encode_record_payload_v3_op,
     RECORD_PAYLOAD_VERSION_V3,
 };
+pub(crate) use payload_v3::{fields_for_record_decode, insert_value_at_path};
 pub use row_value::{decode_row_value, encode_row_value, non_pk_defs_in_order, RowValue};
 pub use scalar::{
     decode_tagged_scalar, decode_tagged_string, encode_tagged_scalar, Cursor, ScalarValue,

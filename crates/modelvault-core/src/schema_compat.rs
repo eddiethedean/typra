@@ -47,6 +47,23 @@ pub fn classify_schema_update(
         }
     }
 
+    // Field reorder breaks positional v2/v3 record encoding.
+    let old_existing: Vec<_> = old_fields
+        .iter()
+        .filter(|f| new_map.contains_key(&f.path))
+        .map(|f| &f.path)
+        .collect();
+    let new_existing: Vec<_> = new_fields
+        .iter()
+        .filter(|f| old_map.contains_key(&f.path))
+        .map(|f| &f.path)
+        .collect();
+    if old_existing != new_existing {
+        return Ok(SchemaChange::Breaking {
+            reason: "field reorder breaks positional record encoding".into(),
+        });
+    }
+
     // New fields: safe only if optional-at-root; otherwise migration required.
     for (path, new_def) in &new_map {
         if old_map.contains_key(path) {

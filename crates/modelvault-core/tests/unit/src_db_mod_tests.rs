@@ -2776,6 +2776,68 @@
             .is_none());
     }
 
+    #[test]
+    fn verify_indexes_match_rows_fails_on_ghost_index_key() {
+        use crate::db::verify_indexes_match_rows;
+        use crate::index::{IndexEntry, IndexOp};
+        use crate::schema::{FieldDef, FieldPath, IndexDef, IndexKind, Type};
+        use std::borrow::Cow;
+
+        let mut db = crate::db::Database::<crate::storage::VecStore>::open_in_memory().unwrap();
+        let fields = vec![
+            FieldDef {
+                path: FieldPath(vec![Cow::Borrowed("id")]),
+                ty: Type::Int64,
+                constraints: vec![],
+            },
+            FieldDef {
+                path: FieldPath(vec![Cow::Borrowed("tag")]),
+                ty: Type::String,
+                constraints: vec![],
+            },
+        ];
+        let indexes = vec![IndexDef {
+            name: "tag_u".into(),
+            path: FieldPath(vec![Cow::Borrowed("tag")]),
+            kind: IndexKind::Unique,
+        }];
+        let (cid, _) = db
+            .register_collection_with_indexes("items", fields, indexes, "id")
+            .unwrap();
+        db.insert(
+            cid,
+            BTreeMap::from([
+                ("id".into(), crate::RowValue::Int64(1)),
+                ("tag".into(), crate::RowValue::String("a".into())),
+            ]),
+        )
+        .unwrap();
+        db.verify_index_consistency().unwrap();
+
+        let catalog = db.catalog();
+        let pk_key = crate::ScalarValue::Int64(1).canonical_key_bytes();
+        let latest = std::collections::HashMap::from([(
+            (cid.0, pk_key),
+            BTreeMap::from([
+                ("id".into(), crate::RowValue::Int64(1)),
+                ("tag".into(), crate::RowValue::String("a".into())),
+            ]),
+        )]);
+        let mut indexes = db.indexes.clone();
+        let ghost_key = crate::ScalarValue::String("ghost".into()).canonical_key_bytes();
+        indexes
+            .apply(IndexEntry {
+                collection_id: cid.0,
+                index_name: "tag_u".into(),
+                kind: IndexKind::Unique,
+                op: IndexOp::Insert,
+                index_key: ghost_key,
+                pk_key: crate::ScalarValue::Int64(99).canonical_key_bytes(),
+            })
+            .unwrap();
+        assert!(verify_indexes_match_rows(catalog, &latest, &indexes).is_err());
+    }
+
     /// Exercise `best_effort_fsync_parent_dir` early returns (Unix only).
     #[cfg(unix)]
     #[test]

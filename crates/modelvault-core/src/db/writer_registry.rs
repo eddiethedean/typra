@@ -20,7 +20,6 @@ impl WriterRegistryGuard {
 
 impl Drop for WriterRegistryGuard {
     fn drop(&mut self) {
-        super::handle_registry::unregister(&self.path);
         unregister_writable(&self.path);
     }
 }
@@ -34,15 +33,28 @@ fn is_tracked_path(path: &Path) -> bool {
     path.as_os_str() != ":memory:"
 }
 
+/// True when a writable [`Database`] for `path` is currently open in this process.
+pub fn is_writable_open(path: &Path) -> bool {
+    if !is_tracked_path(path) {
+        return false;
+    }
+    let key = super::handle_registry::registry_key(path);
+    let Ok(g) = map().lock() else {
+        return false;
+    };
+    g.get(&key).copied().unwrap_or(0) > 0
+}
+
 /// Register a writable open for `path`. Fails if another writable handle is already registered.
 pub fn register_writable(path: &Path) -> Result<(), DbError> {
     if !is_tracked_path(path) {
         return Ok(());
     }
+    let key = super::handle_registry::registry_key(path);
     let mut g = map()
         .lock()
         .map_err(|_| DbError::Io(std::io::Error::other("writer registry lock poisoned")))?;
-    let count = g.get(path).copied().unwrap_or(0);
+    let count = g.get(&key).copied().unwrap_or(0);
     if count > 0 {
         return Err(DbError::Io(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
@@ -52,7 +64,7 @@ pub fn register_writable(path: &Path) -> Result<(), DbError> {
             ),
         )));
     }
-    g.insert(path.to_path_buf(), 1);
+    g.insert(key, 1);
     Ok(())
 }
 
@@ -61,10 +73,11 @@ pub fn unregister_writable(path: &Path) {
     if !is_tracked_path(path) {
         return;
     }
+    let key = super::handle_registry::registry_key(path);
     let Ok(mut g) = map().lock() else {
         return;
     };
-    if let Some(n) = g.get_mut(path) {
+    if let Some(n) = g.get_mut(&key) {
         *n = n.saturating_sub(1);
         if *n == 0 {
             g.remove(path);

@@ -122,7 +122,8 @@ pub(crate) fn lock_inner_write<'a>(
 pub(crate) fn collection_info(handle: &DbHandle, name: &str) -> PyResult<CollectionInfo> {
     let g = lock_inner_read(handle)?;
     let cid = g.collection_id_named(name).map_err(db_error_to_py)?;
-    g.catalog()
+    let catalog = g.catalog();
+    catalog
         .get(cid)
         .cloned()
         .ok_or_else(|| PyValueError::new_err("collection missing after resolve"))

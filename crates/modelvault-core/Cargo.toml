@@ -307,6 +307,10 @@ name = "store_io"
 path = "tests/integration/store_io.rs"
 
 [[test]]
+name = "subtle_defect_regressions"
+path = "tests/integration/subtle_defect_regressions.rs"
+
+[[test]]
 name = "superblock_errors"
 path = "tests/integration/superblock_errors.rs"
 
