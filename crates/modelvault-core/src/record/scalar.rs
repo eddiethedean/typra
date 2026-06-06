@@ -72,11 +72,13 @@ pub fn encode_tagged_scalar(out: &mut Vec<u8>, v: &ScalarValue, ty: &Type) -> Re
         (ScalarValue::String(s), Type::String) => {
             out.push(4);
             let b = s.as_bytes();
+            check_field_bytes_len(b.len())?;
             out.extend_from_slice(&(b.len() as u32).to_le_bytes());
             out.extend_from_slice(b);
         }
         (ScalarValue::Bytes(b), Type::Bytes) => {
             out.push(5);
+            check_field_bytes_len(b.len())?;
             out.extend_from_slice(&(b.len() as u32).to_le_bytes());
             out.extend_from_slice(b);
         }

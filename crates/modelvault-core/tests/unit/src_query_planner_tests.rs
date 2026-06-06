@@ -1369,9 +1369,9 @@ fn external_sort_source_new_tolerates_corrupt_run_payload_by_skipping_seed_item(
         }
         fn read_exact_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), DbError> {
             self.inner.read_exact_at(offset, buf)?;
-            // Corrupt the encoded key_len so RunReader::next_item() returns None.
-            if buf.len() >= 5 {
-                buf[1..5].copy_from_slice(&u32::MAX.to_le_bytes());
+            // Corrupt the encoded key_len during incremental spill reads.
+            if buf.len() == 4 {
+                buf.copy_from_slice(&u32::MAX.to_le_bytes());
             }
             Ok(())
         }

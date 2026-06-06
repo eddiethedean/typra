@@ -48,6 +48,7 @@ Assume the attacker **cannot**:
 ## Mitigations in the repo
 
 - **Bounded decode**: segment payloads, field bytes, list/checkpoint entry counts, and SQL `LIMIT` are capped to limit allocation and CPU on hostile inputs.
+- **Bounded encode (0.16+)**: `encode_tagged_scalar` applies the same field-byte caps as decode so oversized strings/bytes fail at write time.
 - **Regex registration**: pattern length and nested-quantifier checks at schema registration; bounded regex cache.
 - **Index integrity**: unique index delete PK mismatches fail replay; `modelvault verify` rebuilds indexes from row data.
 - **Cross-process locking**: exclusive `flock` on the main database file (Unix) in addition to the sidecar lock file.

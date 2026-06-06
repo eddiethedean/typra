@@ -7,7 +7,7 @@ Tutorials: [Pydantic guide](../guides/pydantic.md) · [FastAPI guide](../guides/
 ## Install
 
 ```bash
-pip install "modelvault>=0.15.0,<0.16"
+pip install "modelvault>=0.16.0,<0.17"
 ```
 
 ## Primary API: `modelvault.models`

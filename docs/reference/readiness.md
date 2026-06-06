@@ -23,6 +23,11 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
   - Rust: `crates/modelvault-core/tests/integration/file_locking.rs`
 - **In-process single writable handle per path (0.15+)**
   - Rust: `crates/modelvault-core/tests/integration/writer_registry_dual_open.rs`
+- **Attached read-only live reads + streaming query_iter (0.16+)**
+  - Rust: `crates/modelvault-core/tests/integration/subtle_defect_regressions.rs`
+  - Python: `python/modelvault/tests/test_dbapi_sees_post_attach_insert.py`
+- **Replay idempotence + attach lifecycle (0.16+)**
+  - Rust: `crates/modelvault-core/tests/integration/replay_idempotence_016.rs`
 - **Legacy format minor 5 segments replay after header upgrade to v6**
   - Rust: `crates/modelvault-core/tests/unit/src_db_replay_tests.rs` (`v6_replay_accepts_legacy_unframed_segments_after_header_upgrade`)
 
@@ -121,11 +126,11 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
 
 ## Release cut checklist {#release-cut-checklist}
 
-Use this before tagging **`vX.Y.Z`** (e.g. **`v0.15.0`**) and publishing to crates.io / PyPI.
+Use this before tagging **`vX.Y.Z`** (e.g. **`v0.16.0`**) and publishing to crates.io / PyPI.
 
 ### Pre-flight (local)
 
-1. **Workspace version** — root [`Cargo.toml`](https://github.com/eddiethedean/modelvault/blob/main/Cargo.toml) `[workspace.package] version` matches the intended tag (currently **0.15.4**).
+1. **Workspace version** — root [`Cargo.toml`](https://github.com/eddiethedean/modelvault/blob/main/Cargo.toml) `[workspace.package] version` matches the intended tag (currently **0.16.0**).
 2. **Changelog** — [`CHANGELOG.md`](https://github.com/eddiethedean/modelvault/blob/main/CHANGELOG.md) has a dated section for the release; **`[Unreleased]`** is empty or only future work.
 3. **Readiness pipeline** — from repo root:
 
@@ -143,9 +148,9 @@ Use this before tagging **`vX.Y.Z`** (e.g. **`v0.15.0`**) and publishing to crat
 2. **Tag** (must match `Cargo.toml` exactly):
 
    ```bash
-   git tag -a v0.15.0 -m "ModelVault 0.15.0"
+   git tag -a v0.16.0 -m "ModelVault 0.16.0"
    git push origin main
-   git push origin v0.15.0
+   git push origin v0.16.0
    ```
 
 3. **CI publish** — pushing the version tag triggers [`.github/workflows/publish.yml`](https://github.com/eddiethedean/modelvault/blob/main/.github/workflows/publish.yml) (crates.io then PyPI wheels). Requires repository secrets **`CARGO_REGISTRY_TOKEN`** and **`PYPI_API_TOKEN`**.
@@ -157,14 +162,14 @@ Use this before tagging **`vX.Y.Z`** (e.g. **`v0.15.0`**) and publishing to crat
 ### Post-publish verification
 
 - **crates.io**: `modelvault`, `modelvault-core`, `modelvault-derive`, and `modelvault-cli` at the released version.
-- **PyPI**: `pip index versions modelvault` shows the new version; `pip install "modelvault>=0.15.0,<0.16"` succeeds on your platform.
+- **PyPI**: `pip index versions modelvault` shows the new version; `pip install "modelvault>=0.16.0,<0.17"` succeeds on your platform.
 - **Smoke test**:
 
   ```bash
-  pip install "modelvault>=0.15.0,<0.16"
+  pip install "modelvault>=0.16.0,<0.17"
   python -c "import modelvault; print(modelvault.__version__)"
   ```
 
-### After shipping 0.15.0
+### After shipping 0.16.0
 
-Document any post-release fixes in **`[Unreleased]`** or a patch **`0.15.x`** section as appropriate.
+Document any post-release fixes in **`[Unreleased]`** or a patch **`0.16.x`** section as appropriate.

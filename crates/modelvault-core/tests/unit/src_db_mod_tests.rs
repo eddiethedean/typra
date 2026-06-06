@@ -1,6 +1,6 @@
     use super::Database;
     use crate::db::open;
-    use crate::db::write;
+    use crate::db::segment_write;
     use crate::error::FormatError;
     use crate::error::{SchemaError, ValidationError};
     use crate::file_format::{FileHeader, FILE_HEADER_SIZE};
@@ -768,6 +768,7 @@
             fields: vec![],
             indexes: vec![],
             primary_field: None,
+            version_history: BTreeMap::new(),
         };
         let e = super::validate_subset_model::<M>(&col_no_pk).unwrap_err();
         assert!(matches!(e, crate::DbError::Schema(_)));
@@ -1246,7 +1247,7 @@
                 index_key: b"Hello".to_vec(),
                 pk_key: b"Hello".to_vec(),
             }]);
-            write::commit_write_txn_v6(
+            segment_write::commit_write_txn_v6(
                 &mut db.store,
                 db.segment_start,
                 &mut db.format_minor,

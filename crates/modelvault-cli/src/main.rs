@@ -1,12 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use modelvault_core::catalog::decode_catalog_payload;
-use modelvault_core::file_format::{decode_header, FILE_HEADER_SIZE};
-use modelvault_core::segments::header::SegmentType;
-use modelvault_core::segments::reader::{read_segment_payload, scan_segments, SegmentMeta};
-use modelvault_core::storage::{FileStore, Store};
-use modelvault_core::superblock::{decode_superblock, SUPERBLOCK_SIZE};
+use modelvault_core::db::{scan_database_file, DatabaseScanMode};
 
 #[derive(Parser)]
 #[command(name = "modelvault")]
@@ -470,90 +465,16 @@ fn migrate_apply(
     Ok(())
 }
 
-fn open_readonly_store(path: &PathBuf) -> Result<FileStore, modelvault_core::DbError> {
-    let f = std::fs::OpenOptions::new().read(true).open(path)?;
-    Ok(FileStore::new(f))
-}
-
-fn segment_start_offset() -> u64 {
-    (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64
-}
-
-fn read_header_and_superblocks(
-    store: &mut impl Store,
-) -> Result<
-    (
-        modelvault_core::file_format::FileHeader,
-        [u8; SUPERBLOCK_SIZE],
-        [u8; SUPERBLOCK_SIZE],
-    ),
-    modelvault_core::DbError,
-> {
-    let len = store.len()?;
-    if len < FILE_HEADER_SIZE as u64 {
-        return Err(modelvault_core::DbError::Format(
-            modelvault_core::FormatError::TruncatedHeader {
-                got: len as usize,
-                expected: FILE_HEADER_SIZE,
-            },
-        ));
-    }
-
-    let mut hdr_buf = [0u8; FILE_HEADER_SIZE];
-    store.read_exact_at(0, &mut hdr_buf)?;
-    let header = decode_header(&hdr_buf)?;
-
-    let mut a = [0u8; SUPERBLOCK_SIZE];
-    let mut b = [0u8; SUPERBLOCK_SIZE];
-    store.read_exact_at(FILE_HEADER_SIZE as u64, &mut a)?;
-    store.read_exact_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &mut b)?;
-
-    Ok((header, a, b))
-}
-
-fn select_superblock(
-    a: &[u8; SUPERBLOCK_SIZE],
-    b: &[u8; SUPERBLOCK_SIZE],
-) -> Option<modelvault_core::superblock::Superblock> {
-    let sa = decode_superblock(a).ok();
-    let sb = decode_superblock(b).ok();
-    match (sa, sb) {
-        (Some(sa), Some(sb)) => Some(if sa.generation >= sb.generation {
-            sa
-        } else {
-            sb
-        }),
-        (Some(sa), None) => Some(sa),
-        (None, Some(sb)) => Some(sb),
-        (None, None) => None,
-    }
-}
-
-fn load_catalog_from_segments(
-    store: &mut impl Store,
-    metas: &[SegmentMeta],
-) -> Result<modelvault_core::Catalog, modelvault_core::DbError> {
-    let mut cat = modelvault_core::Catalog::default();
-    for meta in metas {
-        if meta.header.segment_type != SegmentType::Schema {
-            continue;
-        }
-        let payload = read_segment_payload(store, meta)?;
-        let rec = decode_catalog_payload(&payload)?;
-        cat.apply_record(rec)?;
-    }
-    Ok(cat)
-}
-
 fn inspect(path: PathBuf) -> Result<(), modelvault_core::DbError> {
-    let mut store = open_readonly_store(&path)?;
-    let (header, sb_a, sb_b) = read_header_and_superblocks(&mut store)?;
-    let selected = select_superblock(&sb_a, &sb_b);
+    let scan = scan_database_file(&path, DatabaseScanMode::Inspect)?;
 
     println!("path: {}", path.display());
-    println!("format: {}.{}", header.format_major, header.format_minor);
+    println!(
+        "format: {}.{}",
+        scan.header.format_major, scan.header.format_minor
+    );
 
-    match selected {
+    match scan.superblock {
         None => {
             println!("superblock: none_valid");
             return Ok(());
@@ -566,12 +487,8 @@ fn inspect(path: PathBuf) -> Result<(), modelvault_core::DbError> {
         }
     }
 
-    // Catalog summary (decode schema segments only; no full replay required).
-    let start = segment_start_offset();
-    let metas = scan_segments(&mut store, start)?;
-    let cat = load_catalog_from_segments(&mut store, &metas)?;
-    println!("collections: {}", cat.collections().len());
-    for c in cat.collections() {
+    println!("collections: {}", scan.catalog.collections().len());
+    for c in scan.catalog.collections() {
         println!(
             "- {} (id={}, schema_version={}, indexes={})",
             c.name,
@@ -586,37 +503,20 @@ fn inspect(path: PathBuf) -> Result<(), modelvault_core::DbError> {
 fn verify(path: PathBuf) -> Result<(), modelvault_core::DbError> {
     let db = modelvault_core::Database::open_read_only(&path)?;
     db.verify_index_consistency()?;
-    let mut store = open_readonly_store(&path)?;
-    let (header, _sb_a, _sb_b) = read_header_and_superblocks(&mut store)?;
-    if store.len()? < segment_start_offset() {
-        return Err(modelvault_core::DbError::Format(
-            modelvault_core::FormatError::TruncatedSuperblock {
-                got: store.len()? as usize,
-                expected: segment_start_offset() as usize,
-            },
-        ));
-    }
-
-    // Segment framing + CRC (except checkpoint/temp payload policy) is validated by scan_segments.
-    let metas = scan_segments(&mut store, segment_start_offset())?;
-
-    // Also validate schema segments decode/apply.
-    let _ = load_catalog_from_segments(&mut store, &metas)?;
+    let scan = scan_database_file(&path, DatabaseScanMode::Verify)?;
 
     println!(
         "ok: format {}.{} segments={} schema_segments_ok=true indexes_ok=true",
-        header.format_major,
-        header.format_minor,
-        metas.len()
+        scan.header.format_major,
+        scan.header.format_minor,
+        scan.segments.len()
     );
     Ok(())
 }
 
 fn dump_catalog(path: PathBuf) -> Result<(), modelvault_core::DbError> {
-    let mut store = open_readonly_store(&path)?;
-    let _ = read_header_and_superblocks(&mut store)?;
-    let metas = scan_segments(&mut store, segment_start_offset())?;
-    let cat = load_catalog_from_segments(&mut store, &metas)?;
+    let scan = scan_database_file(&path, DatabaseScanMode::Verify)?;
+    let cat = &scan.catalog;
 
     let v = serde_json::json!({
         "collections": cat.collections().iter().map(|c| {

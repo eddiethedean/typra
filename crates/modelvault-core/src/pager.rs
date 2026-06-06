@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -8,26 +8,93 @@ use crate::error::DbError;
 use crate::storage::Store;
 
 pub const DEFAULT_PAGE_SIZE: u64 = 16 * 1024;
+/// Default maximum number of cached pages before LRU eviction.
+pub const DEFAULT_MAX_PAGES: usize = 512;
+
+#[derive(Debug)]
+struct PageCache {
+    map: HashMap<u64, Vec<u8>>,
+    order: VecDeque<u64>,
+    max_pages: usize,
+}
+
+impl PageCache {
+    fn new(max_pages: usize) -> Self {
+        Self {
+            map: HashMap::new(),
+            order: VecDeque::new(),
+            max_pages: max_pages.max(1),
+        }
+    }
+
+    fn get(&mut self, page_idx: u64) -> Option<Vec<u8>> {
+        if !self.map.contains_key(&page_idx) {
+            return None;
+        }
+        self.touch(page_idx);
+        self.map.get(&page_idx).cloned()
+    }
+
+    fn insert(&mut self, page_idx: u64, page: Vec<u8>) {
+        if let Some(existing) = self.map.get_mut(&page_idx) {
+            *existing = page;
+            self.touch(page_idx);
+            return;
+        }
+        while self.map.len() >= self.max_pages {
+            if let Some(evict) = self.order.pop_front() {
+                self.map.remove(&evict);
+            } else {
+                break;
+            }
+        }
+        self.map.insert(page_idx, page);
+        self.order.push_back(page_idx);
+    }
+
+    fn remove(&mut self, page_idx: u64) {
+        if self.map.remove(&page_idx).is_some() {
+            self.order.retain(|p| *p != page_idx);
+        }
+    }
+
+    fn retain<F>(&mut self, mut keep: F)
+    where
+        F: FnMut(&u64) -> bool,
+    {
+        self.map.retain(|page_idx, _| keep(page_idx));
+        self.order
+            .retain(|page_idx| self.map.contains_key(page_idx));
+    }
+
+    fn touch(&mut self, page_idx: u64) {
+        self.order.retain(|p| *p != page_idx);
+        self.order.push_back(page_idx);
+    }
+}
 
 /// A simple fixed-size page cache wrapper over any [`Store`].
 ///
-/// This is intentionally minimal (no eviction policy yet). It exists to decouple the engine’s
-/// random-access reads from the OS file descriptor and provide a hook for future buffer pool work.
+/// Uses LRU eviction capped at [`DEFAULT_MAX_PAGES`] by default.
 #[derive(Debug)]
 pub struct PagedStore<S: Store> {
     inner: S,
     page_size: u64,
     // Interior mutability so we can keep the `Store` trait surface unchanged.
-    cache: Arc<Mutex<HashMap<u64, Vec<u8>>>>,
+    cache: Arc<Mutex<PageCache>>,
 }
 
 impl<S: Store> PagedStore<S> {
     pub fn new(inner: S, page_size: u64) -> Self {
+        Self::with_max_pages(inner, page_size, DEFAULT_MAX_PAGES)
+    }
+
+    pub fn with_max_pages(inner: S, page_size: u64, max_pages: usize) -> Self {
         let page_size = page_size.max(512); // basic sanity guard
         Self {
             inner,
             page_size,
-            cache: Arc::new(Mutex::new(HashMap::new())),
+            cache: Arc::new(Mutex::new(PageCache::new(max_pages))),
         }
     }
 
@@ -53,8 +120,7 @@ impl<S: Store> PagedStore<S> {
             .cache
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .get(&page_idx)
-            .cloned()
+            .get(page_idx)
         {
             return Ok(hit);
         }
@@ -91,7 +157,7 @@ impl<S: Store> PagedStore<S> {
         let pages = self.page_range_touched(offset, len);
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         for p in pages {
-            cache.remove(&p);
+            cache.remove(p);
         }
         Ok(())
     }
@@ -99,7 +165,7 @@ impl<S: Store> PagedStore<S> {
     fn clear_truncated(&mut self, new_len: u64) -> Result<(), DbError> {
         let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let ps = self.page_size;
-        cache.retain(|page_idx, _| {
+        cache.retain(|page_idx| {
             let start = page_idx.saturating_mul(ps);
             start < new_len && start.saturating_add(ps) <= new_len
         });

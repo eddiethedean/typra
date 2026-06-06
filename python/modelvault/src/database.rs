@@ -379,6 +379,11 @@ impl Database {
         g.compact_in_place()
     }
 
+    fn checkpoint(&self) -> PyResult<()> {
+        let mut g = lock_inner_write(&self.inner)?;
+        g.checkpoint().map_err(db_error_to_py)
+    }
+
     #[pyo3(name = "transaction")]
     fn py_transaction(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyTransaction>> {
         let db: Py<Database> = slf.into_pyobject(py)?.unbind();

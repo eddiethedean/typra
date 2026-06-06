@@ -248,22 +248,24 @@ pub(crate) fn peek_record_non_pk_field_count(bytes: &[u8], pk_ty: &Type) -> Resu
 
 /// Field layout used to decode a record segment that may predate the catalog's current version.
 pub(crate) fn fields_for_record_decode(
-    catalog_fields: &[FieldDef],
-    current_schema_version: u32,
+    col: &crate::catalog::CollectionInfo,
     payload: &[u8],
     pk_name: &str,
     pk_ty: &Type,
 ) -> Result<Vec<FieldDef>, DbError> {
     if payload.len() < 10 {
-        return Ok(catalog_fields.to_vec());
+        return Ok(col.fields.clone());
     }
     let payload_sv = u32::from_le_bytes([payload[6], payload[7], payload[8], payload[9]]);
-    if payload_sv >= current_schema_version {
-        return Ok(catalog_fields.to_vec());
+    if payload_sv >= col.current_version.0 {
+        return Ok(col.fields.clone());
+    }
+    if let Some(fields) = col.fields_at_version(payload_sv) {
+        return Ok(fields.to_vec());
     }
     let non_pk_count = peek_record_non_pk_field_count(payload, pk_ty)?;
     Ok(truncate_top_level_non_pk_fields(
-        catalog_fields,
+        &col.fields,
         pk_name,
         non_pk_count,
     ))

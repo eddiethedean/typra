@@ -31,7 +31,7 @@ More: [Why ModelVault](https://modelvault.readthedocs.io/en/latest/guides/why_mo
 Store a Pydantic model — no low-level schema JSON:
 
 ```python
-# pip install "modelvault>=0.15.0,<0.16" pydantic
+# pip install "modelvault>=0.16.0,<0.17" pydantic
 from pydantic import BaseModel
 import modelvault
 
@@ -54,7 +54,7 @@ Output:
 
 ```text
 title='Hello' year=2020
-0.15.4
+0.16.0
 ```
 
 Also works with **dataclasses** — see the [Pydantic guide](https://modelvault.readthedocs.io/en/latest/guides/pydantic/) and [Quickstart](https://modelvault.readthedocs.io/en/latest/guides/quickstart/).
@@ -71,13 +71,17 @@ Also works with **dataclasses** — see the [Pydantic guide](https://modelvault.
 ## Install
 
 ```bash
-pip install "modelvault>=0.15.0,<0.16"
+pip install "modelvault>=0.16.0,<0.17"
 ```
 
 ```toml
 [dependencies]
-modelvault = "0.15"
+modelvault = "0.16"
 ```
+
+**Toolchain:** Rust **stable** (see [`rust-toolchain.toml`](rust-toolchain.toml)); Python **3.9+**.
+
+**Sizing (0.16+):** the pager keeps up to **512** pages (~2–8 MB depending on page size) in an LRU cache by default. Large `ORDER BY` queries spill to temp segments; small `LIMIT` uses a top-K heap instead of a full sort. Run `compact()` periodically if the log grows large.
 
 ## Documentation (by goal)
 

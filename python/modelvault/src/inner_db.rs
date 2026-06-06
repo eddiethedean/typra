@@ -341,4 +341,11 @@ impl InnerDb {
             InnerDb::Mem(d) => d.rollback_transaction(),
         }
     }
+
+    pub(crate) fn checkpoint(&mut self) -> Result<(), modelvault_core::DbError> {
+        match self {
+            InnerDb::File(d) => d.checkpoint(),
+            InnerDb::Mem(d) => d.checkpoint(),
+        }
+    }
 }

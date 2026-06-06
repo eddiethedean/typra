@@ -10,8 +10,8 @@ New to ModelVault? Start with [Why ModelVault](../guides/why_modelvault.md) and 
 
 | Name | Meaning |
 |------|---------|
-| **Package / crate version** | SemVer on [crates.io](https://crates.io/crates/modelvault) and [PyPI](https://pypi.org/project/modelvault/) (e.g. **`0.15.4`** today). |
-| **Product milestone** | Docs and marketing refer to the **1.0** feature set (stable engine, `modelvault.models`, format-compat pledge below). Package releases such as **`0.15.x`** ship that feature set under SemVer **0.15**, not **1.y.z**. |
+| **Package / crate version** | SemVer on [crates.io](https://crates.io/crates/modelvault) and [PyPI](https://pypi.org/project/modelvault/) (e.g. **`0.16.0`** today). |
+| **Product milestone** | Docs and marketing refer to the **1.0** feature set (stable engine, `modelvault.models`, format-compat pledge below). Package releases such as **`0.16.x`** ship that feature set under SemVer **0.16**, not **1.y.z**. |
 | **Pre-rebrand files** | Same `TDB0` on-disk layout as today; databases created before the 0.14.0 package rename open without conversion (any prior file extension). |
 
 ## 1.x on-disk backwards compatibility pledge
@@ -142,6 +142,19 @@ Checkpoint payloads are validated **when used**; corrupt checkpoint bytes should
 - **`Database.open(..., recovery="strict"|"auto_truncate")`** and **`AsyncDatabase.open(..., recovery=...)`** match Rust `RecoveryMode` (see [Recovery modes](#recovery-modes-contract) above).
 - DB-API (`modelvault.dbapi`): read-only subset of PEP 249. Same-process read-only opens share the live writer snapshot via an in-process handle registry (fresh reads without a second writable handle).
 - **Same-process read-only**: `Database.open(..., read_only=True)` and `dbapi.connect` attach to an existing writable handle in the same process; cross-process read-only opens still use the sidecar shared lock.
+
+### Attached read-only handles (Rust, 0.16+)
+
+When a read-only handle attaches to a same-process writer (`read_only_attached`):
+
+| Method | Data source |
+|--------|-------------|
+| `get`, `query`, `query_iter`, `explain_query`, `collection_names`, `collection_id_named`, `verify_index_consistency` | Live shared mirror |
+| `snapshot_catalog`, `snapshot_index_state` | Live clone |
+| `catalog`, `index_state` | Open-time snapshot (may be stale after writer schema changes) |
+
+Prefer `snapshot_*` helpers when holding schema or index metadata across writer activity.
+
 - **Schema versions** are stored as `u32`; `SchemaVersionExhausted` is returned at `u32::MAX`.
 
 ## DB-API + SQL subset guarantees (current)

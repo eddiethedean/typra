@@ -75,7 +75,7 @@ The **release readiness** gate (`make check-2p0-ready`) runs `check-full` plus a
 
 ## Versioning
 
-Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.15.4**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
+Workspace crates and the PyPI distribution share **`[workspace.package] version`** in the root `Cargo.toml` (currently **0.16.0**). Bump that version when you cut releases, then tag **`vX.Y.Z`** to match.
 
 ## Coverage (practical 100%)
 

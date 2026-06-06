@@ -113,14 +113,14 @@ ModelVault optimizes for **typed application documents in one process**, not eve
 === "Python"
 
     ```bash
-    pip install "modelvault>=0.15.0,<0.16"
+    pip install "modelvault>=0.16.0,<0.17"
     ```
 
 === "Rust"
 
     ```toml
     [dependencies]
-    modelvault = "0.15"
+    modelvault = "0.16"
     ```
 
 ## Capabilities (current release)
@@ -134,7 +134,7 @@ ModelVault optimizes for **typed application documents in one process**, not eve
 | **Python ergonomics** | `modelvault.models` (recommended) + optional read-only `modelvault.dbapi` |
 | **Operations** | `modelvault` CLI—inspect, verify, backup, checkpoint, compact |
 
-Package version **0.15.x** on PyPI and crates.io builds on the **1.0 product milestone** (0.14.x rebrand) (see [Compatibility → Versioning](reference/compatibility.md#versioning-package-vs-product)).
+Package version **0.16.x** on PyPI and crates.io builds on the **1.0 product milestone** (0.14.x rebrand) (see [Compatibility → Versioning](reference/compatibility.md#versioning-package-vs-product)).
 
 ## Documentation by goal
 

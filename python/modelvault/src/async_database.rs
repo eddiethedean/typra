@@ -484,6 +484,15 @@ impl AsyncDatabase {
         })
     }
 
+    fn checkpoint<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = Arc::clone(&self.inner);
+        future_into_blocking(py, move || {
+            let mut g = lock_inner_write(inner.as_ref())?;
+            g.checkpoint().map_err(db_error_to_py)?;
+            Ok(())
+        })
+    }
+
     #[pyo3(name = "transaction")]
     fn py_transaction(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<AsyncTransaction> {
         let db: Py<AsyncDatabase> = slf.into_pyobject(py)?.unbind();

@@ -210,6 +210,7 @@ fn type_is_compatible(old: &Type, new: &Type) -> bool {
 mod tests {
     use super::*;
     use std::borrow::Cow;
+    use std::collections::BTreeMap;
 
     use crate::catalog::CollectionInfo;
     use crate::error::{DbError, SchemaError};
@@ -242,6 +243,7 @@ mod tests {
                 kind: IndexKind::NonUnique,
             }],
             primary_field: Some("id".into()),
+            version_history: BTreeMap::new(),
         };
         let err = validate_model_fields_against_catalog(
             &col,
@@ -273,6 +275,7 @@ mod tests {
                 kind: IndexKind::NonUnique,
             }],
             primary_field: Some("id".into()),
+            version_history: BTreeMap::new(),
         };
         let subset = vec![field("id", Type::Int64)];
 

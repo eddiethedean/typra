@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-06
+
+### Added
+
+- **`OpenOptions::builder()`** and **`OpenOptionsBuilder`** for non-breaking option construction.
+- **`Database::snapshot_index_state()`** for live index introspection on attached read-only handles.
+- **Schema `version_history`** on collections; replay decodes stale record payloads using historical field layouts.
+- **Index range scans** (`IndexRangeLookup`) for Int64/String range predicates on indexed columns.
+- **Streaming k-way external sort** merge (spill runs read incrementally, not loaded entirely into RAM).
+- **Top-K ORDER BY** when `LIMIT ≤ 1024` avoids full sort of large result sets.
+- **Pager LRU** cache with **`DEFAULT_MAX_PAGES`** (512); **`PagedStore::with_max_pages`**.
+- **Shared `scan_database_file`** for CLI inspect/verify; **`db/file_scan.rs`**.
+- **Python `Database.checkpoint()` / `AsyncDatabase.checkpoint()`**.
+- **Python structured errors**: `.code` and `.details` on `ModelVault*Error` types.
+- **Streaming DB-API cursor** (`fetchone`/`fetchmany` pull from `query_iter`).
+- **Fuzz targets**: `decode_record_payload_v3`, `decode_checkpoint_payload`.
+- **Integration tests**: replay idempotence, attach lifecycle, subtle-defect regressions (0.15.x audit).
+
+### Fixed
+
+- **Attached read-only:** unified live reads via `with_live_snapshot`; streaming `query_iter` with owned Arc snapshot.
+- **Mirror registry:** `SharedDbState` uses Arc swap on write (no full in-place clone under lock).
+- **Encode bounds:** `check_field_bytes_len` on string/bytes encode path.
+- **ORDER BY parity:** `query()` vs `query_iter()` aligned for floats and large inputs (top-K path).
+- **Index rebuild:** emits deletes for stale keys; verify propagates apply errors.
+- **Autocommit schema bump:** schema registration + row rewrite in one transaction.
+- **Field reorder:** classified as breaking; replay layout checks hardened.
+- **dbapi:** removed no-op `strict_read_only` parameter (always read-only since 0.15.4).
+
+### Changed
+
+- **`modelvault-core`:** format modules (`segments`, `spill`, `publish`, `pager`, etc.) marked **`#[doc(hidden)]`**; stable surface is root re-exports + **`prelude`**.
+- **`modelvault` facade:** curated re-exports (no longer `pub use modelvault_core::*`); **`internal`** module for advanced access.
+- **`Database` implementation** split into `db/read.rs`, `db/write.rs`, `db/catalog_ops.rs`, `db/maintenance.rs`.
+- **Compatibility pin:** `modelvault>=0.16.0,<0.17` (Python), `modelvault = "0.16"` (Rust).
+
+### Notes
+
+- On-disk format unchanged (still format major 0 / minor 6); pin `<0.17` for 0.16.x.
+
 ## [0.15.4] - 2026-06-06
 
 ### Fixed
@@ -327,6 +367,7 @@ See the release notes above for details.
 [0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
 [0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
 [0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
+[0.16.0]: https://github.com/eddiethedean/modelvault/compare/v0.15.4...v0.16.0
 [0.15.4]: https://github.com/eddiethedean/modelvault/compare/v0.15.3...v0.15.4
 [0.15.3]: https://github.com/eddiethedean/modelvault/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/eddiethedean/modelvault/compare/v0.15.1...v0.15.2

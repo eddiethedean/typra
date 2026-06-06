@@ -40,6 +40,21 @@ pub enum DbErrorKind {
     NotImplemented,
 }
 
+impl DbErrorKind {
+    /// Stable snake_case code for bindings and logging.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            DbErrorKind::Io => "io",
+            DbErrorKind::Format => "format",
+            DbErrorKind::Schema => "schema",
+            DbErrorKind::Validation => "validation",
+            DbErrorKind::Transaction => "transaction",
+            DbErrorKind::Query => "query",
+            DbErrorKind::NotImplemented => "not_implemented",
+        }
+    }
+}
+
 impl DbError {
     pub fn kind(&self) -> DbErrorKind {
         match self {
@@ -52,6 +67,263 @@ impl DbError {
             DbError::NotImplemented => DbErrorKind::NotImplemented,
         }
     }
+
+    /// Machine-readable key/value pairs for the specific error variant (empty for I/O).
+    pub fn details(&self) -> std::collections::BTreeMap<String, String> {
+        match self {
+            DbError::Io(_) => std::collections::BTreeMap::new(),
+            DbError::Format(e) => format_error_details(e),
+            DbError::Schema(e) => schema_error_details(e),
+            DbError::Validation(e) => {
+                let mut m = std::collections::BTreeMap::new();
+                if !e.path.is_empty() {
+                    m.insert("path".to_string(), e.path.join("."));
+                }
+                m.insert("message".to_string(), e.message.clone());
+                m
+            }
+            DbError::Transaction(e) => transaction_error_details(e),
+            DbError::Query(e) => {
+                let mut m = std::collections::BTreeMap::new();
+                m.insert("message".to_string(), e.message.clone());
+                m
+            }
+            DbError::NotImplemented => std::collections::BTreeMap::new(),
+        }
+    }
+}
+
+fn format_error_details(e: &FormatError) -> std::collections::BTreeMap<String, String> {
+    use std::collections::BTreeMap;
+    let mut m = BTreeMap::new();
+    match e {
+        FormatError::BadMagic { got } => {
+            m.insert("variant".to_string(), "bad_magic".to_string());
+            m.insert("got".to_string(), format!("{got:02x?}"));
+        }
+        FormatError::TruncatedHeader { got, expected } => {
+            m.insert("variant".to_string(), "truncated_header".to_string());
+            m.insert("got".to_string(), got.to_string());
+            m.insert("expected".to_string(), expected.to_string());
+        }
+        FormatError::UnsupportedVersion { major, minor } => {
+            m.insert("variant".to_string(), "unsupported_version".to_string());
+            m.insert("major".to_string(), major.to_string());
+            m.insert("minor".to_string(), minor.to_string());
+        }
+        FormatError::TruncatedSuperblock { got, expected } => {
+            m.insert("variant".to_string(), "truncated_superblock".to_string());
+            m.insert("got".to_string(), got.to_string());
+            m.insert("expected".to_string(), expected.to_string());
+        }
+        FormatError::BadSuperblockMagic { got } => {
+            m.insert("variant".to_string(), "bad_superblock_magic".to_string());
+            m.insert("got".to_string(), format!("{got:02x?}"));
+        }
+        FormatError::BadSuperblockChecksum => {
+            m.insert("variant".to_string(), "bad_superblock_checksum".to_string());
+        }
+        FormatError::TruncatedSegmentHeader { got, expected } => {
+            m.insert(
+                "variant".to_string(),
+                "truncated_segment_header".to_string(),
+            );
+            m.insert("got".to_string(), got.to_string());
+            m.insert("expected".to_string(), expected.to_string());
+        }
+        FormatError::BadSegmentMagic { got } => {
+            m.insert("variant".to_string(), "bad_segment_magic".to_string());
+            m.insert("got".to_string(), format!("{got:02x?}"));
+        }
+        FormatError::BadSegmentHeaderChecksum => {
+            m.insert(
+                "variant".to_string(),
+                "bad_segment_header_checksum".to_string(),
+            );
+        }
+        FormatError::BadSegmentPayloadChecksum => {
+            m.insert(
+                "variant".to_string(),
+                "bad_segment_payload_checksum".to_string(),
+            );
+        }
+        FormatError::SegmentPayloadPastEof => {
+            m.insert(
+                "variant".to_string(),
+                "segment_payload_past_eof".to_string(),
+            );
+        }
+        FormatError::InvalidCatalogPayload { message } => {
+            m.insert("variant".to_string(), "invalid_catalog_payload".to_string());
+            m.insert("message".to_string(), message.clone());
+        }
+        FormatError::TruncatedRecordPayload => {
+            m.insert(
+                "variant".to_string(),
+                "truncated_record_payload".to_string(),
+            );
+        }
+        FormatError::RecordPayloadTypeMismatch => {
+            m.insert(
+                "variant".to_string(),
+                "record_payload_type_mismatch".to_string(),
+            );
+        }
+        FormatError::InvalidRecordUtf8 => {
+            m.insert("variant".to_string(), "invalid_record_utf8".to_string());
+        }
+        FormatError::RecordPayloadUnsupportedType => {
+            m.insert(
+                "variant".to_string(),
+                "record_payload_unsupported_type".to_string(),
+            );
+        }
+        FormatError::UnknownRecordPayloadVersion { got } => {
+            m.insert(
+                "variant".to_string(),
+                "unknown_record_payload_version".to_string(),
+            );
+            m.insert("got".to_string(), got.to_string());
+        }
+        FormatError::TrailingRecordPayload => {
+            m.insert("variant".to_string(), "trailing_record_payload".to_string());
+        }
+        FormatError::InvalidTxnPayload { message } => {
+            m.insert("variant".to_string(), "invalid_txn_payload".to_string());
+            m.insert("message".to_string(), message.clone());
+        }
+        FormatError::InvalidCheckpointPayload { message } => {
+            m.insert(
+                "variant".to_string(),
+                "invalid_checkpoint_payload".to_string(),
+            );
+            m.insert("message".to_string(), message.clone());
+        }
+        FormatError::UncleanLogTail { safe_end, reason } => {
+            m.insert("variant".to_string(), "unclean_log_tail".to_string());
+            m.insert("safe_end".to_string(), safe_end.to_string());
+            m.insert("reason".to_string(), (*reason).to_string());
+        }
+    }
+    m
+}
+
+fn schema_error_details(e: &SchemaError) -> std::collections::BTreeMap<String, String> {
+    use std::collections::BTreeMap;
+    let mut m = BTreeMap::new();
+    match e {
+        SchemaError::InvalidFieldPath => {
+            m.insert("variant".to_string(), "invalid_field_path".to_string());
+        }
+        SchemaError::DuplicateCollectionName { name } => {
+            m.insert(
+                "variant".to_string(),
+                "duplicate_collection_name".to_string(),
+            );
+            m.insert("name".to_string(), name.clone());
+        }
+        SchemaError::UnknownCollection { id } => {
+            m.insert("variant".to_string(), "unknown_collection".to_string());
+            m.insert("id".to_string(), id.to_string());
+        }
+        SchemaError::UnknownCollectionName { name } => {
+            m.insert("variant".to_string(), "unknown_collection_name".to_string());
+            m.insert("name".to_string(), name.clone());
+        }
+        SchemaError::InvalidCollectionName => {
+            m.insert("variant".to_string(), "invalid_collection_name".to_string());
+        }
+        SchemaError::InvalidSchemaVersion { expected, got } => {
+            m.insert("variant".to_string(), "invalid_schema_version".to_string());
+            m.insert("expected".to_string(), expected.to_string());
+            m.insert("got".to_string(), got.to_string());
+        }
+        SchemaError::SchemaVersionExhausted => {
+            m.insert(
+                "variant".to_string(),
+                "schema_version_exhausted".to_string(),
+            );
+        }
+        SchemaError::UnexpectedCollectionId { expected, got } => {
+            m.insert(
+                "variant".to_string(),
+                "unexpected_collection_id".to_string(),
+            );
+            m.insert("expected".to_string(), expected.to_string());
+            m.insert("got".to_string(), got.to_string());
+        }
+        SchemaError::NoPrimaryKey { collection_id } => {
+            m.insert("variant".to_string(), "no_primary_key".to_string());
+            m.insert("collection_id".to_string(), collection_id.to_string());
+        }
+        SchemaError::PrimaryFieldNotFound { name } => {
+            m.insert("variant".to_string(), "primary_field_not_found".to_string());
+            m.insert("name".to_string(), name.clone());
+        }
+        SchemaError::PrimaryFieldMissingInSchema { name } => {
+            m.insert(
+                "variant".to_string(),
+                "primary_field_missing_in_schema".to_string(),
+            );
+            m.insert("name".to_string(), name.clone());
+        }
+        SchemaError::RowMissingPrimary { name } => {
+            m.insert("variant".to_string(), "row_missing_primary".to_string());
+            m.insert("name".to_string(), name.clone());
+        }
+        SchemaError::RowUnknownField { name } => {
+            m.insert("variant".to_string(), "row_unknown_field".to_string());
+            m.insert("name".to_string(), name.clone());
+        }
+        SchemaError::RowMissingField { name } => {
+            m.insert("variant".to_string(), "row_missing_field".to_string());
+            m.insert("name".to_string(), name.clone());
+        }
+        SchemaError::UniqueIndexViolation => {
+            m.insert("variant".to_string(), "unique_index_violation".to_string());
+        }
+        SchemaError::IncompatibleSchemaChange { message } => {
+            m.insert(
+                "variant".to_string(),
+                "incompatible_schema_change".to_string(),
+            );
+            m.insert("message".to_string(), message.clone());
+        }
+        SchemaError::MigrationRequired { message } => {
+            m.insert("variant".to_string(), "migration_required".to_string());
+            m.insert("message".to_string(), message.clone());
+        }
+        SchemaError::IndexRowMissing {
+            collection_id,
+            index_name,
+        } => {
+            m.insert("variant".to_string(), "index_row_missing".to_string());
+            m.insert("collection_id".to_string(), collection_id.to_string());
+            m.insert("index_name".to_string(), index_name.clone());
+        }
+        SchemaError::PrimaryKeyTypeMismatch { collection_id } => {
+            m.insert(
+                "variant".to_string(),
+                "primary_key_type_mismatch".to_string(),
+            );
+            m.insert("collection_id".to_string(), collection_id.to_string());
+        }
+    }
+    m
+}
+
+fn transaction_error_details(e: &TransactionError) -> std::collections::BTreeMap<String, String> {
+    use std::collections::BTreeMap;
+    let mut m = BTreeMap::new();
+    match e {
+        TransactionError::NestedTransaction => {
+            m.insert("variant".to_string(), "nested_transaction".to_string());
+        }
+        TransactionError::NoActiveTransaction => {
+            m.insert("variant".to_string(), "no_active_transaction".to_string());
+        }
+    }
+    m
 }
 
 /// Query errors: unsupported query forms, bad syntax, or invalid paths.

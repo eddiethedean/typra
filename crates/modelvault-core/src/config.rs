@@ -42,3 +42,54 @@ impl Default for OpenOptions {
         }
     }
 }
+
+/// Builder for [`OpenOptions`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenOptionsBuilder {
+    recovery: RecoveryMode,
+    mode: OpenMode,
+}
+
+impl Default for OpenOptionsBuilder {
+    fn default() -> Self {
+        let opts = OpenOptions::default();
+        Self {
+            recovery: opts.recovery,
+            mode: opts.mode,
+        }
+    }
+}
+
+impl OpenOptions {
+    /// Start building open options (defaults match [`OpenOptions::default`]).
+    pub fn builder() -> OpenOptionsBuilder {
+        OpenOptionsBuilder::default()
+    }
+}
+
+impl OpenOptionsBuilder {
+    pub fn recovery(mut self, recovery: RecoveryMode) -> Self {
+        self.recovery = recovery;
+        self
+    }
+
+    pub fn mode(mut self, mode: OpenMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    pub fn read_only(self) -> Self {
+        self.mode(OpenMode::ReadOnly)
+    }
+
+    pub fn read_write(self) -> Self {
+        self.mode(OpenMode::ReadWrite)
+    }
+
+    pub fn build(self) -> OpenOptions {
+        OpenOptions {
+            recovery: self.recovery,
+            mode: self.mode,
+        }
+    }
+}

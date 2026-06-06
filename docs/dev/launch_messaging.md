@@ -27,8 +27,8 @@ JSON files are fine until you need **indexes, queries, and integrity** — Model
 ## Call to action
 
 - Docs: https://modelvault.readthedocs.io/en/latest/guides/quickstart/
-- PyPI: `pip install "modelvault>=0.15.0,<0.16"`
-- Rust: `modelvault = "0.15"` on crates.io
+- PyPI: `pip install "modelvault>=0.16.0,<0.17"`
+- Rust: `modelvault = "0.16"` on crates.io
 - Examples: https://github.com/eddiethedean/modelvault/tree/main/examples
 
 ## Published blog draft

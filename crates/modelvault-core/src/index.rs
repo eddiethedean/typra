@@ -2,11 +2,14 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use std::cmp::Ordering;
+
 use crate::error::{DbError, FormatError, SchemaError};
 use crate::file_format::{
     check_decode_entry_count, check_field_bytes_len, MAX_SEGMENT_DECODE_ENTRIES,
 };
 use crate::schema::IndexKind;
+use crate::ScalarValue;
 
 pub const INDEX_PAYLOAD_VERSION_V1: u16 = 1;
 pub const INDEX_PAYLOAD_VERSION_V2: u16 = 2;
@@ -120,6 +123,53 @@ impl IndexState {
         Some(set.iter().cloned().collect())
     }
 
+    /// Collect PK keys for all index entries whose key falls in `[lo, hi]` (per `scalar_partial_cmp`).
+    pub fn non_unique_range_lookup(
+        &self,
+        collection_id: u32,
+        index_name: &str,
+        lo: Option<&ScalarValue>,
+        lo_inclusive: bool,
+        hi: Option<&ScalarValue>,
+        hi_inclusive: bool,
+    ) -> Vec<Vec<u8>> {
+        let Some(m) = self
+            .non_unique
+            .get(&(collection_id, index_name.to_string()))
+        else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (index_key, set) in m {
+            if !index_key_in_range(index_key, lo, lo_inclusive, hi, hi_inclusive) {
+                continue;
+            }
+            out.extend(set.iter().cloned());
+        }
+        out
+    }
+
+    /// Collect PK keys for unique index entries whose key falls in `[lo, hi]`.
+    pub fn unique_range_lookup(
+        &self,
+        collection_id: u32,
+        index_name: &str,
+        lo: Option<&ScalarValue>,
+        lo_inclusive: bool,
+        hi: Option<&ScalarValue>,
+        hi_inclusive: bool,
+    ) -> Vec<Vec<u8>> {
+        let Some(m) = self.unique.get(&(collection_id, index_name.to_string())) else {
+            return Vec::new();
+        };
+        m.iter()
+            .filter(|(index_key, _)| {
+                index_key_in_range(index_key, lo, lo_inclusive, hi, hi_inclusive)
+            })
+            .map(|(_, pk)| pk.clone())
+            .collect()
+    }
+
     pub(crate) fn entries_for_checkpoint(&self) -> Vec<IndexEntry> {
         let mut out = Vec::new();
         for ((collection_id, index_name), m) in &self.unique {
@@ -150,6 +200,54 @@ impl IndexState {
         }
         out
     }
+}
+
+fn decode_index_key_scalar(key: &[u8]) -> Option<ScalarValue> {
+    match key.len() {
+        8 => Some(ScalarValue::Int64(i64::from_le_bytes(key.try_into().ok()?))),
+        n if n > 0 => String::from_utf8(key.to_vec())
+            .ok()
+            .map(ScalarValue::String),
+        _ => None,
+    }
+}
+
+fn scalar_partial_cmp(a: &ScalarValue, b: &ScalarValue) -> Option<Ordering> {
+    use ScalarValue::*;
+    match (a, b) {
+        (Int64(x), Int64(y)) => Some(x.cmp(y)),
+        (String(x), String(y)) => Some(x.cmp(y)),
+        _ => None,
+    }
+}
+
+fn index_key_in_range(
+    key: &[u8],
+    lo: Option<&ScalarValue>,
+    lo_inclusive: bool,
+    hi: Option<&ScalarValue>,
+    hi_inclusive: bool,
+) -> bool {
+    let Some(decoded) = decode_index_key_scalar(key) else {
+        return false;
+    };
+    if let Some(lo_v) = lo {
+        match scalar_partial_cmp(&decoded, lo_v) {
+            Some(Ordering::Less) => return false,
+            Some(Ordering::Equal) if !lo_inclusive => return false,
+            None => return false,
+            _ => {}
+        }
+    }
+    if let Some(hi_v) = hi {
+        match scalar_partial_cmp(&decoded, hi_v) {
+            Some(Ordering::Greater) => return false,
+            Some(Ordering::Equal) if !hi_inclusive => return false,
+            None => return false,
+            _ => {}
+        }
+    }
+    true
 }
 
 pub fn encode_index_payload(entries: &[IndexEntry]) -> Vec<u8> {

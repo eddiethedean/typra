@@ -48,9 +48,19 @@ impl<S: Store> TempSpillFile<S> {
 
     pub fn read_temp_payload(&mut self, offset: u64, len: u64) -> Result<Vec<u8>, DbError> {
         let mut buf = vec![0u8; len as usize];
-        self.store_mut()?
-            .read_exact_at(offset + SEGMENT_HEADER_LEN as u64, &mut buf)?;
+        self.read_temp_payload_into(offset, 0, &mut buf)?;
         Ok(buf)
+    }
+
+    /// Read `buf.len()` bytes from a temp payload starting at `payload_pos`.
+    pub fn read_temp_payload_into(
+        &mut self,
+        offset: u64,
+        payload_pos: u64,
+        buf: &mut [u8],
+    ) -> Result<(), DbError> {
+        self.store_mut()?
+            .read_exact_at(offset + SEGMENT_HEADER_LEN as u64 + payload_pos, buf)
     }
 
     /// Explicitly truncate away all temp spill data and return the inner store.

@@ -22,38 +22,46 @@ pub struct SharedDbState {
     pub generation: u64,
 }
 
+/// Registry entry: readers clone the inner [`Arc`] and release the lock immediately.
+pub type SharedDbHandle = Arc<RwLock<Arc<SharedDbState>>>;
+
 /// Canonical registry key so `./db.modelvault` and `/abs/db.modelvault` share one entry.
 pub fn registry_key(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn map() -> &'static Mutex<HashMap<PathBuf, Arc<RwLock<SharedDbState>>>> {
-    static MAP: OnceLock<Mutex<HashMap<PathBuf, Arc<RwLock<SharedDbState>>>>> = OnceLock::new();
+fn map() -> &'static Mutex<HashMap<PathBuf, SharedDbHandle>> {
+    static MAP: OnceLock<Mutex<HashMap<PathBuf, SharedDbHandle>>> = OnceLock::new();
     MAP.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub fn register(path: &Path, state: SharedDbState) -> Result<Arc<RwLock<SharedDbState>>, DbError> {
+pub fn register(path: &Path, state: SharedDbState) -> Result<SharedDbHandle, DbError> {
     let key = registry_key(path);
     let mut g = map()
         .lock()
         .map_err(|_| DbError::Io(std::io::Error::other("handle registry lock poisoned")))?;
     if let Some(existing) = g.get(&key) {
+        let gen = existing
+            .read()
+            .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?
+            .generation
+            .saturating_add(1);
+        let mut state = state;
+        state.generation = gen;
         let mut w = existing
             .write()
             .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?;
-        let gen = w.generation.saturating_add(1);
-        *w = state;
-        w.generation = gen;
+        *w = Arc::new(state);
         return Ok(Arc::clone(existing));
     }
     let mut state = state;
     state.generation = 0;
-    let arc = Arc::new(RwLock::new(state));
+    let arc = Arc::new(RwLock::new(Arc::new(state)));
     g.insert(key, Arc::clone(&arc));
     Ok(arc)
 }
 
-pub fn get(path: &Path) -> Option<Arc<RwLock<SharedDbState>>> {
+pub fn get(path: &Path) -> Option<SharedDbHandle> {
     let key = registry_key(path);
     map().lock().ok().and_then(|g| g.get(&key).cloned())
 }

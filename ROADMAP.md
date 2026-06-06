@@ -2,9 +2,9 @@
 
 This document is the **project roadmap** for ModelVault: a typed, embedded, single-file database with Rust-first core and ergonomic Python bindings.
 
-- **Current release**: `0.15.4` (see [`CHANGELOG.md`](CHANGELOG.md)) — adversarial audit fixes (18 bugs)
+- **Current release**: `0.16.0` (see [`CHANGELOG.md`](CHANGELOG.md)) — API fence, query planner, binding hardening
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0**.
-- **Next milestone**: `0.16.0` — API surface fence, query planner, and binding hardening (see [0.16.0](#0160--api-surface-query-planner-and-binding-hardening) below). **`0.15.0`** async/concurrency work is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Next milestone**: post-**0.16.0** minor work (see [ROADMAP](#0160--api-surface-query-planner-and-binding-hardening) for what shipped in 0.16). **`0.15.0`** async/concurrency and **`0.16.0`** API/query/binding hardening are **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Patch versions are bugfix-only; minor versions (`1.x`) may add features without breaking stable APIs.
 - **1.x `.modelvault` compatibility**: any **1.y** release must read files written by **1.0+** (and supported pre-1.0 minors); breaking on-disk changes require **2.0** / `FORMAT_MAJOR` bump. Policy: [`docs/reference/compatibility.md`](docs/reference/compatibility.md), [`docs/specs/format_evolution.md`](docs/specs/format_evolution.md); CI: `make test-format-compat`.
 

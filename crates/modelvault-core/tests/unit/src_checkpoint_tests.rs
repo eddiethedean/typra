@@ -151,6 +151,7 @@
             fields: vec![FieldDef::new(fp(&["year"]), Type::Int64)], // missing `id`
             indexes: vec![],
             primary_field: Some("id".into()),
+            version_history: BTreeMap::new(),
         });
 
         let mut latest: LatestMap = std::collections::HashMap::new();
@@ -260,6 +261,7 @@
             fields: vec![FieldDef::new(fp(&["year"]), Type::Int64)], // missing `id`
             indexes: vec![],
             primary_field: Some("id".into()),
+            version_history: BTreeMap::new(),
         });
 
         let record = encode_record_payload_v2(

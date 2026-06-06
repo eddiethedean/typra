@@ -36,7 +36,7 @@ def test_dbapi_strict_read_only_allows_select_while_writer_held(tmp_path):
     )
     db.insert("books", {"id": 1, "title": "A"})
 
-    conn = modelvault.dbapi.connect(str(db_path), strict_read_only=True)
+    conn = modelvault.dbapi.connect(str(db_path))
     cur = conn.cursor()
     cur.execute("SELECT id, title FROM books")
     assert cur.fetchone() == (1, "A")
@@ -56,7 +56,7 @@ def test_dbapi_sees_post_attach_insert(tmp_path):
         "id",
     )
 
-    conn = modelvault.dbapi.connect(str(db_path), strict_read_only=True)
+    conn = modelvault.dbapi.connect(str(db_path))
     writer.insert("items", {"id": 42})
 
     cur = conn.cursor()

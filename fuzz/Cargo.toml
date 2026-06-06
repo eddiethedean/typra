@@ -63,6 +63,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "decode_record_payload_v3"
+path = "fuzz_targets/decode_record_payload_v3.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_checkpoint_payload"
+path = "fuzz_targets/decode_checkpoint_payload.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "parse_sql_select"
 path = "fuzz_targets/parse_sql_select.rs"
 test = false

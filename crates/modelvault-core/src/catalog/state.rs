@@ -2,7 +2,7 @@
 //!
 //! State must match the sequence of `Schema` segments on disk.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::catalog::codec::{CatalogRecordWire, MAX_COLLECTION_NAME_BYTES};
 use crate::error::{DbError, SchemaError};
@@ -18,6 +18,15 @@ pub struct CollectionInfo {
     pub indexes: Vec<IndexDef>,
     /// Single top-level field name for the primary key (`None` for legacy catalog v1 segments).
     pub primary_field: Option<String>,
+    /// Field layouts keyed by schema version (populated on create and each schema bump).
+    pub version_history: BTreeMap<u32, Vec<FieldDef>>,
+}
+
+impl CollectionInfo {
+    /// Field layout recorded for `version`, if replay populated history for that version.
+    pub fn fields_at_version(&self, version: u32) -> Option<&[FieldDef]> {
+        self.version_history.get(&version).map(|f| f.as_slice())
+    }
 }
 
 /// Logical catalog: collection names, ids, and current schema version per collection.
@@ -172,6 +181,8 @@ impl Catalog {
             }
         }
         let id = CollectionId(collection_id);
+        let mut version_history = BTreeMap::new();
+        version_history.insert(1, fields.clone());
         let info = CollectionInfo {
             id,
             name: name.clone(),
@@ -179,6 +190,7 @@ impl Catalog {
             fields,
             indexes,
             primary_field,
+            version_history,
         };
         self.by_id.insert(collection_id, info);
         self.by_name.insert(name, id);
@@ -215,6 +227,7 @@ impl Catalog {
             }
         }
         col.current_version = SchemaVersion(schema_version);
+        col.version_history.insert(schema_version, fields.clone());
         col.fields = fields;
         col.indexes = indexes;
         Ok(())

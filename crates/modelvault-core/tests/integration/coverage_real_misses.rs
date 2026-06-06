@@ -37,6 +37,7 @@ fn sample_collection() -> CollectionInfo {
             kind: IndexKind::NonUnique,
         }],
         primary_field: Some("id".into()),
+        version_history: BTreeMap::new(),
     }
 }
 

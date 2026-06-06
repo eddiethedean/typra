@@ -3,9 +3,11 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::hash_map::Iter as HashMapIter;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use crate::catalog::Catalog;
 use crate::db::scalar_at_path;
+use crate::db::SharedDbState;
 use crate::error::{DbError, QueryError, SchemaError};
 use crate::file_format::MAX_QUERY_LIMIT;
 use crate::index::IndexState;
@@ -34,12 +36,29 @@ fn row_for_index_pk(
 }
 
 #[derive(Debug, Clone, PartialEq)]
+struct IndexKeyRange {
+    lo: Option<ScalarValue>,
+    lo_inclusive: bool,
+    hi: Option<ScalarValue>,
+    hi_inclusive: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum Plan {
     IndexLookup {
         collection_id: u32,
         index_name: String,
         kind: IndexKind,
         key: Vec<u8>,
+        residual: Option<Predicate>,
+        limit: Option<usize>,
+        order_by: Option<OrderBy>,
+    },
+    IndexRangeLookup {
+        collection_id: u32,
+        index_name: String,
+        kind: IndexKind,
+        key_range: IndexKeyRange,
         residual: Option<Predicate>,
         limit: Option<usize>,
         order_by: Option<OrderBy>,
@@ -77,6 +96,39 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
             s.push_str(&format!(
                 "  IndexLookup index={index_name:?} kind={kind:?}\n"
             ));
+            if let Some(r) = residual {
+                s.push_str(&format!("  ResidualFilter {r:?}\n"));
+            }
+            if let Some(n) = limit {
+                s.push_str(&format!("  Limit {n}\n"));
+            }
+            if let Some(ob) = order_by {
+                s.push_str(&format!("  OrderBy {:?} {:?}\n", ob.path, ob.direction));
+            }
+            s
+        }
+        Plan::IndexRangeLookup {
+            index_name,
+            kind,
+            key_range,
+            residual,
+            limit,
+            order_by,
+            ..
+        } => {
+            let mut s = String::new();
+            s.push_str("Plan:\n");
+            s.push_str(&format!(
+                "  IndexRangeLookup index={index_name:?} kind={kind:?}\n"
+            ));
+            if let Some(ref lo) = key_range.lo {
+                let op = if key_range.lo_inclusive { ">=" } else { ">" };
+                s.push_str(&format!("  KeyRange lo {op} {lo:?}\n"));
+            }
+            if let Some(ref hi) = key_range.hi {
+                let op = if key_range.hi_inclusive { "<=" } else { "<" };
+                s.push_str(&format!("  KeyRange hi {op} {hi:?}\n"));
+            }
             if let Some(r) = residual {
                 s.push_str(&format!("  ResidualFilter {r:?}\n"));
             }
@@ -183,6 +235,34 @@ pub fn execute_query(
             );
             Ok(out)
         }
+        Plan::IndexRangeLookup {
+            collection_id,
+            index_name,
+            kind,
+            key_range,
+            residual,
+            limit,
+            order_by,
+        } => {
+            let mut out = collect_index_range_rows(
+                indexes,
+                latest,
+                collection_id,
+                &index_name,
+                kind,
+                &key_range,
+            )?;
+            if let Some(pred) = residual {
+                out.retain(|row| eval_predicate(row, &pred));
+            }
+            apply_order_by_and_limit(
+                &mut out,
+                order_by.as_ref(),
+                limit,
+                col.primary_field.as_deref(),
+            );
+            Ok(out)
+        }
         Plan::CollectionScan {
             collection_id,
             predicate,
@@ -221,14 +301,6 @@ pub struct QueryRowIter<'a> {
     state: QueryRowIterState<'a>,
 }
 
-impl QueryRowIter<'_> {
-    pub(crate) fn from_materialized_rows(rows: Vec<BTreeMap<String, RowValue>>) -> Self {
-        Self {
-            state: QueryRowIterState::Vec { rows, pos: 0 },
-        }
-    }
-}
-
 enum QueryRowIterState<'a> {
     Vec {
         rows: Vec<BTreeMap<String, RowValue>>,
@@ -237,6 +309,10 @@ enum QueryRowIterState<'a> {
     Source {
         latest: &'a crate::db::LatestMap,
         source: Box<dyn RowSource + 'a>,
+    },
+    Owned {
+        snapshot: Arc<SharedDbState>,
+        source: Box<dyn RowSource + 'static>,
     },
 }
 
@@ -258,6 +334,13 @@ impl<'a> Iterator for QueryRowIter<'a> {
                 None => None,
                 Some(Err(e)) => Some(Err(e)),
                 Some(Ok((cid, pk_key))) => Some(row_for_index_pk(latest, cid.0, pk_key, "")),
+            },
+            QueryRowIterState::Owned { snapshot, source } => match source.next_key() {
+                None => None,
+                Some(Err(e)) => Some(Err(e)),
+                Some(Ok((cid, pk_key))) => {
+                    Some(row_for_index_pk(&snapshot.latest, cid.0, pk_key, ""))
+                }
             },
         }
     }
@@ -328,6 +411,110 @@ impl RowSource for IndexNonUniqueSource<'_> {
     }
 }
 
+struct IndexRangeSource<'a> {
+    latest: &'a crate::db::LatestMap,
+    collection_id: u32,
+    index_name: String,
+    pks: std::vec::IntoIter<Vec<u8>>,
+    residual: Option<Predicate>,
+}
+
+impl RowSource for IndexRangeSource<'_> {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        for pk_key in self.pks.by_ref() {
+            let row = match row_for_index_pk(
+                self.latest,
+                self.collection_id,
+                pk_key.clone(),
+                &self.index_name,
+            ) {
+                Ok(r) => r,
+                Err(e) => return Some(Err(e)),
+            };
+            if let Some(pred) = &self.residual {
+                if !eval_predicate(&row, pred) {
+                    continue;
+                }
+            }
+            return Some(Ok((CollectionId(self.collection_id), pk_key)));
+        }
+        None
+    }
+}
+
+fn collect_index_range_rows(
+    indexes: &IndexState,
+    latest: &crate::db::LatestMap,
+    collection_id: u32,
+    index_name: &str,
+    kind: IndexKind,
+    key_range: &IndexKeyRange,
+) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
+    let lo = key_range.lo.as_ref();
+    let hi = key_range.hi.as_ref();
+    let pks = match kind {
+        IndexKind::Unique => indexes.unique_range_lookup(
+            collection_id,
+            index_name,
+            lo,
+            key_range.lo_inclusive,
+            hi,
+            key_range.hi_inclusive,
+        ),
+        IndexKind::NonUnique => indexes.non_unique_range_lookup(
+            collection_id,
+            index_name,
+            lo,
+            key_range.lo_inclusive,
+            hi,
+            key_range.hi_inclusive,
+        ),
+    };
+    let mut out = Vec::with_capacity(pks.len());
+    for pk in pks {
+        out.push(row_for_index_pk(latest, collection_id, pk, index_name)?);
+    }
+    Ok(out)
+}
+
+fn index_range_source<'a>(
+    indexes: &'a IndexState,
+    latest: &'a crate::db::LatestMap,
+    collection_id: u32,
+    index_name: String,
+    kind: IndexKind,
+    key_range: &IndexKeyRange,
+    residual: Option<Predicate>,
+) -> IndexRangeSource<'a> {
+    let lo = key_range.lo.as_ref();
+    let hi = key_range.hi.as_ref();
+    let pks = match kind {
+        IndexKind::Unique => indexes.unique_range_lookup(
+            collection_id,
+            &index_name,
+            lo,
+            key_range.lo_inclusive,
+            hi,
+            key_range.hi_inclusive,
+        ),
+        IndexKind::NonUnique => indexes.non_unique_range_lookup(
+            collection_id,
+            &index_name,
+            lo,
+            key_range.lo_inclusive,
+            hi,
+            key_range.hi_inclusive,
+        ),
+    };
+    IndexRangeSource {
+        latest,
+        collection_id,
+        index_name,
+        pks: pks.into_iter(),
+        residual,
+    }
+}
+
 struct ScanSource<'a> {
     it: HashMapIter<'a, (u32, Vec<u8>), BTreeMap<String, RowValue>>,
     collection_id: u32,
@@ -349,6 +536,285 @@ impl RowSource for ScanSource<'_> {
         }
         None
     }
+}
+
+struct OwnedIndexUniqueSource {
+    snapshot: Arc<SharedDbState>,
+    collection_id: u32,
+    index_name: String,
+    pk: Option<Vec<u8>>,
+    residual: Option<Predicate>,
+    done: bool,
+}
+
+impl RowSource for OwnedIndexUniqueSource {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        if self.done {
+            return None;
+        }
+        self.done = true;
+        let pk_key = self.pk.take()?;
+        let row = match row_for_index_pk(
+            &self.snapshot.latest,
+            self.collection_id,
+            pk_key.clone(),
+            &self.index_name,
+        ) {
+            Ok(r) => r,
+            Err(e) => return Some(Err(e)),
+        };
+        if let Some(pred) = &self.residual {
+            if !eval_predicate(&row, pred) {
+                return None;
+            }
+        }
+        Some(Ok((CollectionId(self.collection_id), pk_key)))
+    }
+}
+
+struct OwnedIndexNonUniqueSource {
+    snapshot: Arc<SharedDbState>,
+    collection_id: u32,
+    index_name: String,
+    pks: std::vec::IntoIter<Vec<u8>>,
+    residual: Option<Predicate>,
+}
+
+impl RowSource for OwnedIndexNonUniqueSource {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        for pk_key in self.pks.by_ref() {
+            let row = match row_for_index_pk(
+                &self.snapshot.latest,
+                self.collection_id,
+                pk_key.clone(),
+                &self.index_name,
+            ) {
+                Ok(r) => r,
+                Err(e) => return Some(Err(e)),
+            };
+            if let Some(pred) = &self.residual {
+                if !eval_predicate(&row, pred) {
+                    continue;
+                }
+            }
+            return Some(Ok((CollectionId(self.collection_id), pk_key)));
+        }
+        None
+    }
+}
+
+struct OwnedScanSource {
+    snapshot: Arc<SharedDbState>,
+    collection_id: u32,
+    predicate: Option<Predicate>,
+    pos: usize,
+    keys: Vec<(u32, Vec<u8>)>,
+}
+
+impl OwnedScanSource {
+    fn new(snapshot: Arc<SharedDbState>, collection_id: u32, predicate: Option<Predicate>) -> Self {
+        let mut keys: Vec<(u32, Vec<u8>)> = snapshot
+            .latest
+            .keys()
+            .filter(|(cid, _)| *cid == collection_id)
+            .cloned()
+            .collect();
+        keys.sort_by(|a, b| a.1.cmp(&b.1));
+        Self {
+            snapshot,
+            collection_id,
+            predicate,
+            pos: 0,
+            keys,
+        }
+    }
+}
+
+impl RowSource for OwnedScanSource {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        while self.pos < self.keys.len() {
+            let (cid, pk_key) = self.keys[self.pos].clone();
+            self.pos += 1;
+            if cid != self.collection_id {
+                continue;
+            }
+            let row = match self.snapshot.latest.get(&(cid, pk_key.clone())) {
+                Some(r) => r,
+                None => continue,
+            };
+            if let Some(p) = &self.predicate {
+                if !eval_predicate(row, p) {
+                    continue;
+                }
+            }
+            return Some(Ok((CollectionId(self.collection_id), pk_key)));
+        }
+        None
+    }
+}
+
+fn owned_row_source_for_plan(
+    snapshot: Arc<SharedDbState>,
+    plan: Plan,
+) -> Box<dyn RowSource + 'static> {
+    match plan {
+        Plan::IndexLookup {
+            collection_id,
+            index_name,
+            kind,
+            key,
+            residual,
+            ..
+        } => match kind {
+            IndexKind::Unique => {
+                let pk: Option<Vec<u8>> = snapshot
+                    .indexes
+                    .unique_lookup(collection_id, &index_name, &key)
+                    .map(|p| p.to_vec());
+                Box::new(OwnedIndexUniqueSource {
+                    snapshot,
+                    collection_id,
+                    index_name,
+                    pk,
+                    residual,
+                    done: false,
+                })
+            }
+            IndexKind::NonUnique => {
+                let pks = snapshot
+                    .indexes
+                    .non_unique_lookup(collection_id, &index_name, &key)
+                    .unwrap_or_default()
+                    .into_iter();
+                Box::new(OwnedIndexNonUniqueSource {
+                    snapshot,
+                    collection_id,
+                    index_name,
+                    pks,
+                    residual,
+                })
+            }
+        },
+        Plan::IndexRangeLookup {
+            collection_id,
+            index_name,
+            kind,
+            key_range,
+            residual,
+            ..
+        } => {
+            let lo = key_range.lo.as_ref();
+            let hi = key_range.hi.as_ref();
+            let pks = match kind {
+                IndexKind::Unique => snapshot.indexes.unique_range_lookup(
+                    collection_id,
+                    &index_name,
+                    lo,
+                    key_range.lo_inclusive,
+                    hi,
+                    key_range.hi_inclusive,
+                ),
+                IndexKind::NonUnique => snapshot.indexes.non_unique_range_lookup(
+                    collection_id,
+                    &index_name,
+                    lo,
+                    key_range.lo_inclusive,
+                    hi,
+                    key_range.hi_inclusive,
+                ),
+            };
+            Box::new(OwnedIndexNonUniqueSource {
+                snapshot,
+                collection_id,
+                index_name,
+                pks: pks.into_iter(),
+                residual,
+            })
+        }
+        Plan::CollectionScan {
+            collection_id,
+            predicate,
+            ..
+        } => Box::new(OwnedScanSource::new(snapshot, collection_id, predicate)),
+    }
+}
+
+/// Like [`execute_query_iter`], but holds an owned live snapshot (for attached read-only handles).
+pub fn execute_query_iter_owned(
+    snapshot: Arc<SharedDbState>,
+    query: &Query,
+    db_path: Option<&std::path::Path>,
+) -> Result<QueryRowIter<'static>, DbError> {
+    if query.order_by.is_none() {
+        validate_query_limit(query)?;
+        let col = snapshot
+            .catalog
+            .get(query.collection)
+            .ok_or(DbError::Schema(SchemaError::UnknownCollection {
+                id: query.collection.0,
+            }))?;
+        let plan = plan_query(col.id, &col.indexes, query);
+        let mut source = owned_row_source_for_plan(snapshot.clone(), plan);
+        if let Some(n) = query.limit {
+            source = Box::new(LimitOp::new(source, n));
+        }
+        return Ok(QueryRowIter {
+            state: QueryRowIterState::Owned { snapshot, source },
+        });
+    }
+
+    let order_by = query
+        .order_by
+        .clone()
+        .expect("order_by is Some when this function continues");
+    let Some(path) = db_path else {
+        return Ok(QueryRowIter {
+            state: QueryRowIterState::Vec {
+                rows: execute_query(
+                    &snapshot.catalog,
+                    &snapshot.indexes,
+                    &snapshot.latest,
+                    query,
+                )?,
+                pos: 0,
+            },
+        });
+    };
+
+    validate_query_limit(query)?;
+    let col = snapshot
+        .catalog
+        .get(query.collection)
+        .ok_or(DbError::Schema(SchemaError::UnknownCollection {
+            id: query.collection.0,
+        }))?;
+    let plan = plan_query(col.id, &col.indexes, query);
+    let base = owned_row_source_for_plan(snapshot.clone(), plan.clone());
+    let spill_store = open_sorted_query_spill_store(path)?;
+    #[cfg(feature = "tracing")]
+    tracing::debug!(spill_path = %path.display(), "execute_query_iter_owned_spill");
+    let spill = crate::spill::TempSpillFile::new(spill_store)?;
+    let index_name_for_sort = match &plan {
+        Plan::IndexLookup { index_name, .. } | Plan::IndexRangeLookup { index_name, .. } => {
+            index_name.as_str()
+        }
+        Plan::CollectionScan { .. } => "",
+    };
+    let sort_source = Box::new(ExternalSortSourceOwned::new(
+        spill,
+        snapshot.clone(),
+        base,
+        col.id.0,
+        order_by,
+        index_name_for_sort,
+    )?);
+    let mut source: Box<dyn RowSource + 'static> = sort_source;
+    if let Some(n) = query.limit {
+        source = Box::new(LimitOp::new(source, n));
+    }
+    Ok(QueryRowIter {
+        state: QueryRowIterState::Owned { snapshot, source },
+    })
 }
 
 /// Same planning and row sources as [`execute_query`], but as a lazy iterator.
@@ -409,6 +875,22 @@ pub fn execute_query_iter<'a>(
                 })
             }
         },
+        Plan::IndexRangeLookup {
+            collection_id,
+            index_name,
+            kind,
+            key_range,
+            residual,
+            ..
+        } => Box::new(index_range_source(
+            indexes,
+            latest,
+            collection_id,
+            index_name,
+            kind,
+            &key_range,
+            residual,
+        )),
         Plan::CollectionScan {
             collection_id,
             predicate,
@@ -609,6 +1091,22 @@ pub fn execute_query_iter_with_spill_path<'a>(
                 residual,
             }),
         },
+        Plan::IndexRangeLookup {
+            collection_id,
+            index_name,
+            kind,
+            key_range,
+            residual,
+            ..
+        } => Box::new(index_range_source(
+            indexes,
+            latest,
+            collection_id,
+            index_name,
+            kind,
+            &key_range,
+            residual,
+        )),
         Plan::CollectionScan {
             collection_id,
             predicate,
@@ -626,7 +1124,9 @@ pub fn execute_query_iter_with_spill_path<'a>(
     tracing::debug!(spill_path = %path.display(), "execute_query_order_by_spill");
     let spill = crate::spill::TempSpillFile::new(spill_store)?;
     let index_name_for_sort = match &plan {
-        Plan::IndexLookup { index_name, .. } => index_name.as_str(),
+        Plan::IndexLookup { index_name, .. } | Plan::IndexRangeLookup { index_name, .. } => {
+            index_name.as_str()
+        }
         Plan::CollectionScan { .. } => "",
     };
     let sort_source = Box::new(ExternalSortSource::new(
@@ -656,7 +1156,7 @@ struct SortItem {
     key: RowKey,
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 fn sort_item_for(
     latest: &crate::db::LatestMap,
     key: &RowKey,
@@ -753,13 +1253,14 @@ fn cmp_sort_item(a: &SortItem, b: &SortItem, dir: OrderDirection) -> std::cmp::O
 }
 
 // Simple external sort: sort fixed-size runs, spill each run as one Temp segment,
-// then k-way merge those runs.
+// then k-way merge those runs without loading full run payloads into RAM.
 struct ExternalSortSource<'a, S: Store = FileStore> {
-    _spill: crate::spill::TempSpillFile<S>,
+    spill: crate::spill::TempSpillFile<S>,
     collection_id: u32,
     dir: OrderDirection,
     heap: std::collections::BinaryHeap<HeapItem>,
-    runs: Vec<RunReader>,
+    runs_meta: Vec<RunMeta>,
+    run_cursors: Vec<usize>,
     _latest: &'a crate::db::LatestMap,
 }
 
@@ -769,32 +1270,87 @@ struct RunMeta {
     payload_len: u64,
 }
 
+type SpillSortRunItem = (u8, Vec<u8>, Vec<u8>);
+
+#[cfg(test)]
 struct RunReader {
     buf: Vec<u8>,
     pos: usize,
 }
 
+#[cfg(test)]
 impl RunReader {
     fn new(buf: Vec<u8>) -> Self {
         Self { buf, pos: 0 }
     }
 
     fn next_item(&mut self) -> Option<(u8, Vec<u8>, Vec<u8>)> {
-        fn read_u32(buf: &[u8], pos: &mut usize) -> Option<u32> {
-            let b = buf.get(*pos..*pos + 4)?;
-            *pos += 4;
-            Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-        }
-        let none_flag = *self.buf.get(self.pos)?;
-        self.pos += 1;
-        let key_len = read_u32(&self.buf, &mut self.pos)? as usize;
-        let key = self.buf.get(self.pos..self.pos + key_len)?.to_vec();
-        self.pos += key_len;
-        let pk_len = read_u32(&self.buf, &mut self.pos)? as usize;
-        let pk = self.buf.get(self.pos..self.pos + pk_len)?.to_vec();
-        self.pos += pk_len;
-        Some((none_flag, key, pk))
+        read_run_item_from_buf(&self.buf, &mut self.pos)
     }
+}
+
+#[cfg(test)]
+fn read_run_item_from_buf(buf: &[u8], pos: &mut usize) -> Option<(u8, Vec<u8>, Vec<u8>)> {
+    fn read_u32(buf: &[u8], pos: &mut usize) -> Option<u32> {
+        let b = buf.get(*pos..*pos + 4)?;
+        *pos += 4;
+        Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+    let none_flag = *buf.get(*pos)?;
+    *pos += 1;
+    let key_len = read_u32(buf, pos)? as usize;
+    let key = buf.get(*pos..*pos + key_len)?.to_vec();
+    *pos += key_len;
+    let pk_len = read_u32(buf, pos)? as usize;
+    let pk = buf.get(*pos..*pos + pk_len)?.to_vec();
+    *pos += pk_len;
+    Some((none_flag, key, pk))
+}
+
+fn read_spill_run_item<S: Store>(
+    spill: &mut crate::spill::TempSpillFile<S>,
+    meta: &RunMeta,
+    pos: &mut usize,
+) -> Result<Option<SpillSortRunItem>, DbError> {
+    let payload_len = meta.payload_len as usize;
+    if *pos >= payload_len {
+        return Ok(None);
+    }
+    let mut one = [0u8; 1];
+    spill.read_temp_payload_into(meta.offset, *pos as u64, &mut one)?;
+    *pos += 1;
+    let none_flag = one[0];
+
+    if *pos + 4 > payload_len {
+        return Ok(None);
+    }
+    let mut len_buf = [0u8; 4];
+    spill.read_temp_payload_into(meta.offset, *pos as u64, &mut len_buf)?;
+    *pos += 4;
+    let key_len = u32::from_le_bytes(len_buf) as usize;
+    if *pos + key_len > payload_len {
+        return Ok(None);
+    }
+
+    let mut key = vec![0u8; key_len];
+    spill.read_temp_payload_into(meta.offset, *pos as u64, &mut key)?;
+    *pos += key_len;
+
+    if *pos + 4 > payload_len {
+        return Ok(None);
+    }
+    spill.read_temp_payload_into(meta.offset, *pos as u64, &mut len_buf)?;
+    *pos += 4;
+    let pk_len = u32::from_le_bytes(len_buf) as usize;
+    if *pos + pk_len > payload_len {
+        return Ok(None);
+    }
+
+    let mut pk = vec![0u8; pk_len];
+    spill.read_temp_payload_into(meta.offset, *pos as u64, &mut pk)?;
+    *pos += pk_len;
+
+    Ok(Some((none_flag, key, pk)))
 }
 
 #[derive(Clone)]
@@ -881,30 +1437,32 @@ impl<'a, S: Store> ExternalSortSource<'a, S> {
 
         Self::flush_sorted_run(&mut spill, &mut runs_meta, &mut run, dir)?;
 
-        // Load run buffers and seed heap.
-        let mut runs: Vec<RunReader> = Vec::new();
+        // Seed merge heap by reading only the first item from each spilled run.
+        let mut run_cursors = vec![0usize; runs_meta.len()];
         let mut heap = std::collections::BinaryHeap::new();
-        for (i, m) in runs_meta.into_iter().enumerate() {
-            let buf = spill.read_temp_payload(m.offset, m.payload_len)?;
-            let mut rr = RunReader::new(buf);
-            if let Some((none_flag, sort_key, pk)) = rr.next_item() {
-                heap.push(HeapItem {
-                    run_idx: i,
-                    none_flag,
-                    sort_key,
-                    pk: pk.clone(),
-                    dir,
-                });
+        for (i, m) in runs_meta.iter().enumerate() {
+            match read_spill_run_item(&mut spill, m, &mut run_cursors[i]) {
+                Ok(Some((none_flag, sort_key, pk))) => {
+                    heap.push(HeapItem {
+                        run_idx: i,
+                        none_flag,
+                        sort_key,
+                        pk: pk.clone(),
+                        dir,
+                    });
+                }
+                Ok(None) => {}
+                Err(e) => return Err(e),
             }
-            runs.push(rr);
         }
 
         Ok(Self {
-            _spill: spill,
+            spill,
             collection_id,
             dir,
             heap,
-            runs,
+            runs_meta,
+            run_cursors,
             _latest: latest,
         })
     }
@@ -926,15 +1484,113 @@ impl<'a, S: Store> RowSource for ExternalSortSource<'a, S> {
     fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
         let top = self.heap.pop()?;
         let run_idx = top.run_idx;
-        // refill from same run
-        if let Some((none_flag, sort_key, pk)) = self.runs[run_idx].next_item() {
-            self.heap.push(HeapItem {
-                run_idx,
-                none_flag,
-                sort_key,
-                pk: pk.clone(),
-                dir: self.dir,
-            });
+        let meta = self.runs_meta[run_idx].clone();
+        match read_spill_run_item(&mut self.spill, &meta, &mut self.run_cursors[run_idx]) {
+            Ok(Some((none_flag, sort_key, pk))) => {
+                self.heap.push(HeapItem {
+                    run_idx,
+                    none_flag,
+                    sort_key,
+                    pk: pk.clone(),
+                    dir: self.dir,
+                });
+            }
+            Ok(None) => {}
+            Err(e) => return Some(Err(e)),
+        }
+        Some(Ok((CollectionId(self.collection_id), top.pk)))
+    }
+}
+
+struct ExternalSortSourceOwned<S: Store = FileStore> {
+    spill: crate::spill::TempSpillFile<S>,
+    collection_id: u32,
+    dir: OrderDirection,
+    heap: std::collections::BinaryHeap<HeapItem>,
+    runs_meta: Vec<RunMeta>,
+    run_cursors: Vec<usize>,
+    _snapshot: Arc<SharedDbState>,
+}
+
+impl<S: Store> ExternalSortSourceOwned<S> {
+    fn new(
+        mut spill: crate::spill::TempSpillFile<S>,
+        snapshot: Arc<SharedDbState>,
+        mut input: Box<dyn RowSource + 'static>,
+        collection_id: u32,
+        order_by: OrderBy,
+        index_name: &str,
+    ) -> Result<Self, DbError> {
+        const RUN_KEYS: usize = 2048;
+
+        let dir = order_by.direction;
+        let mut runs_meta: Vec<RunMeta> = Vec::new();
+        let mut run: Vec<SortItem> = Vec::with_capacity(RUN_KEYS);
+        let latest = &snapshot.latest;
+
+        while let Some(rk) = input.next_key() {
+            let rk = rk?;
+            let item = sort_item_for_result(latest, &rk, &order_by, index_name)?;
+            run.push(item);
+            if run.len() >= RUN_KEYS {
+                ExternalSortSource::<S>::flush_sorted_run(
+                    &mut spill,
+                    &mut runs_meta,
+                    &mut run,
+                    dir,
+                )?;
+            }
+        }
+
+        ExternalSortSource::<S>::flush_sorted_run(&mut spill, &mut runs_meta, &mut run, dir)?;
+
+        let mut run_cursors = vec![0usize; runs_meta.len()];
+        let mut heap = std::collections::BinaryHeap::new();
+        for (i, m) in runs_meta.iter().enumerate() {
+            match read_spill_run_item(&mut spill, m, &mut run_cursors[i]) {
+                Ok(Some((none_flag, sort_key, pk))) => {
+                    heap.push(HeapItem {
+                        run_idx: i,
+                        none_flag,
+                        sort_key,
+                        pk: pk.clone(),
+                        dir,
+                    });
+                }
+                Ok(None) => {}
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(Self {
+            spill,
+            collection_id,
+            dir,
+            heap,
+            runs_meta,
+            run_cursors,
+            _snapshot: snapshot,
+        })
+    }
+}
+
+impl<S: Store> RowSource for ExternalSortSourceOwned<S> {
+    fn next_key(&mut self) -> Option<Result<RowKey, DbError>> {
+        let top = self.heap.pop()?;
+        let run_idx = top.run_idx;
+        let meta = self.runs_meta[run_idx].clone();
+        match read_spill_run_item(&mut self.spill, &meta, &mut self.run_cursors[run_idx]) {
+            Ok(Some((none_flag, sort_key, pk))) => {
+                self.heap.push(HeapItem {
+                    run_idx,
+                    none_flag,
+                    sort_key,
+                    pk: pk.clone(),
+                    dir: self.dir,
+                });
+            }
+            Ok(None) => {}
+            Err(e) => return Some(Err(e)),
         }
         Some(Ok((CollectionId(self.collection_id), top.pk)))
     }
@@ -956,21 +1612,35 @@ fn plan_query(
 
     let (best, residual) = match choose_index(indexes, &pred) {
         None => (None, Some(pred)),
-        Some((idx, value, used_pred)) => {
-            let residual = remove_used_predicate(pred, used_pred);
-            (Some((idx, value)), residual)
+        Some(choice) => {
+            let used = match &choice {
+                IndexChoice::Eq { used, .. } | IndexChoice::Range { used, .. } => used.clone(),
+            };
+            let residual = remove_used_predicate(pred, used);
+            (Some(choice), residual)
         }
     };
 
-    if let Some((idx, value)) = best {
-        Plan::IndexLookup {
-            collection_id: collection.0,
-            index_name: idx.name.clone(),
-            kind: idx.kind,
-            key: value.canonical_key_bytes(),
-            residual,
-            limit: query.limit,
-            order_by: query.order_by.clone(),
+    if let Some(choice) = best {
+        match choice {
+            IndexChoice::Eq { idx, value, .. } => Plan::IndexLookup {
+                collection_id: collection.0,
+                index_name: idx.name.clone(),
+                kind: idx.kind,
+                key: value.canonical_key_bytes(),
+                residual,
+                limit: query.limit,
+                order_by: query.order_by.clone(),
+            },
+            IndexChoice::Range { idx, key_range, .. } => Plan::IndexRangeLookup {
+                collection_id: collection.0,
+                index_name: idx.name.clone(),
+                kind: idx.kind,
+                key_range,
+                residual,
+                limit: query.limit,
+                order_by: query.order_by.clone(),
+            },
         }
     } else {
         Plan::CollectionScan {
@@ -982,36 +1652,187 @@ fn plan_query(
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum IndexChoice<'a> {
+    Eq {
+        idx: &'a crate::schema::IndexDef,
+        value: ScalarValue,
+        used: Predicate,
+    },
+    Range {
+        idx: &'a crate::schema::IndexDef,
+        key_range: IndexKeyRange,
+        used: Predicate,
+    },
+}
+
+fn is_range_indexable(value: &ScalarValue) -> bool {
+    matches!(value, ScalarValue::Int64(_) | ScalarValue::String(_))
+}
+
+fn merge_lo_bound(current: &mut (Option<ScalarValue>, bool), value: ScalarValue, inclusive: bool) {
+    match &current.0 {
+        None => *current = (Some(value), inclusive),
+        Some(existing) => match scalar_partial_cmp(&value, existing) {
+            Some(std::cmp::Ordering::Greater) => *current = (Some(value), inclusive),
+            Some(std::cmp::Ordering::Equal) if !inclusive => current.1 = false,
+            _ => {}
+        },
+    }
+}
+
+fn merge_hi_bound(current: &mut (Option<ScalarValue>, bool), value: ScalarValue, inclusive: bool) {
+    match &current.0 {
+        None => *current = (Some(value), inclusive),
+        Some(existing) => match scalar_partial_cmp(&value, existing) {
+            Some(std::cmp::Ordering::Less) => *current = (Some(value), inclusive),
+            Some(std::cmp::Ordering::Equal) if !inclusive => current.1 = false,
+            _ => {}
+        },
+    }
+}
+
+fn extract_range_on_path(path: &FieldPath, pred: &Predicate) -> Option<IndexKeyRange> {
+    let mut lo: (Option<ScalarValue>, bool) = (None, true);
+    let mut hi: (Option<ScalarValue>, bool) = (None, true);
+    let mut any = false;
+
+    let mut visit = |p: &Predicate| match p {
+        Predicate::Gte { path: pp, value } if pp == path && is_range_indexable(value) => {
+            merge_lo_bound(&mut lo, value.clone(), true);
+            any = true;
+        }
+        Predicate::Gt { path: pp, value } if pp == path && is_range_indexable(value) => {
+            merge_lo_bound(&mut lo, value.clone(), false);
+            any = true;
+        }
+        Predicate::Lte { path: pp, value } if pp == path && is_range_indexable(value) => {
+            merge_hi_bound(&mut hi, value.clone(), true);
+            any = true;
+        }
+        Predicate::Lt { path: pp, value } if pp == path && is_range_indexable(value) => {
+            merge_hi_bound(&mut hi, value.clone(), false);
+            any = true;
+        }
+        _ => {}
+    };
+
+    match pred {
+        Predicate::Gte { .. }
+        | Predicate::Gt { .. }
+        | Predicate::Lte { .. }
+        | Predicate::Lt { .. } => visit(pred),
+        Predicate::And(items) => {
+            for item in items {
+                visit(item);
+            }
+        }
+        _ => return None,
+    }
+
+    if !any {
+        return None;
+    }
+    Some(IndexKeyRange {
+        lo: lo.0,
+        lo_inclusive: lo.1,
+        hi: hi.0,
+        hi_inclusive: hi.1,
+    })
+}
+
+fn range_used_predicate(path: &FieldPath, pred: &Predicate) -> Option<Predicate> {
+    match pred {
+        Predicate::Gte { path: p, .. }
+        | Predicate::Gt { path: p, .. }
+        | Predicate::Lte { path: p, .. }
+        | Predicate::Lt { path: p, .. }
+            if p == path =>
+        {
+            Some(pred.clone())
+        }
+        Predicate::And(items) => {
+            let used: Vec<Predicate> = items
+                .iter()
+                .filter(|p| {
+                    matches!(
+                        p,
+                        Predicate::Gte { path: pp, .. }
+                            | Predicate::Gt { path: pp, .. }
+                            | Predicate::Lte { path: pp, .. }
+                            | Predicate::Lt { path: pp, .. } if pp == path
+                    )
+                })
+                .cloned()
+                .collect();
+            match used.len() {
+                0 => None,
+                1 => Some(used.into_iter().next().unwrap()),
+                _ => Some(Predicate::And(used)),
+            }
+        }
+        _ => None,
+    }
+}
+
+fn try_range_index<'a>(
+    indexes: &'a [crate::schema::IndexDef],
+    pred: &Predicate,
+) -> Option<IndexChoice<'a>> {
+    for idx in indexes {
+        if let Some(range) = extract_range_on_path(&idx.path, pred) {
+            if let Some(used) = range_used_predicate(&idx.path, pred) {
+                return Some(IndexChoice::Range {
+                    idx,
+                    key_range: range,
+                    used,
+                });
+            }
+        }
+    }
+    None
+}
+
 fn choose_index<'a>(
     indexes: &'a [crate::schema::IndexDef],
     pred: &Predicate,
-) -> Option<(&'a crate::schema::IndexDef, ScalarValue, Predicate)> {
+) -> Option<IndexChoice<'a>> {
     match pred {
-        Predicate::Eq { path, value } => indexes
-            .iter()
-            .find(|idx| &idx.path == path)
-            .map(|idx| (idx, value.clone(), pred.clone())),
+        Predicate::Eq { path, value } => {
+            indexes
+                .iter()
+                .find(|idx| &idx.path == path)
+                .map(|idx| IndexChoice::Eq {
+                    idx,
+                    value: value.clone(),
+                    used: pred.clone(),
+                })
+        }
         Predicate::Lt { .. }
         | Predicate::Lte { .. }
         | Predicate::Gt { .. }
-        | Predicate::Gte { .. }
-        | Predicate::Or(_) => None,
+        | Predicate::Gte { .. } => try_range_index(indexes, pred),
+        Predicate::Or(_) => None,
         Predicate::And(items) => {
-            // Prefer unique index predicates, else first indexed predicate.
-            let mut best: Option<(&crate::schema::IndexDef, ScalarValue, Predicate)> = None;
+            let range = try_range_index(indexes, pred);
+            let mut unique_eq: Option<IndexChoice<'a>> = None;
+            let mut any_eq: Option<IndexChoice<'a>> = None;
             for p in items {
-                if let Some((idx, v, used)) = choose_index(indexes, p) {
-                    match best {
-                        None => best = Some((idx, v, used)),
-                        Some((best_idx, _, _)) => {
-                            if best_idx.kind != IndexKind::Unique && idx.kind == IndexKind::Unique {
-                                best = Some((idx, v, used));
-                            }
-                        }
+                if let Some(IndexChoice::Eq { idx, value, used }) = choose_index(indexes, p) {
+                    if idx.kind == IndexKind::Unique {
+                        unique_eq = Some(IndexChoice::Eq { idx, value, used });
+                    } else if any_eq.is_none() {
+                        any_eq = Some(IndexChoice::Eq { idx, value, used });
                     }
                 }
             }
-            best
+            if let Some(u) = unique_eq {
+                return Some(u);
+            }
+            if let Some(r) = range {
+                return Some(r);
+            }
+            any_eq
         }
     }
 }
@@ -1065,41 +1886,71 @@ fn apply_order_by_and_limit(
     limit: Option<usize>,
     pk_field: Option<&str>,
 ) {
+    const TOPK_ORDER_BY_LIMIT: usize = 1024;
+
     if let Some(ob) = order_by {
         let pk_path: Option<FieldPath> =
             pk_field.map(|name| FieldPath(vec![Cow::Owned(name.to_string())]));
-        rows.sort_by(|a, b| {
-            let av = scalar_at_path(a, &ob.path);
-            let bv = scalar_at_path(b, &ob.path);
-            let mut ord = match (av, bv) {
+
+        if let Some(n) = limit {
+            if n <= TOPK_ORDER_BY_LIMIT && rows.len() > n {
+                topk_order_by(rows, ob, n, pk_path.as_ref());
+                return;
+            }
+        }
+
+        rows.sort_by(|a, b| compare_rows_for_order(a, b, ob, pk_path.as_ref()));
+    }
+    if let Some(n) = limit {
+        rows.truncate(n);
+    }
+}
+
+fn compare_rows_for_order(
+    a: &BTreeMap<String, RowValue>,
+    b: &BTreeMap<String, RowValue>,
+    ob: &OrderBy,
+    pk_path: Option<&FieldPath>,
+) -> std::cmp::Ordering {
+    let av = scalar_at_path(a, &ob.path);
+    let bv = scalar_at_path(b, &ob.path);
+    let mut ord = match (av, bv) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (Some(x), Some(y)) => scalar_sort_key_bytes(&x).cmp(&scalar_sort_key_bytes(&y)),
+    };
+    if ord == std::cmp::Ordering::Equal {
+        if let Some(path) = pk_path {
+            let apk = scalar_at_path(a, path);
+            let bpk = scalar_at_path(b, path);
+            ord = match (apk, bpk) {
                 (None, None) => std::cmp::Ordering::Equal,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (Some(x), Some(y)) => scalar_sort_key_bytes(&x).cmp(&scalar_sort_key_bytes(&y)),
             };
-            if ord == std::cmp::Ordering::Equal {
-                if let Some(ref path) = pk_path {
-                    let apk = scalar_at_path(a, path);
-                    let bpk = scalar_at_path(b, path);
-                    ord = match (apk, bpk) {
-                        (None, None) => std::cmp::Ordering::Equal,
-                        (None, Some(_)) => std::cmp::Ordering::Greater,
-                        (Some(_), None) => std::cmp::Ordering::Less,
-                        (Some(x), Some(y)) => {
-                            scalar_sort_key_bytes(&x).cmp(&scalar_sort_key_bytes(&y))
-                        }
-                    };
-                }
-            }
-            match ob.direction {
-                OrderDirection::Asc => ord,
-                OrderDirection::Desc => ord.reverse(),
-            }
-        });
+        }
     }
-    if let Some(n) = limit {
-        rows.truncate(n);
+    match ob.direction {
+        OrderDirection::Asc => ord,
+        OrderDirection::Desc => ord.reverse(),
     }
+}
+
+fn topk_order_by(
+    rows: &mut Vec<BTreeMap<String, RowValue>>,
+    ob: &OrderBy,
+    k: usize,
+    pk_path: Option<&FieldPath>,
+) {
+    if rows.len() <= k {
+        rows.sort_by(|a, b| compare_rows_for_order(a, b, ob, pk_path));
+        return;
+    }
+    rows.select_nth_unstable_by(k - 1, |a, b| compare_rows_for_order(a, b, ob, pk_path));
+    rows.truncate(k);
+    rows.sort_by(|a, b| compare_rows_for_order(a, b, ob, pk_path));
 }
 
 fn scalar_partial_cmp(a: &ScalarValue, b: &ScalarValue) -> Option<std::cmp::Ordering> {

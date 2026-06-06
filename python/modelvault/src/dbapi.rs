@@ -1,10 +1,12 @@
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict, PyList, PyTuple};
+use std::collections::BTreeMap;
 
 use modelvault_core::catalog::CollectionInfo;
 use modelvault_core::db::row_subset_by_field_defs;
 use modelvault_core::query::{Predicate, Query};
+use modelvault_core::record::RowValue;
 use modelvault_core::schema::{FieldDef, FieldPath, Type};
 
 use crate::database::Database;
@@ -12,9 +14,7 @@ use crate::errors::db_error_to_py;
 use crate::row_values;
 
 #[pyfunction]
-#[pyo3(signature = (path, *, strict_read_only=false))]
-pub fn connect(py: Python<'_>, path: String, strict_read_only: bool) -> PyResult<Connection> {
-    let _ = strict_read_only;
+pub fn connect(py: Python<'_>, path: String) -> PyResult<Connection> {
     // Same-process read-only opens attach to the live writer snapshot via the core handle registry.
     let db = modelvault_core::Database::open_read_only(&path).map_err(db_error_to_py)?;
     let py_db = Py::new(
@@ -49,8 +49,8 @@ impl Connection {
             conn: Some(db.clone_ref(py)),
             planned: None,
             buffer: Vec::new(),
-            cached_rows: None,
-            cache_pos: 0,
+            rust_rows: None,
+            rust_row_pos: 0,
             description: None,
             closed: false,
         })
@@ -77,9 +77,9 @@ pub struct Cursor {
     conn: Option<Py<Database>>,
     planned: Option<PlannedSelect>,
     buffer: Vec<Py<PyTuple>>,
-    /// Full result tuples built on first refill (one `query_iter` pass); avoids O(n²) re-scans.
-    cached_rows: Option<Vec<Py<PyTuple>>>,
-    cache_pos: usize,
+    /// Rows from a single `query_iter` pass; Python tuples are built lazily in `refill`.
+    rust_rows: Option<Vec<BTreeMap<String, RowValue>>>,
+    rust_row_pos: usize,
     description: Option<Py<PyAny>>,
     closed: bool,
 }
@@ -230,6 +230,76 @@ fn make_description(py: Python<'_>, names: &[String]) -> PyResult<Py<PyAny>> {
     Ok(PyTuple::new(py, cols)?.into_any().unbind())
 }
 
+impl Cursor {
+    fn row_to_tuple(
+        &self,
+        py: Python<'_>,
+        row: &BTreeMap<String, RowValue>,
+        plan: &PlannedSelect,
+    ) -> PyResult<Py<PyTuple>> {
+        let projected = match &plan.allow_defs {
+            None => row.clone(),
+            Some(defs) => row_subset_by_field_defs(row, defs),
+        };
+        let d = row_values::row_to_dict(py, &projected)?;
+        let mut items = Vec::with_capacity(plan.paths.len());
+        for p in &plan.paths {
+            let parts = sql_path_to_parts(p);
+            let v = py_get_at_path(py, d.clone().into_any(), &parts)?;
+            items.push(v);
+        }
+        Ok(PyTuple::new(py, items)?.unbind())
+    }
+
+    fn ensure_rust_rows(&mut self, py: Python<'_>) -> PyResult<()> {
+        if self.rust_rows.is_some() {
+            return Ok(());
+        }
+        let Some(plan) = self.planned.clone() else {
+            return Ok(());
+        };
+        let conn = self
+            .conn
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("cursor is closed"))?;
+        let db_ref = conn.bind(py).borrow();
+        let g = super::db_handle::lock_inner_read(&db_ref.inner)?;
+        let it = g.query_iter(&plan.query).map_err(db_error_to_py)?;
+
+        let mut rows = Vec::new();
+        for r in it {
+            let r = r.map_err(db_error_to_py)?;
+            let projected = match &plan.allow_defs {
+                None => r,
+                Some(defs) => row_subset_by_field_defs(&r, defs),
+            };
+            rows.push(projected);
+        }
+        self.rust_rows = Some(rows);
+        self.rust_row_pos = 0;
+        Ok(())
+    }
+
+    fn refill(&mut self, py: Python<'_>, want: usize) -> PyResult<()> {
+        if want == 0 || self.buffer.len() >= want {
+            return Ok(());
+        }
+        self.ensure_rust_rows(py)?;
+        let Some(rows) = self.rust_rows.as_ref() else {
+            return Ok(());
+        };
+        let Some(plan) = self.planned.as_ref() else {
+            return Ok(());
+        };
+        while self.buffer.len() < want && self.rust_row_pos < rows.len() {
+            let tuple = self.row_to_tuple(py, &rows[self.rust_row_pos], plan)?;
+            self.buffer.push(tuple);
+            self.rust_row_pos += 1;
+        }
+        Ok(())
+    }
+}
+
 #[pymethods]
 impl Cursor {
     #[getter]
@@ -246,60 +316,9 @@ impl Cursor {
         self.conn = None;
         self.planned = None;
         self.buffer.clear();
-        self.cached_rows = None;
-        self.cache_pos = 0;
+        self.rust_rows = None;
+        self.rust_row_pos = 0;
         self.description = None;
-    }
-
-    fn ensure_cached_rows(&mut self, py: Python<'_>) -> PyResult<()> {
-        if self.cached_rows.is_some() {
-            return Ok(());
-        }
-        let Some(plan) = self.planned.clone() else {
-            return Ok(());
-        };
-        let conn = self
-            .conn
-            .as_ref()
-            .ok_or_else(|| PyRuntimeError::new_err("cursor is closed"))?;
-        let db_ref = conn.borrow(py);
-        let g = super::db_handle::lock_inner_read(&db_ref.inner)?;
-        let it = g.query_iter(&plan.query).map_err(db_error_to_py)?;
-
-        let mut cached = Vec::new();
-        for r in it {
-            let r = r.map_err(db_error_to_py)?;
-            let projected = match &plan.allow_defs {
-                None => r,
-                Some(defs) => row_subset_by_field_defs(&r, defs),
-            };
-            let d = row_values::row_to_dict(py, &projected)?;
-            let mut items = Vec::with_capacity(plan.paths.len());
-            for p in &plan.paths {
-                let parts = sql_path_to_parts(p);
-                let v = py_get_at_path(py, d.clone().into_any(), &parts)?;
-                items.push(v);
-            }
-            cached.push(PyTuple::new(py, items)?.unbind());
-        }
-        self.cached_rows = Some(cached);
-        self.cache_pos = 0;
-        Ok(())
-    }
-
-    fn refill(&mut self, py: Python<'_>, want: usize) -> PyResult<()> {
-        if want == 0 || self.buffer.len() >= want {
-            return Ok(());
-        }
-        self.ensure_cached_rows(py)?;
-        let Some(cache) = self.cached_rows.as_ref() else {
-            return Ok(());
-        };
-        while self.buffer.len() < want && self.cache_pos < cache.len() {
-            self.buffer.push(cache[self.cache_pos].clone_ref(py));
-            self.cache_pos += 1;
-        }
-        Ok(())
     }
 
     #[pyo3(signature = (sql, params=None))]
@@ -389,8 +408,8 @@ impl Cursor {
             allow_defs,
         });
         self.buffer.clear();
-        self.cached_rows = None;
-        self.cache_pos = 0;
+        self.rust_rows = None;
+        self.rust_row_pos = 0;
 
         Ok(())
     }

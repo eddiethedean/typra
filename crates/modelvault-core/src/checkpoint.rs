@@ -284,13 +284,7 @@ fn apply_checkpoint_record_payload(
             name: pk_name.to_string(),
         }))?;
 
-    let decode_fields = crate::record::fields_for_record_decode(
-        &col.fields,
-        col.current_version.0,
-        payload,
-        pk_name,
-        pk_ty,
-    )?;
+    let decode_fields = crate::record::fields_for_record_decode(col, payload, pk_name, pk_ty)?;
     let decoded = crate::record::decode_record_payload(payload, pk_name, pk_ty, &decode_fields)?;
     if decoded.schema_version > col.current_version.0 {
         return Err(DbError::Schema(SchemaError::InvalidSchemaVersion {

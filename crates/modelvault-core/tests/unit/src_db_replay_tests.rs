@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use super::{load_catalog_latest_and_indexes, replay_tail_into};
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
@@ -517,6 +518,7 @@ fn apply_record_segment_errors_when_primary_field_missing_in_fields() {
         )],
         indexes: vec![],
         primary_field: Some("id".into()),
+        version_history: BTreeMap::new(),
     });
 
     let mut latest = super::LatestMap::new();
