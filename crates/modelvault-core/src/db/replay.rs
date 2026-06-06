@@ -425,10 +425,12 @@ fn apply_record_segment(
         .ok_or(DbError::Schema(SchemaError::UnknownCollection {
             id: collection_id,
         }))?;
-    let pk_name = match &col.primary_field {
-        Some(s) => s.as_str(),
-        None => return Ok(()),
-    };
+    let pk_name =
+        col.primary_field
+            .as_deref()
+            .ok_or(DbError::Schema(SchemaError::NoPrimaryKey {
+                collection_id: col.id.0,
+            }))?;
     let pk_ty = col
         .fields
         .iter()
@@ -438,7 +440,7 @@ fn apply_record_segment(
             name: pk_name.to_string(),
         }))?;
     let decoded = decode_record_payload(payload, pk_name, pk_ty, &col.fields)?;
-    if decoded.schema_version != col.current_version.0 {
+    if decoded.schema_version > col.current_version.0 {
         return Err(DbError::Schema(SchemaError::InvalidSchemaVersion {
             expected: col.current_version.0,
             got: decoded.schema_version,

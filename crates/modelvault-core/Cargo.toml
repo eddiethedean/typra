@@ -55,6 +55,10 @@ name = "checkpoint_more"
 path = "tests/integration/checkpoint_more.rs"
 
 [[test]]
+name = "checkpoint_catalog_roundtrip"
+path = "tests/integration/checkpoint_catalog_roundtrip.rs"
+
+[[test]]
 name = "compaction"
 path = "tests/integration/compaction.rs"
 
@@ -89,6 +93,10 @@ path = "tests/integration/coverage_real_misses.rs"
 [[test]]
 name = "database_paths"
 path = "tests/integration/database_paths.rs"
+
+[[test]]
+name = "decode_bounds"
+path = "tests/integration/decode_bounds.rs"
 
 [[test]]
 name = "database_registration_edges"
@@ -149,6 +157,10 @@ path = "tests/integration/file_locking.rs"
 [[test]]
 name = "file_locking_crash_release"
 path = "tests/integration/file_locking_crash_release.rs"
+
+[[test]]
+name = "handle_registry_freshness"
+path = "tests/integration/handle_registry_freshness.rs"
 
 [[test]]
 name = "format_upgrade"

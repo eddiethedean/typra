@@ -1,6 +1,7 @@
 //! Typed scalar values for record payloads (v1).
 
 use crate::error::{DbError, FormatError};
+use crate::file_format::check_field_bytes_len;
 use crate::schema::Type;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,7 +24,10 @@ impl ScalarValue {
             ScalarValue::Bool(b) => vec![0, if *b { 1 } else { 0 }],
             ScalarValue::Int64(v) => v.to_le_bytes().to_vec(),
             ScalarValue::Uint64(v) => v.to_le_bytes().to_vec(),
-            ScalarValue::Float64(v) => v.to_le_bytes().to_vec(),
+            ScalarValue::Float64(v) => {
+                let n = if *v == 0.0 { 0.0f64 } else { *v };
+                n.to_le_bytes().to_vec()
+            }
             ScalarValue::String(s) => s.as_bytes().to_vec(),
             ScalarValue::Bytes(b) => b.clone(),
             ScalarValue::Uuid(u) => u.to_vec(),
@@ -176,6 +180,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn take_bytes(&mut self, n: usize) -> Result<Vec<u8>, DbError> {
+        check_field_bytes_len(n)?;
         if self.remaining() < n {
             return Err(DbError::Format(FormatError::TruncatedRecordPayload));
         }

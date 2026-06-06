@@ -1,5 +1,6 @@
 use crate::checksum::crc32c_append;
 use crate::error::{DbError, FormatError};
+use crate::file_format::check_segment_payload_len;
 use crate::segments::header::SegmentType;
 use crate::segments::header::{decode_segment_header, SegmentHeader, SEGMENT_HEADER_LEN};
 use crate::storage::Store;
@@ -73,6 +74,7 @@ pub fn read_segment_payload(
     store: &mut impl Store,
     meta: &SegmentMeta,
 ) -> Result<Vec<u8>, DbError> {
+    check_segment_payload_len(meta.header.payload_len)?;
     let mut payload = vec![0u8; meta.header.payload_len as usize];
     let start = meta.offset + SEGMENT_HEADER_LEN as u64;
     store.read_exact_at(start, &mut payload)?;

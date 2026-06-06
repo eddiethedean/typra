@@ -329,7 +329,10 @@ impl fmt::Display for SchemaError {
                 write!(f, "invalid schema version: expected {expected}, got {got}")
             }
             SchemaError::SchemaVersionExhausted => {
-                write!(f, "schema version limit reached (cannot bump further)")
+                write!(
+                    f,
+                    "schema version limit reached (u32::MAX); cannot register another schema version"
+                )
             }
             SchemaError::UnexpectedCollectionId { expected, got } => {
                 write!(

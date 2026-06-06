@@ -186,6 +186,23 @@ impl FileStore {
 
         let lock_path = Self::lock_path_for_db_path(path);
 
+        #[cfg(unix)]
+        if mode == OpenMode::ReadWrite {
+            let already_writer = writer_locks()
+                .lock()
+                .ok()
+                .and_then(|g| g.get(&lock_path).map(|_| ()))
+                .is_some();
+            if !already_writer {
+                if let Err(e) = file.try_lock_exclusive() {
+                    return Err(DbError::Io(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        format!("database file is locked by another process: {e}"),
+                    )));
+                }
+            }
+        }
+
         let writer_lock = match mode {
             OpenMode::ReadOnly => None,
             OpenMode::ReadWrite => {

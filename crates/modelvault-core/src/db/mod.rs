@@ -4,6 +4,7 @@
 //! rows from segments), `write` (append segments and publish), and `helpers` (name rules).
 
 mod fs_ops;
+mod handle_registry;
 mod helpers;
 mod open;
 mod recover;
@@ -19,9 +20,10 @@ mod write;
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
-use crate::config::{OpenMode, OpenOptions};
+use crate::config::{OpenMode, OpenOptions, OpenRecoveryInfo};
 use crate::error::{DbError, FormatError, SchemaError, TransactionError};
 use crate::index::IndexState;
 use crate::index::{encode_index_payload, IndexEntry, IndexOp};
@@ -95,6 +97,9 @@ fn plan_insert_row(
             name: pk_name.to_string(),
         }))?;
     validation::validate_value(&mut pk_path, pk_ty, &pk_def.constraints, pk_cell)?;
+    if let Ok(scalar) = pk_cell.clone().into_scalar() {
+        validation::ensure_pk_scalar_finite(&scalar)?;
+    }
     // Validate unknown fields: for nested schema paths we validate by traversing row objects.
     // For legacy single-segment schemas, keep the existing top-level validation.
     let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
@@ -153,6 +158,14 @@ fn plan_insert_row(
     let mut index_entries: Vec<IndexEntry> = Vec::new();
     for idx in &col.indexes {
         let Some(v) = scalar_at_path(&full_map, &idx.path) else {
+            if idx.kind == crate::schema::IndexKind::Unique {
+                #[cfg(feature = "tracing")]
+                tracing::warn!(
+                    collection_id = collection_id.0,
+                    index = %idx.name,
+                    "unique index field absent or null; row is not indexed (SQL NULL semantics)"
+                );
+            }
             continue;
         };
         index_entries.push(IndexEntry {
@@ -191,6 +204,87 @@ fn index_deletes_for_existing_row(
     out
 }
 
+/// Rebuild in-memory index state from catalog + latest rows (insert semantics only).
+pub fn rebuild_indexes_from_latest(catalog: &Catalog, latest: &LatestMap) -> IndexState {
+    let mut state = IndexState::default();
+    for col in catalog.collections() {
+        let Some(pk_name) = col.primary_field.as_deref() else {
+            continue;
+        };
+        let Some(pk_def) = col
+            .fields
+            .iter()
+            .find(|f| f.path.0.len() == 1 && f.path.0[0] == pk_name)
+        else {
+            continue;
+        };
+        for ((cid, _), row) in latest.iter() {
+            if *cid != col.id.0 {
+                continue;
+            }
+            let Ok(pk_scalar) = row
+                .get(pk_name)
+                .cloned()
+                .ok_or(())
+                .and_then(|c| c.into_scalar().map_err(|_| ()))
+            else {
+                continue;
+            };
+            if !pk_scalar.ty_matches(&pk_def.ty) {
+                continue;
+            }
+            for idx in &col.indexes {
+                let Some(v) = scalar_at_path(row, &idx.path) else {
+                    continue;
+                };
+                let _ = state.apply(IndexEntry {
+                    collection_id: col.id.0,
+                    index_name: idx.name.clone(),
+                    kind: idx.kind,
+                    op: IndexOp::Insert,
+                    index_key: v.canonical_key_bytes(),
+                    pk_key: pk_scalar.canonical_key_bytes(),
+                });
+            }
+        }
+    }
+    state
+}
+
+fn index_snapshot(entries: &mut [IndexEntry]) {
+    entries.sort_by(|a, b| {
+        let kind_key = |k: crate::schema::IndexKind| match k {
+            crate::schema::IndexKind::Unique => 0u8,
+            crate::schema::IndexKind::NonUnique => 1u8,
+        };
+        a.collection_id
+            .cmp(&b.collection_id)
+            .then_with(|| a.index_name.cmp(&b.index_name))
+            .then_with(|| kind_key(a.kind).cmp(&kind_key(b.kind)))
+            .then_with(|| a.index_key.cmp(&b.index_key))
+            .then_with(|| a.pk_key.cmp(&b.pk_key))
+    });
+}
+
+/// Verify replayed index segments match what row data implies.
+pub fn verify_indexes_match_rows(
+    catalog: &Catalog,
+    latest: &LatestMap,
+    indexes: &IndexState,
+) -> Result<(), DbError> {
+    let expected = rebuild_indexes_from_latest(catalog, latest);
+    let mut got = indexes.entries_for_checkpoint();
+    let mut want = expected.entries_for_checkpoint();
+    index_snapshot(&mut got);
+    index_snapshot(&mut want);
+    if got != want {
+        return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+            message: "index state does not match row data".into(),
+        }));
+    }
+    Ok(())
+}
+
 /// Staged writes while [`Database::transaction`] is executing.
 pub(crate) struct TxnStaging {
     pub(crate) txn_id: u64,
@@ -222,6 +316,12 @@ pub struct Database<S: Store = FileStore> {
     /// Present for writable on-disk databases (process-wide single-writer registry).
     #[allow(dead_code)]
     writer_registry: Option<writer_registry::WriterRegistryGuard>,
+    /// Shared in-memory mirror for same-process read-only handles.
+    shared_mirror: Option<std::sync::Arc<std::sync::RwLock<handle_registry::SharedDbState>>>,
+    /// When true, reads pull from [`Self::shared_mirror`] before each operation.
+    read_only_attached: bool,
+    /// Recovery actions taken during the most recent open (truncation, etc.).
+    recovery_info: OpenRecoveryInfo,
     /// Covers replace-path record encoding error branches in tests (misaligned validated row maps).
     #[cfg(test)]
     #[doc(hidden)]
@@ -372,7 +472,21 @@ impl<S: Store> Database<S> {
         self.catalog = st.shadow_catalog;
         self.latest = st.shadow_latest;
         self.indexes = st.shadow_indexes;
+        self.push_shared_mirror();
         Ok(())
+    }
+
+    fn push_shared_mirror(&mut self) {
+        let Some(ref shared) = self.shared_mirror else {
+            return;
+        };
+        if let Ok(mut g) = shared.write() {
+            g.catalog = self.catalog.clone();
+            g.latest = self.latest.clone();
+            g.indexes = self.indexes.clone();
+            g.segment_start = self.segment_start;
+            g.format_minor = self.format_minor;
+        }
     }
 
     fn catalog_for_read(&self) -> &Catalog {
@@ -404,6 +518,20 @@ impl<S: Store> Database<S> {
         &self.path
     }
 
+    /// Recovery metadata from the most recent open (truncation, etc.).
+    pub fn recovery_info(&self) -> &OpenRecoveryInfo {
+        &self.recovery_info
+    }
+
+    /// Rebuild secondary indexes from `latest` rows and compare to replayed index state.
+    pub fn verify_index_consistency(&self) -> Result<(), DbError> {
+        verify_indexes_match_rows(
+            self.catalog_for_read(),
+            self.latest_for_read(),
+            self.indexes_for_read(),
+        )
+    }
+
     /// Read-only view of the schema catalog built from `Schema` segments.
     pub fn catalog(&self) -> &Catalog {
         self.catalog_for_read()
@@ -424,6 +552,17 @@ impl<S: Store> Database<S> {
         &self,
         q: &crate::query::Query,
     ) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
+        if self.read_only_attached {
+            let shared = self.shared_mirror.as_ref().ok_or_else(|| {
+                DbError::Io(std::io::Error::other(
+                    "read-only attached handle missing shared state",
+                ))
+            })?;
+            let g = shared
+                .read()
+                .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?;
+            return crate::query::execute_query(&g.catalog, &g.indexes, &g.latest, q);
+        }
         crate::query::execute_query(
             self.catalog_for_read(),
             self.indexes_for_read(),
@@ -612,6 +751,7 @@ impl<S: Store> Database<S> {
             st.shadow_catalog.apply_record(wire.clone())?;
             st.pending
                 .push((crate::segments::header::SegmentType::Schema, payload));
+            self.rewrite_collection_rows_at_current_version(id)?;
             return Ok(SchemaVersion(next_v));
         }
         let tid = self.next_txn_id();
@@ -623,6 +763,7 @@ impl<S: Store> Database<S> {
             )],
         )?;
         self.apply_catalog_record(wire)?;
+        self.rewrite_collection_rows_at_current_version(id)?;
         Ok(SchemaVersion(next_v))
     }
 
@@ -830,6 +971,23 @@ impl<S: Store> Database<S> {
         Ok(SchemaVersion(next_v))
     }
 
+    /// Re-persist every row in `collection_id` at the catalog's current schema version.
+    fn rewrite_collection_rows_at_current_version(
+        &mut self,
+        collection_id: CollectionId,
+    ) -> Result<(), DbError> {
+        let rows: Vec<BTreeMap<String, RowValue>> = self
+            .latest_for_read()
+            .iter()
+            .filter(|((cid, _), _)| *cid == collection_id.0)
+            .map(|(_, row)| row.clone())
+            .collect();
+        for row in rows {
+            self.insert(collection_id, row)?;
+        }
+        Ok(())
+    }
+
     /// Insert or replace the row for `collection_id` identified by its primary-key field.
     ///
     /// `row` maps **top-level** field names to [`RowValue`]. The primary key field must be present.
@@ -839,6 +997,12 @@ impl<S: Store> Database<S> {
         collection_id: CollectionId,
         row: BTreeMap<String, RowValue>,
     ) -> Result<(), DbError> {
+        if self.read_only_attached {
+            return Err(DbError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "database opened read-only",
+            )));
+        }
         write::ensure_header_v0_5(&mut self.store, &mut self.format_minor)?;
         let (mut payload, full, mut index_entries, pk_scalar) =
             plan_insert_row(self.catalog_for_read(), collection_id, row)?;
@@ -973,11 +1137,18 @@ impl<S: Store> Database<S> {
         for e in index_entries {
             self.indexes.apply(e)?;
         }
+        self.push_shared_mirror();
         Ok(())
     }
 
     /// Delete the row for `collection_id` identified by its primary key.
     pub fn delete(&mut self, collection_id: CollectionId, pk: &ScalarValue) -> Result<(), DbError> {
+        if self.read_only_attached {
+            return Err(DbError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "database opened read-only",
+            )));
+        }
         write::ensure_header_v0_5(&mut self.store, &mut self.format_minor)?;
         let col = self
             .catalog_for_read()
@@ -1082,6 +1253,7 @@ impl<S: Store> Database<S> {
         for e in index_entries {
             self.indexes.apply(e)?;
         }
+        self.push_shared_mirror();
         Ok(())
     }
 
@@ -1119,6 +1291,17 @@ impl<S: Store> Database<S> {
             }));
         }
         let key = (collection_id.0, pk.canonical_key_bytes());
+        if self.read_only_attached {
+            let shared = self.shared_mirror.as_ref().ok_or_else(|| {
+                DbError::Io(std::io::Error::other(
+                    "read-only attached handle missing shared state",
+                ))
+            })?;
+            let g = shared
+                .read()
+                .map_err(|_| DbError::Io(std::io::Error::other("shared database lock poisoned")))?;
+            return Ok(g.latest.get(&key).cloned());
+        }
         Ok(self.latest_for_read().get(&key).cloned())
     }
 
@@ -1653,10 +1836,48 @@ impl Database<FileStore> {
         opts: crate::config::OpenOptions,
     ) -> Result<Self, DbError> {
         let path = path.as_ref().to_path_buf();
+        if opts.mode == OpenMode::ReadOnly {
+            if let Some(shared) = handle_registry::get(&path) {
+                let g = shared.read().map_err(|_| {
+                    DbError::Io(std::io::Error::other("shared database lock poisoned"))
+                })?;
+                let db = Self {
+                    path: path.clone(),
+                    store: FileStore::open_locked(&path, OpenMode::ReadOnly)?,
+                    catalog: g.catalog.clone(),
+                    segment_start: g.segment_start,
+                    format_minor: g.format_minor,
+                    latest: g.latest.clone(),
+                    indexes: g.indexes.clone(),
+                    txn_seq: 0,
+                    txn_staging: None,
+                    writer_registry: None,
+                    shared_mirror: Some(Arc::clone(&shared)),
+                    read_only_attached: true,
+                    recovery_info: OpenRecoveryInfo::default(),
+                    #[cfg(test)]
+                    test_poison_planned_replace_row: None,
+                    #[cfg(test)]
+                    test_poison_delete_encode_scalar: None,
+                };
+                drop(g);
+                return Ok(db);
+            }
+        }
         let store = FileStore::open_locked(&path, opts.mode)?;
         let mut db = Self::open_with_store(path.clone(), store, opts)?;
         if opts.mode == OpenMode::ReadWrite {
-            db.writer_registry = Some(writer_registry::WriterRegistryGuard::new(path)?);
+            db.writer_registry = Some(writer_registry::WriterRegistryGuard::new(path.clone())?);
+            db.shared_mirror = Some(handle_registry::register(
+                &path,
+                handle_registry::SharedDbState {
+                    catalog: db.catalog.clone(),
+                    latest: db.latest.clone(),
+                    indexes: db.indexes.clone(),
+                    segment_start: db.segment_start,
+                    format_minor: db.format_minor,
+                },
+            ));
         }
         Ok(db)
     }

@@ -66,7 +66,7 @@ Before a row is appended, ModelVault checks:
 
 1. **Types** — primitives, optionals, lists, objects, enums, and nested paths
 2. **Constraints** — engine rules on declared fields
-3. **Unique indexes** — no duplicate keys where uniqueness is required
+3. **Unique indexes** — no duplicate keys where uniqueness is required. Rows with an **absent or null** indexed optional field are **not indexed** (SQL `NULL` semantics): multiple rows may omit the field without violating uniqueness; duplicate **non-null** keys are still rejected.
 
 Failures are structured with **field paths** and clear messages. In Python: `ModelVaultValidationError` / `ValueError`. In Rust: `DbError::Validation`.
 

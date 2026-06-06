@@ -20,6 +20,7 @@ impl WriterRegistryGuard {
 
 impl Drop for WriterRegistryGuard {
     fn drop(&mut self) {
+        super::handle_registry::unregister(&self.path);
         unregister_writable(&self.path);
     }
 }

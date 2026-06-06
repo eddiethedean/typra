@@ -10,12 +10,12 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-modelvault = { path = "crates/modelvault", version = "0.15.2" }
-modelvault-core = { path = "crates/modelvault-core", version = "0.15.2" }
-modelvault-derive = { path = "crates/modelvault-derive", version = "0.15.2" }
+modelvault = { path = "crates/modelvault", version = "0.15.4" }
+modelvault-core = { path = "crates/modelvault-core", version = "0.15.4" }
+modelvault-derive = { path = "crates/modelvault-derive", version = "0.15.4" }
 
 [workspace.package]
-version = "0.15.2"
+version = "0.15.4"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/eddiethedean/modelvault"

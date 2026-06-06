@@ -45,11 +45,15 @@ fn index_state_unique_insert_delete_branches() {
         DbError::Schema(SchemaError::UniqueIndexViolation)
     ));
 
-    // Delete mismatch is ok (no-op).
+    // Delete mismatch is a format error (corrupt replay).
     let mut del = e1.clone();
     del.op = IndexOp::Delete;
     del.pk_key = ScalarValue::String("zzz".into()).canonical_key_bytes();
-    st.apply(del).unwrap();
+    let err_del = st.apply(del).unwrap_err();
+    assert!(matches!(
+        err_del,
+        DbError::Format(FormatError::InvalidCatalogPayload { .. })
+    ));
 
     // Delete exact match removes.
     let mut del2 = e1.clone();

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::config::{OpenOptions, RecoveryMode};
+use crate::config::{OpenOptions, OpenRecoveryInfo, RecoveryMode};
 use crate::error::{DbError, FormatError};
 use crate::file_format::{decode_header, FileHeader, FILE_HEADER_SIZE};
 use crate::manifest::decode_manifest_v0;
@@ -94,6 +94,7 @@ pub(crate) fn open_with_store<S: Store>(
     opts: OpenOptions,
 ) -> Result<Database<S>, DbError> {
     #[cfg(feature = "tracing")] tracing::info!(path = %path.display(), "open_with_store_begin");
+    let mut recovery_info = OpenRecoveryInfo::default();
     let len = store.len()?;
     let segment_start = (FILE_HEADER_SIZE + 2 * SUPERBLOCK_SIZE) as u64;
     let format_minor;
@@ -145,7 +146,11 @@ pub(crate) fn open_with_store<S: Store>(
                 }
                 RecoveryMode::AutoTruncate => {
                     let flen = store.len()?;
-                    if truncate_to < flen { store.truncate(truncate_to)?; store.sync()?; }
+                    if truncate_to < flen {
+                        recovery_info.truncated_bytes = flen - truncate_to;
+                        recovery_info.truncate_reason = reason.map(str::to_string);
+                        store.truncate(truncate_to)?; store.sync()?;
+                    }
                 }
             }
         }
@@ -186,6 +191,9 @@ pub(crate) fn open_with_store<S: Store>(
         txn_seq: 0,
         txn_staging: None,
         writer_registry: None,
+        shared_mirror: None,
+        read_only_attached: false,
+        recovery_info,
         #[cfg(test)]
         test_poison_planned_replace_row: None,
         #[cfg(test)]

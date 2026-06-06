@@ -86,6 +86,16 @@ impl Database {
         Ok(g.path_display())
     }
 
+    #[getter]
+    fn recovery_info(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let g = lock_inner_read(&self.inner)?;
+        let info = g.recovery_info();
+        let dict = PyDict::new(py);
+        dict.set_item("truncated_bytes", info.truncated_bytes)?;
+        dict.set_item("truncate_reason", info.truncate_reason)?;
+        Ok(dict.into())
+    }
+
     #[pyo3(signature = (name, fields_json, primary_field, indexes_json=None))]
     fn register_collection(
         &self,

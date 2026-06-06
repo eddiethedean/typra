@@ -668,8 +668,12 @@ fn apply_record_segment_skips_collections_without_primary_key_and_handles_delete
     let mut latest = super::LatestMap::new();
     let mut payload = vec![0u8; 6];
     payload[2..6].copy_from_slice(&1u32.to_le_bytes());
-    super::apply_record_segment(&payload, &catalog, &mut latest).unwrap();
-    assert!(latest.is_empty());
+    let err_no_pk =
+        super::apply_record_segment(&payload, &catalog, &mut latest).unwrap_err();
+    assert!(matches!(
+        err_no_pk,
+        DbError::Schema(SchemaError::NoPrimaryKey { collection_id: 1 })
+    ));
 
     // Normal collection with pk: schema mismatch errors.
     let mut catalog2 = Catalog::default();

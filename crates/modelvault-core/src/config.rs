@@ -1,5 +1,14 @@
 //! Open and recovery options for [`crate::db::Database`].
 
+/// Metadata about recovery actions applied during open.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OpenRecoveryInfo {
+    /// Bytes truncated from the file tail during open (0 if none).
+    pub truncated_bytes: u64,
+    /// Human-readable reason when truncation occurred.
+    pub truncate_reason: Option<String>,
+}
+
 /// How to open a database when the append log tail may be torn or hold an uncommitted transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecoveryMode {

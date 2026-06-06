@@ -37,7 +37,10 @@ impl DbHandle {
     }
 
     pub(crate) fn txn_exit(&self) {
-        debug_assert!(self.txn_depth.load(Ordering::Acquire) > 0);
+        let prev = self.txn_depth.load(Ordering::Acquire);
+        if prev == 0 {
+            return;
+        }
         self.txn_depth.fetch_sub(1, Ordering::Release);
     }
 

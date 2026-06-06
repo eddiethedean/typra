@@ -108,7 +108,7 @@ fn into_snapshot_bytes_roundtrips_like_snapshot_bytes() {
 }
 
 #[test]
-fn replay_errors_when_record_schema_version_behind_catalog() {
+fn replay_succeeds_when_record_schema_version_behind_catalog() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ver.modelvault");
     {
@@ -123,17 +123,10 @@ fn replay_errors_when_record_schema_version_behind_catalog() {
         db.register_schema_version(id, vec![id_field(), title_field()])
             .unwrap();
     }
-    let e = match Database::open(&path) {
-        Err(e) => e,
-        Ok(_) => panic!("expected schema version mismatch on replay"),
-    };
-    assert!(matches!(
-        e,
-        DbError::Schema(SchemaError::InvalidSchemaVersion {
-            expected: 2,
-            got: 1
-        })
-    ));
+    let db = Database::open(&path).unwrap();
+    let cid = db.collection_id_named("c").unwrap();
+    let got = db.get(cid, &ScalarValue::Int64(1)).unwrap().expect("row");
+    assert_eq!(got.get("title"), Some(&RowValue::String("a".into())));
 }
 
 #[test]

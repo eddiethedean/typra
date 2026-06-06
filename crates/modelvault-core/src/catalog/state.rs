@@ -161,6 +161,9 @@ impl Catalog {
             }));
         }
         validate_field_defs(&fields)?;
+        for f in &fields {
+            crate::validation::validate_constraints_at_registration(&f.constraints)?;
+        }
         if let Some(ref pk) = primary_field {
             if !Catalog::has_top_level_field(&fields, pk) {
                 return Err(DbError::Schema(SchemaError::PrimaryFieldNotFound {
@@ -201,6 +204,9 @@ impl Catalog {
             }));
         }
         validate_field_defs(&fields)?;
+        for f in &fields {
+            crate::validation::validate_constraints_at_registration(&f.constraints)?;
+        }
         if let Some(ref pk) = col.primary_field {
             if !Catalog::has_top_level_field(&fields, pk) {
                 return Err(DbError::Schema(SchemaError::PrimaryFieldMissingInSchema {

@@ -45,7 +45,7 @@ On open, choose how to handle corrupt or partial writes:
 | **`AutoTruncate`** (default for RW) | Truncate torn tails and stop at first mid-log CRC failure; salvage committed prefix |
 | **`Strict`** | Fail if recovery would require truncation |
 
-Read-only opens use **`Strict`** by default (never truncate). Under **`AutoTruncate`**, a CRC error in the middle of the log is treated like a torn tail: segments before the failure remain readable; bytes from the failure offset onward are discarded. Nested uncommitted transactions (`TxnBegin` without `Commit`) are truncated as well. A stray **`TxnCommit`** without a matching **`TxnBegin`** (e.g. crash mid-framing) is truncated at that segment offset; committed data before it is kept.
+Read-only opens use **`Strict`** by default (never truncate). Under **`AutoTruncate`**, a CRC error in the middle of the log is treated like a torn tail: segments before the failure remain readable; bytes from the failure offset onward are discarded. Nested uncommitted transactions (`TxnBegin` without `Commit`) are truncated as well. A stray **`TxnCommit`** without a matching **`TxnBegin`** (e.g. crash mid-framing) is truncated at that segment offset; committed data before it is kept. After open, inspect **`Database.recovery_info`** (Python) or **`OpenRecoveryInfo`** (Rust) for `truncated_bytes` when salvage occurred.
 
 Details: [Compatibility → recovery](../reference/compatibility.md#recovery-modes-contract).
 

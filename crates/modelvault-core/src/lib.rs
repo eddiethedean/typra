@@ -9,7 +9,7 @@ pub mod catalog;
 pub mod checkpoint;
 pub mod checksum;
 pub mod config;
-pub use config::{OpenMode, OpenOptions, RecoveryMode};
+pub use config::{OpenMode, OpenOptions, OpenRecoveryInfo, RecoveryMode};
 pub mod db;
 pub mod error;
 pub mod file_format;

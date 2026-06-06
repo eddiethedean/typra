@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 
 use crate::catalog::Catalog;
 use crate::db::scalar_at_path;
-use crate::error::{DbError, SchemaError};
+use crate::error::{DbError, QueryError, SchemaError};
+use crate::file_format::MAX_QUERY_LIMIT;
 use crate::index::IndexState;
 use crate::record::RowValue;
 use crate::schema::{CollectionId, IndexKind};
@@ -51,6 +52,7 @@ enum Plan {
 }
 
 pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError> {
+    validate_query_limit(query)?;
     let col =
         catalog
             .get(query.collection)
@@ -108,12 +110,24 @@ pub fn explain_query(catalog: &Catalog, query: &Query) -> Result<String, DbError
     })
 }
 
+fn validate_query_limit(query: &Query) -> Result<(), DbError> {
+    if let Some(n) = query.limit {
+        if n > MAX_QUERY_LIMIT {
+            return Err(DbError::Query(QueryError {
+                message: format!("query limit {n} exceeds maximum {MAX_QUERY_LIMIT}"),
+            }));
+        }
+    }
+    Ok(())
+}
+
 pub fn execute_query(
     catalog: &Catalog,
     indexes: &IndexState,
     latest: &crate::db::LatestMap,
     query: &Query,
 ) -> Result<Vec<BTreeMap<String, RowValue>>, DbError> {
+    validate_query_limit(query)?;
     let col =
         catalog
             .get(query.collection)

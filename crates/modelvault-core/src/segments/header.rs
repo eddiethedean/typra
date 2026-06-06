@@ -1,5 +1,6 @@
 use crate::checksum::{crc32c, CHECKSUM_KIND_CRC32C};
 use crate::error::{DbError, FormatError};
+use crate::file_format::check_segment_payload_len;
 
 pub const SEGMENT_MAGIC: [u8; 4] = *b"TSG0";
 pub const SEGMENT_VERSION: u16 = 0;
@@ -106,6 +107,7 @@ pub fn decode_segment_header(bytes: &[u8]) -> Result<SegmentHeader, DbError> {
     }
 
     let payload_len = u64::from_le_bytes(bytes[12..20].try_into().unwrap());
+    check_segment_payload_len(payload_len)?;
     let payload_crc32c = u32::from_le_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
 
     let checksum_kind = bytes[24];

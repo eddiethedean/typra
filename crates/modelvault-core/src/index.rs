@@ -64,7 +64,9 @@ impl IndexState {
                             m.remove(&entry.index_key);
                             Ok(())
                         }
-                        Some(_) => Ok(()),
+                        Some(_) => Err(DbError::Format(FormatError::InvalidCatalogPayload {
+                            message: "unique index delete pk_key mismatch".into(),
+                        })),
                     },
                 }
             }

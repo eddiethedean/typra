@@ -47,7 +47,10 @@ Assume the attacker **cannot**:
 
 ## Mitigations in the repo
 
-- **Fuzzing**: `cargo-fuzz` targets exist under `fuzz/` for decode/replay surfaces.
+- **Bounded decode**: segment payloads, field bytes, list/checkpoint entry counts, and SQL `LIMIT` are capped to limit allocation and CPU on hostile inputs.
+- **Regex registration**: pattern length and nested-quantifier checks at schema registration; bounded regex cache.
+- **Index integrity**: unique index delete PK mismatches fail replay; `modelvault verify` rebuilds indexes from row data.
+- **Cross-process locking**: exclusive `flock` on the main database file (Unix) in addition to the sidecar lock file.
 - **Property/invariant tests**: snapshot roundtrips and other invariants are validated via `proptest`.
 - **Coverage + doc verification**: CI runs `scripts/verify-doc-examples.sh` to prevent doc drift in supported user workflows.
 

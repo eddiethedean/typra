@@ -584,6 +584,8 @@ fn inspect(path: PathBuf) -> Result<(), modelvault_core::DbError> {
 }
 
 fn verify(path: PathBuf) -> Result<(), modelvault_core::DbError> {
+    let db = modelvault_core::Database::open_read_only(&path)?;
+    db.verify_index_consistency()?;
     let mut store = open_readonly_store(&path)?;
     let (header, _sb_a, _sb_b) = read_header_and_superblocks(&mut store)?;
     if store.len()? < segment_start_offset() {
@@ -602,7 +604,7 @@ fn verify(path: PathBuf) -> Result<(), modelvault_core::DbError> {
     let _ = load_catalog_from_segments(&mut store, &metas)?;
 
     println!(
-        "ok: format {}.{} segments={} schema_segments_ok=true",
+        "ok: format {}.{} segments={} schema_segments_ok=true indexes_ok=true",
         header.format_major,
         header.format_minor,
         metas.len()

@@ -6,6 +6,7 @@ use crate::schema::FieldPath;
 
 use super::lexer::{ident_eq, Tok};
 use super::{SqlColumns, SqlPredicate, SqlSelect, SqlValue};
+use crate::file_format::MAX_QUERY_LIMIT;
 
 fn err(msg: impl Into<String>) -> DbError {
     DbError::Query(QueryError {
@@ -81,6 +82,9 @@ pub(crate) fn parse_select_tokens(toks: Vec<Tok>) -> Result<SqlSelect, DbError> 
                     .map_err(|_| err("LIMIT must be an integer"))?,
                 _ => return Err(err("expected integer after LIMIT")),
             };
+            if n > MAX_QUERY_LIMIT {
+                return Err(err(format!("LIMIT {n} exceeds maximum {MAX_QUERY_LIMIT}")));
+            }
             limit = Some(n);
         }
     }

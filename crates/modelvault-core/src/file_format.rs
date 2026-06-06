@@ -25,11 +25,45 @@ pub const FILE_HEADER_SIZE: usize = 32;
 /// Maximum number of entries in a single decoded segment payload (spill, index, etc.).
 pub const MAX_SEGMENT_DECODE_ENTRIES: usize = 1_048_576;
 
+/// Maximum segment payload size (bytes) before allocation.
+pub const MAX_SEGMENT_PAYLOAD_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Maximum decoded string/bytes field size.
+pub const MAX_FIELD_BYTES: usize = 16 * 1024 * 1024;
+
+/// Maximum rows returned by a single query or SQL LIMIT clause.
+pub const MAX_QUERY_LIMIT: usize = 1_048_576;
+
+/// Maximum regex pattern length in schema constraints.
+pub const MAX_REGEX_PATTERN_LEN: usize = 512;
+
 /// Rejects corrupt or hostile payloads that claim an excessive entry count.
 pub fn check_decode_entry_count(n: usize) -> Result<(), DbError> {
     if n > MAX_SEGMENT_DECODE_ENTRIES {
         return Err(DbError::Format(FormatError::InvalidCatalogPayload {
             message: format!("decode entry count {n} exceeds maximum {MAX_SEGMENT_DECODE_ENTRIES}"),
+        }));
+    }
+    Ok(())
+}
+
+/// Rejects segment payloads larger than [`MAX_SEGMENT_PAYLOAD_BYTES`].
+pub fn check_segment_payload_len(len: u64) -> Result<(), DbError> {
+    if len > MAX_SEGMENT_PAYLOAD_BYTES {
+        return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+            message: format!(
+                "segment payload length {len} exceeds maximum {MAX_SEGMENT_PAYLOAD_BYTES}"
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Rejects field blobs larger than [`MAX_FIELD_BYTES`].
+pub fn check_field_bytes_len(n: usize) -> Result<(), DbError> {
+    if n > MAX_FIELD_BYTES {
+        return Err(DbError::Format(FormatError::InvalidCatalogPayload {
+            message: format!("field length {n} exceeds maximum {MAX_FIELD_BYTES}"),
         }));
     }
     Ok(())

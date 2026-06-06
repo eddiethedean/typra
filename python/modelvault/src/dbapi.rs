@@ -7,33 +7,16 @@ use modelvault_core::db::row_subset_by_field_defs;
 use modelvault_core::query::{Predicate, Query};
 use modelvault_core::schema::{FieldDef, FieldPath, Type};
 
-use modelvault_core::DbError;
-
 use crate::database::Database;
 use crate::errors::db_error_to_py;
 use crate::row_values;
 
-/// Same message as [`modelvault_core::storage::FileStore::open_locked`] read-only path.
-const READ_ONLY_BLOCKED_SAME_PROCESS: &str =
-    "cannot open read-only while holding writer lock in the same process";
-
-fn open_read_only_fallback_to_writable(err: &DbError) -> bool {
-    matches!(err, DbError::Io(e) if e.to_string().contains(READ_ONLY_BLOCKED_SAME_PROCESS))
-}
-
 #[pyfunction]
 #[pyo3(signature = (path, *, strict_read_only=false))]
 pub fn connect(py: Python<'_>, path: String, strict_read_only: bool) -> PyResult<Connection> {
-    // Prefer a read-only engine handle when no writer lock is held in this process.
-    // Fall back to a writable open only when this process already holds the writer lock
-    // (e.g. after `Database.open` in the same interpreter). SQL execution remains SELECT-only.
-    let db = match modelvault_core::Database::open_read_only(&path) {
-        Ok(db) => db,
-        Err(e) if !strict_read_only && open_read_only_fallback_to_writable(&e) => {
-            modelvault_core::Database::open(&path).map_err(db_error_to_py)?
-        }
-        Err(e) => return Err(db_error_to_py(e)),
-    };
+    let _ = strict_read_only;
+    // Same-process read-only opens attach to the live writer snapshot via the core handle registry.
+    let db = modelvault_core::Database::open_read_only(&path).map_err(db_error_to_py)?;
     let py_db = Py::new(
         py,
         Database {

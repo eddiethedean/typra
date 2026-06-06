@@ -125,7 +125,7 @@ Use this before tagging **`vX.Y.Z`** (e.g. **`v0.15.0`**) and publishing to crat
 
 ### Pre-flight (local)
 
-1. **Workspace version** — root [`Cargo.toml`](https://github.com/eddiethedean/modelvault/blob/main/Cargo.toml) `[workspace.package] version` matches the intended tag (currently **0.15.2**).
+1. **Workspace version** — root [`Cargo.toml`](https://github.com/eddiethedean/modelvault/blob/main/Cargo.toml) `[workspace.package] version` matches the intended tag (currently **0.15.4**).
 2. **Changelog** — [`CHANGELOG.md`](https://github.com/eddiethedean/modelvault/blob/main/CHANGELOG.md) has a dated section for the release; **`[Unreleased]`** is empty or only future work.
 3. **Readiness pipeline** — from repo root:
 

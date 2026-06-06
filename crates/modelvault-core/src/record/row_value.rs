@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::{DbError, FormatError};
+use crate::file_format::check_decode_entry_count;
 use crate::record::scalar::{
     decode_tagged_scalar, decode_tagged_string, encode_tagged_scalar, Cursor, ScalarValue,
 };
@@ -148,6 +149,7 @@ pub fn decode_row_value(cur: &mut Cursor<'_>, ty: &Type) -> Result<RowValue, DbE
         }
         Type::List(inner) => {
             let n = cur.take_u32()? as usize;
+            check_decode_entry_count(n)?;
             let mut items = Vec::with_capacity(n.min(1_048_576));
             for _ in 0..n {
                 items.push(decode_row_value(cur, inner)?);

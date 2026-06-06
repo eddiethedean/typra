@@ -75,7 +75,7 @@ Output:
 
 ```text
 get: Book(title='Hello', year=2020, rating=4.5)
-modelvault 0.15.2
+modelvault 0.15.4
 ```
 
 For a durable file, use `Database.open("app.modelvault")` instead of `open_in_memory()`. Pydantic follows the same pattern—see the [Pydantic guide](pydantic.md).

@@ -8,7 +8,8 @@ use std::sync::{Mutex, OnceLock};
 use regex::Regex;
 
 use crate::error::{DbError, ValidationError};
-use crate::record::RowValue;
+use crate::file_format::MAX_REGEX_PATTERN_LEN;
+use crate::record::{RowValue, ScalarValue};
 use crate::schema::{Constraint, FieldDef, Type};
 
 fn err(path: &[String], msg: impl Into<String>) -> DbError {
@@ -23,7 +24,51 @@ fn regex_cache() -> &'static Mutex<HashMap<String, Regex>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn reject_risky_regex_pattern(pattern: &str) -> Result<(), DbError> {
+    if pattern.len() > MAX_REGEX_PATTERN_LEN {
+        return Err(DbError::Validation(ValidationError {
+            path: vec![],
+            message: format!(
+                "regex pattern length {} exceeds maximum {MAX_REGEX_PATTERN_LEN}",
+                pattern.len()
+            ),
+        }));
+    }
+    // Reject nested quantifiers like (a+)+ that enable catastrophic backtracking.
+    let mut depth = 0u32;
+    let mut prev_quant = false;
+    for ch in pattern.chars() {
+        match ch {
+            '(' => depth = depth.saturating_add(1),
+            ')' => depth = depth.saturating_sub(1),
+            '+' | '*' | '?' => {
+                if prev_quant {
+                    return Err(DbError::Validation(ValidationError {
+                        path: vec![],
+                        message: "regex pattern contains nested quantifiers".into(),
+                    }));
+                }
+                prev_quant = true;
+            }
+            _ => prev_quant = false,
+        }
+    }
+    let _ = depth;
+    Ok(())
+}
+
+/// Validate schema constraints at registration time.
+pub fn validate_constraints_at_registration(constraints: &[Constraint]) -> Result<(), DbError> {
+    for c in constraints {
+        if let Constraint::Regex(pattern) = c {
+            reject_risky_regex_pattern(pattern)?;
+        }
+    }
+    Ok(())
+}
+
 fn compiled_regex(pattern: &str, path: &[String]) -> Result<Regex, DbError> {
+    reject_risky_regex_pattern(pattern)?;
     if let Ok(g) = regex_cache().lock() {
         if let Some(re) = g.get(pattern) {
             return Ok(re.clone());
@@ -36,6 +81,9 @@ fn compiled_regex(pattern: &str, path: &[String]) -> Result<Regex, DbError> {
         })
     })?;
     if let Ok(mut g) = regex_cache().lock() {
+        if g.len() >= 256 {
+            g.clear();
+        }
         g.entry(pattern.to_string()).or_insert_with(|| re.clone());
     }
     Ok(re)
@@ -61,6 +109,19 @@ pub fn ensure_pk_type_primitive(ty: &Type) -> Result<(), DbError> {
             }))
         }
     }
+}
+
+/// Reject non-finite float primary key values.
+pub fn ensure_pk_scalar_finite(pk: &ScalarValue) -> Result<(), DbError> {
+    if let ScalarValue::Float64(v) = pk {
+        if !v.is_finite() {
+            return Err(DbError::Validation(ValidationError {
+                path: vec![],
+                message: "primary key float must be finite (not NaN or infinity)".into(),
+            }));
+        }
+    }
+    Ok(())
 }
 
 /// Whether a missing map key is treated as absent (`Optional` only).

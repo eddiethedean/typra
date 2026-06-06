@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.4] - 2026-06-06
+
+### Fixed
+
+- **Schema replay (critical):** accept record segments at older `schema_version` values; safe schema bumps auto-rewrite existing rows so reopen without compact succeeds.
+- **Same-process read-only:** in-process RO handles share the live writer snapshot via a handle registry (Python `Database`, `dbapi.connect`, and Rust `open_read_only`).
+- **Decode bounds:** cap checkpoint/list entry counts, segment payload size, and per-field string/bytes length before allocation.
+- **Unique index delete:** PK mismatch on replay returns a format error instead of a silent no-op; `modelvault verify` checks index↔row consistency.
+- **Unique index absent fields:** documented SQL `NULL` semantics (absent/null optional indexed fields are not indexed).
+- **Regex ReDoS:** pattern length cap, nested-quantifier rejection at registration, bounded regex cache.
+- **Float PK:** reject NaN/Inf; normalize `-0.0` and `+0.0` to the same canonical key.
+- **No-PK replay:** record segments targeting collections without a primary key fail replay with `NoPrimaryKey`.
+- **SQL/query LIMIT:** capped at `MAX_QUERY_LIMIT` (1_048_576).
+- **Recovery UX:** `OpenRecoveryInfo` / Python `Database.recovery_info` reports bytes truncated during `auto_truncate` open.
+- **Python txn depth:** release-safe `txn_exit` without debug-only underflow.
+- **Cross-process lock:** exclusive `flock` on the main `.modelvault` file on Unix (in addition to sidecar lock).
+- **Schema version limit:** clearer `SchemaVersionExhausted` message; u32 max documented.
+
+### Changed
+
+- **`dbapi.connect`:** removed writable fallback; always opens read-only (same-process attaches to writer snapshot).
+
+### Notes
+
+- On-disk format unchanged; pin remains `modelvault>=0.15.0,<0.16`.
+
+## [0.15.3] - 2026-06-06
+
+### Changed
+
+- **Docs:** Add 0.16.0 roadmap milestone from architecture review.
+
 ## [0.15.2] - 2026-06-06
 
 ### Changed
@@ -295,6 +327,8 @@ See the release notes above for details.
 [0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
 [0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
 [0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
+[0.15.4]: https://github.com/eddiethedean/modelvault/compare/v0.15.3...v0.15.4
+[0.15.3]: https://github.com/eddiethedean/modelvault/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/eddiethedean/modelvault/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/eddiethedean/modelvault/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.15.0

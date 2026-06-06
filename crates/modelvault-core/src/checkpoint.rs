@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::catalog::{encode_catalog_payload, Catalog, CatalogRecordWire};
 use crate::db::build_non_pk_values_in_schema_order;
 use crate::error::{DbError, FormatError, SchemaError};
+use crate::file_format::{check_decode_entry_count, check_segment_payload_len};
 use crate::index::{decode_index_payload, encode_index_payload, IndexEntry, IndexState};
 use crate::record::{
     encode_record_payload_v2, encode_record_payload_v3, non_pk_defs_in_order, RowValue, ScalarValue,
@@ -70,22 +71,27 @@ pub fn decode_checkpoint_payload(bytes: &[u8]) -> Result<CheckpointV0, DbError> 
     let replay_from_offset = cur.take_u64()?;
 
     let n_catalog = cur.take_u32()? as usize;
+    check_decode_entry_count(n_catalog)?;
     let mut catalog_records = Vec::with_capacity(n_catalog.min(1024));
     for _ in 0..n_catalog {
         let n = cur.take_u32()? as usize;
+        check_segment_payload_len(n as u64)?;
         let b = cur.take_bytes(n)?;
         let rec = crate::catalog::decode_catalog_payload(&b)?;
         catalog_records.push(rec);
     }
 
     let n_records = cur.take_u32()? as usize;
+    check_decode_entry_count(n_records)?;
     let mut record_payloads = Vec::with_capacity(n_records.min(1024));
     for _ in 0..n_records {
         let n = cur.take_u32()? as usize;
+        check_segment_payload_len(n as u64)?;
         record_payloads.push(cur.take_bytes(n)?);
     }
 
     let idx_blob_len = cur.take_u32()? as usize;
+    check_segment_payload_len(idx_blob_len as u64)?;
     let idx_blob = cur.take_bytes(idx_blob_len)?;
     let index_entries = decode_index_payload(&idx_blob)?;
 

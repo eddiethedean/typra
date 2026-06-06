@@ -269,6 +269,13 @@ impl InnerDb {
         }
     }
 
+    pub(crate) fn recovery_info(&self) -> modelvault_core::OpenRecoveryInfo {
+        match self {
+            InnerDb::File(d) => d.recovery_info().clone(),
+            InnerDb::Mem(_) => modelvault_core::OpenRecoveryInfo::default(),
+        }
+    }
+
     pub(crate) fn snapshot_bytes(&self) -> Result<Vec<u8>, PyErr> {
         match self {
             InnerDb::File(_) => Err(PyValueError::new_err(
