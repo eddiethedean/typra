@@ -4,7 +4,7 @@ This document is the **project roadmap** for ModelVault: a typed, embedded, sing
 
 - **Current release**: `0.15.2` (see [`CHANGELOG.md`](CHANGELOG.md)) — patch: test suite hardening (recovery, publish, Python bindings)
 - **0.5.x patch notes**: `0.5.1` refactored the Rust `Database` implementation into `db/` submodules; the public API for 0.5.x was unchanged until **0.6.0**.
-- **Next milestone**: `0.16.0` — planner/operator growth + query hardening (see [1.1.0](#110--engine-hardening--operator-growth) below). **`0.15.0`** async/concurrency work is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
+- **Next milestone**: `0.16.0` — API surface fence, query planner, and binding hardening (see [0.16.0](#0160--api-surface-query-planner-and-binding-hardening) below). **`0.15.0`** async/concurrency work is **delivered**; see [`CHANGELOG.md`](CHANGELOG.md).
 - **Roadmap style**: release-based milestones (SemVer). Patch versions are bugfix-only; minor versions (`1.x`) may add features without breaking stable APIs.
 - **1.x `.modelvault` compatibility**: any **1.y** release must read files written by **1.0+** (and supported pre-1.0 minors); breaking on-disk changes require **2.0** / `FORMAT_MAJOR` bump. Policy: [`docs/reference/compatibility.md`](docs/reference/compatibility.md), [`docs/specs/format_evolution.md`](docs/specs/format_evolution.md); CI: `make test-format-compat`.
 
@@ -410,6 +410,29 @@ Design anchor: evolution rules in [`docs/01_full_architecture_spec.md`](docs/01_
 - **Definition of done**
   - `make check-full` remains green across platforms.
   - Docs consolidated: Getting Started, Queries, Transactions, Operations, DB-API + query-text subset.
+
+### 0.16.0 — API surface, query planner, and binding hardening
+
+**Goal:** Close architectural debt from the 0.15.x review without breaking the 1.x on-disk contract.
+
+- **Rust (core + public API)**
+  - **Fence public API**: stable root + prelude only; `pub(crate)` for format internals (`segments`, `publish`, `spill`, etc.).
+  - **Query planner**: index range scans and OR predicate optimization (today falls back to full collection scans).
+  - **Consolidation**: extract shared spill logic (join/agg); deduplicate internal paths where sync/async or CLI/core overlap.
+  - **Testing**: expand `proptest` beyond query invariants (replay idempotence, txn + checkpoint interactions).
+  - **Security**: regex constraint complexity / timeout limits to mitigate ReDoS on attacker-controlled schemas.
+- **CLI**
+  - Unify `inspect` / `verify` with a shared core replay helper (remove duplicate segment scan logic).
+- **Python**
+  - Expose **`checkpoint()`** on `Database` / `AsyncDatabase` (core + CLI already support it).
+  - **Structured errors** with machine-readable fields (not display strings only).
+  - **Streaming DB-API cursor** via `query_iter` instead of materializing all rows on `execute`.
+  - Consolidate duplicate sync/async query builders and `inner_db` code paths.
+  - Remove or refactor DB-API string-matching fallback for writable open (`dbapi.rs` Io error substring coupling).
+- **Rust (`modelvault` facade)**
+  - **`AsyncDatabase`**: parity with sync surface or explicit “minimal experimental” documentation.
+- **Definition of done**
+  - `make check-full` green; documented stable API root; planner improvements covered by tests or explicit limitation docs.
 
 ### 1.0.0 — Stable public API + format guarantees
 
