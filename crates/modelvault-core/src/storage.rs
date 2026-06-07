@@ -121,6 +121,11 @@ mod tests {
 }
 
 impl FileStore {
+    /// Drop the process-local writer lock guard so the path can be reopened (e.g. after compaction).
+    pub(crate) fn release_writer_lock(&mut self) {
+        self._writer_lock = None;
+    }
+
     pub fn new(file: File) -> Self {
         Self {
             inner: crate::pager::PagedStore::new(
@@ -186,20 +191,26 @@ impl FileStore {
 
         let lock_path = Self::lock_path_for_db_path(path);
 
-        #[cfg(unix)]
         if mode == OpenMode::ReadWrite {
             let already_writer = writer_locks()
                 .lock()
                 .ok()
                 .and_then(|g| g.get(&lock_path).map(|_| ()))
                 .is_some();
-            if !already_writer {
-                if let Err(e) = file.try_lock_exclusive() {
-                    return Err(DbError::Io(std::io::Error::new(
-                        std::io::ErrorKind::WouldBlock,
-                        format!("database file is locked by another process: {e}"),
-                    )));
-                }
+            if already_writer {
+                return Err(DbError::Io(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "writable storage already open for this path in this process: {}",
+                        path.display()
+                    ),
+                )));
+            }
+            if let Err(e) = file.try_lock_exclusive() {
+                return Err(DbError::Io(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    format!("database file is locked by another process: {e}"),
+                )));
             }
         }
 

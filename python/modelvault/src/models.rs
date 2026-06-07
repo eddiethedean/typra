@@ -296,14 +296,32 @@ fn py_to_modelvault_type(py: Python<'_>, t: &Bound<'_, PyAny>, depth: usize) -> 
         let union = typing.getattr("Union")?;
         if o.is(&union) {
             let mut non_none: Vec<Bound<'_, PyAny>> = Vec::new();
-            for a in args {
-                if !is_none_type(py, &a)? {
-                    non_none.push(a);
+            for a in &args {
+                if !is_none_type(py, a)? {
+                    non_none.push(a.clone());
                 }
             }
             if non_none.len() == 1 {
                 let inner = py_to_modelvault_type(py, &non_none[0], depth + 1)?;
                 return Ok(Type::Optional(Box::new(inner)));
+            }
+        }
+
+        // PEP 604: int | None (types.UnionType)
+        if let Ok(types_mod) = PyModule::import(py, "types") {
+            if let Ok(union_type) = types_mod.getattr("UnionType") {
+                if o.is(&union_type) {
+                    let mut non_none: Vec<Bound<'_, PyAny>> = Vec::new();
+                    for a in &args {
+                        if !is_none_type(py, a)? {
+                            non_none.push(a.clone());
+                        }
+                    }
+                    if non_none.len() == 1 {
+                        let inner = py_to_modelvault_type(py, &non_none[0], depth + 1)?;
+                        return Ok(Type::Optional(Box::new(inner)));
+                    }
+                }
             }
         }
     }
@@ -324,13 +342,7 @@ fn py_to_modelvault_type(py: Python<'_>, t: &Bound<'_, PyAny>, depth: usize) -> 
                 .extract()
                 .unwrap_or(false);
             if is_sub {
-                let members_any = t.getattr("__members__")?;
-                let members = members_any.cast::<PyDict>()?;
-                let mut variants = Vec::with_capacity(members.len());
-                for (k, _) in members.iter() {
-                    variants.push(k.extract::<String>()?);
-                }
-                return Ok(Type::Enum(variants));
+                return Ok(Type::Enum(enum_variants_for_schema(py, t)?));
             }
         }
     }
@@ -490,6 +502,32 @@ fn indexes_from_model(
         out.push(IndexDef { name, path, kind });
     }
     Ok(out)
+}
+
+/// Enum variant strings for schema registration (matches [`normalize_value`] insert encoding).
+fn enum_variants_for_schema(
+    _py: Python<'_>,
+    enum_type: &Bound<'_, PyAny>,
+) -> PyResult<Vec<String>> {
+    let members_any = enum_type.getattr("__members__")?;
+    let values = members_any.call_method0("values")?;
+    let mut variants = Vec::new();
+    for member in values.try_iter()? {
+        let member = member?;
+        let value = member.getattr("value")?;
+        if value.cast::<PyString>().is_ok() {
+            variants.push(value.extract::<String>()?);
+        } else if let Ok(n) = value.extract::<i64>() {
+            variants.push(n.to_string());
+        } else if let Ok(n) = value.extract::<f64>() {
+            variants.push(n.to_string());
+        } else if let Ok(b) = value.extract::<bool>() {
+            variants.push(b.to_string());
+        } else {
+            variants.push(member.getattr("name")?.extract::<String>()?);
+        }
+    }
+    Ok(variants)
 }
 
 fn normalize_value(py: Python<'_>, v: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
@@ -1282,12 +1320,39 @@ impl AsyncModelCollection {
         py: Python<'py>,
         fields: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let col = self
-            .db
-            .bind(py)
-            .borrow()
-            .collection_handle(py, self.name.clone())?;
-        col.all_rows(py, fields.cloned())
+        let db = self.db.clone_ref(py);
+        let name = self.name.clone();
+        let model_cls = self.model_cls.clone_ref(py);
+        let is_pydantic = self.is_pydantic;
+        let fields_arg = fields.map(|f| f.clone().unbind());
+        let partial = fields.is_some();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let rows_any = Python::attach(|py| -> PyResult<Py<PyAny>> {
+                let col = db.bind(py).borrow().collection_handle(py, name)?;
+                match fields_arg.as_ref() {
+                    Some(f) => {
+                        let bound = f.bind(py).clone();
+                        col.all_rows(py, Some(bound)).map(|b| b.unbind())
+                    }
+                    None => col.all_rows(py, None).map(|b| b.unbind()),
+                }
+            })?;
+            let rows_any = Python::attach(|py| {
+                let bound = rows_any.bind(py);
+                pyo3_async_runtimes::tokio::into_future(bound.clone())
+            })?
+            .await?;
+            Python::attach(|py| {
+                let rows = rows_any.bind(py).cast::<PyList>()?;
+                let cls = model_cls.bind(py);
+                let mut out = Vec::with_capacity(rows.len());
+                for item in rows.iter() {
+                    let d = item.cast::<PyDict>()?;
+                    out.push(dict_to_obj(py, cls, d, is_pydantic, partial)?);
+                }
+                Ok(out)
+            })
+        })
     }
 
     fn update<'py>(

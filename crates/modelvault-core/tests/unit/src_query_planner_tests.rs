@@ -1341,7 +1341,7 @@ fn external_sort_source_new_errors_when_row_missing() {
 }
 
 #[test]
-fn external_sort_source_new_tolerates_corrupt_run_payload_by_skipping_seed_item() {
+fn external_sort_source_new_rejects_corrupt_run_payload_with_oversized_key_len() {
     use crate::storage::{Store, VecStore};
 
     #[derive(Default)]
@@ -1398,17 +1398,22 @@ fn external_sort_source_new_tolerates_corrupt_run_payload_by_skipping_seed_item(
         direction: OrderDirection::Asc,
     };
 
-    let mut src =
-        super::ExternalSortSource::new(
-            spill,
-            &latest,
-            Box::new(OneKey::default()),
-            1,
-            order_by,
-            "",
-        )
-        .unwrap();
-    assert!(src.next_key().is_none());
+    let err = match super::ExternalSortSource::new(
+        spill,
+        &latest,
+        Box::new(OneKey::default()),
+        1,
+        order_by,
+        "",
+    ) {
+        Ok(_) => panic!("expected corrupt spill seed to fail"),
+        Err(e) => e,
+    };
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("external sort spill"),
+        "expected spill decode error, got {msg}"
+    );
 }
 
 #[test]

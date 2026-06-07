@@ -130,8 +130,14 @@ where
             continue;
         };
         let e = map.entry(g).or_insert(AggVal { count: 0, sum: 0 });
-        e.count += 1;
-        e.sum = e.sum.wrapping_add(v);
+        e.count = e
+            .count
+            .checked_add(1)
+            .ok_or_else(|| qerr("aggregation count overflow"))?;
+        e.sum = e
+            .sum
+            .checked_add(v)
+            .ok_or_else(|| qerr("aggregation sum overflow"))?;
 
         if map.len() > max_groups_in_mem {
             let Some(ref mut spill) = spill else {
@@ -173,8 +179,14 @@ where
             let buf = spill.read_temp_payload(s.offset, s.payload_len)?;
             for (k, v) in decode_partition_entries(&buf)? {
                 let e = part_map.entry(k).or_insert(AggVal { count: 0, sum: 0 });
-                e.count += v.count;
-                e.sum = e.sum.wrapping_add(v.sum);
+                e.count = e
+                    .count
+                    .checked_add(v.count)
+                    .ok_or_else(|| qerr("aggregation count overflow"))?;
+                e.sum = e
+                    .sum
+                    .checked_add(v.sum)
+                    .ok_or_else(|| qerr("aggregation sum overflow"))?;
             }
         }
         for (k, v) in part_map {

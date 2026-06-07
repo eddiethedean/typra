@@ -6,7 +6,7 @@
 //! Format minor **6+** uses [`SegmentType::TxnBegin`] / [`SegmentType::TxnCommit`] framing; older
 //! minors use the legacy three-pass replay.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::catalog::{decode_catalog_payload, Catalog};
 use crate::error::{DbError, FormatError, SchemaError};
@@ -18,6 +18,7 @@ use crate::segments::header::SegmentType;
 use crate::segments::reader::{read_segment_payload, scan_segments};
 use crate::storage::Store;
 use crate::txn::decode_txn_payload_v0;
+use crate::validation;
 
 use super::LatestMap;
 
@@ -468,7 +469,10 @@ fn apply_record_segment(
         return Ok(());
     }
 
-    let mut full: BTreeMap<String, RowValue> = BTreeMap::new();
+    validation::ensure_pk_scalar_finite(&decoded.pk)?;
+
+    let key = (collection_id, pk_key);
+    let mut full = latest.get(&key).cloned().unwrap_or_default();
     full.insert(
         pk_name.to_string(),
         RowValue::from_scalar(decoded.pk.clone()),
@@ -476,7 +480,15 @@ fn apply_record_segment(
     for (k, v) in decoded.fields {
         full.insert(k, v);
     }
-    latest.insert((collection_id, pk_key), full);
+
+    let has_multi_segment_schema = col.fields.iter().any(|f| f.path.0.len() != 1);
+    if !has_multi_segment_schema {
+        validation::validate_top_level_row(&col.fields, pk_name, &full)?;
+    } else {
+        validation::validate_multiseg_row(&col.fields, pk_name, &full)?;
+    }
+
+    latest.insert(key, full);
     Ok(())
 }
 

@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
@@ -11,7 +11,7 @@ use crate::async_query::AsyncCollection;
 use crate::async_util::{future_into_blocking, future_into_gil_then_blocking, SharedInner};
 use crate::database::schema_change_to_str;
 use crate::db_handle::{
-    collection_info, finish_transaction, lock_inner_read, lock_inner_write, DbHandle,
+    collection_info, finish_transaction, lock_inner_read, lock_inner_write, DbHandle, TxnGateLease,
 };
 use crate::errors::db_error_to_py;
 use crate::fields_json;
@@ -29,6 +29,7 @@ pub struct AsyncDatabase {
 #[pyclass(name = "AsyncTransaction")]
 pub struct AsyncTransaction {
     db: Py<AsyncDatabase>,
+    gate_lease: Arc<std::sync::Mutex<Option<TxnGateLease>>>,
 }
 
 #[pymethods]
@@ -38,10 +39,13 @@ impl AsyncTransaction {
             let db = self.db.bind(py).borrow();
             Arc::clone(&db.inner)
         };
+        let gate_lease = self.gate_lease.clone();
         future_into_blocking(py, move || {
+            let lease = TxnGateLease::acquire(inner.as_ref(), true);
             let mut g = lock_inner_write(inner.as_ref())?;
             g.begin_transaction().map_err(db_error_to_py)?;
             inner.txn_enter();
+            *gate_lease.lock().map_err(txn_gate_lock_err)? = Some(lease);
             Ok(())
         })
     }
@@ -59,6 +63,7 @@ impl AsyncTransaction {
             Arc::clone(&db.inner)
         };
         let had_exc = exc_type.is_some();
+        let gate_lease = self.gate_lease.clone();
         future_into_blocking(py, move || {
             let txn_active = inner.txn_depth_active();
             let finish_result = match lock_inner_write(inner.as_ref()) {
@@ -66,10 +71,15 @@ impl AsyncTransaction {
                 Err(e) => Err(e),
             };
             inner.txn_exit_if_active(txn_active);
+            *gate_lease.lock().map_err(txn_gate_lock_err)? = None;
             finish_result?;
             Ok(false)
         })
     }
+}
+
+fn txn_gate_lock_err<T>(e: std::sync::PoisonError<T>) -> PyErr {
+    PyRuntimeError::new_err(format!("transaction gate lock poisoned: {e}"))
 }
 
 #[pymethods]
@@ -496,7 +506,10 @@ impl AsyncDatabase {
     #[pyo3(name = "transaction")]
     fn py_transaction(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<AsyncTransaction> {
         let db: Py<AsyncDatabase> = slf.into_pyobject(py)?.unbind();
-        Ok(AsyncTransaction { db })
+        Ok(AsyncTransaction {
+            db,
+            gate_lease: Arc::new(std::sync::Mutex::new(None)),
+        })
     }
 }
 

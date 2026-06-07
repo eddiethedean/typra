@@ -80,7 +80,7 @@ pub fn unregister_writable(path: &Path) {
     if let Some(n) = g.get_mut(&key) {
         *n = n.saturating_sub(1);
         if *n == 0 {
-            g.remove(path);
+            g.remove(&key);
         }
     }
 }

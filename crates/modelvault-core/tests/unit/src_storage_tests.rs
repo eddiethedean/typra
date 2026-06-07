@@ -32,7 +32,7 @@
     }
 
     #[test]
-    fn writer_lock_guard_nested_opens_drop_reduces_refs_to_zero() {
+    fn writer_lock_guard_rejects_second_writable_open_in_same_process() {
         let dir = std::env::temp_dir().join(format!(
             "modelvault-storage-nested-{}",
             std::time::SystemTime::now()
@@ -45,11 +45,15 @@
         std::fs::write(&db_path, b"").unwrap();
 
         let _g1 = FileStore::open_locked(&db_path, OpenMode::ReadWrite).unwrap();
-        let _g2 = FileStore::open_locked(&db_path, OpenMode::ReadWrite).unwrap();
+        let err = FileStore::open_locked(&db_path, OpenMode::ReadWrite).unwrap_err();
+        assert!(matches!(
+            err,
+            DbError::Io(ref e) if e.kind() == std::io::ErrorKind::AlreadyExists
+        ));
     }
 
     #[test]
-    fn writer_lock_guard_drop_decrements_refs_but_keeps_lock_until_last_drop() {
+    fn release_writer_lock_allows_reopen_after_drop() {
         let dir = std::env::temp_dir().join(format!(
             "modelvault-storage-refs-{}",
             std::time::SystemTime::now()
@@ -61,18 +65,10 @@
         let db_path = dir.join("db.modelvault");
         std::fs::write(&db_path, b"").unwrap();
 
-        let g1 = FileStore::open_locked(&db_path, OpenMode::ReadWrite).unwrap();
-        let g2 = FileStore::open_locked(&db_path, OpenMode::ReadWrite).unwrap();
-
-        // Drop one writer handle; internal refcount should decrement but the writer lock remains.
+        let mut g1 = FileStore::open_locked(&db_path, OpenMode::ReadWrite).unwrap();
+        g1.release_writer_lock();
         drop(g1);
 
-        // Same-process read-only open is allowed while a writer handle remains (avoids fs2 downgrade).
+        let _g2 = FileStore::open_locked(&db_path, OpenMode::ReadWrite).unwrap();
         let _ro = FileStore::open_locked(&db_path, OpenMode::ReadOnly).unwrap();
-
-        // Drop the final writer handle; writer lock should be removed.
-        drop(g2);
-
-        // Read-only open still succeeds after the writer lock is released.
-        let _ro2 = FileStore::open_locked(&db_path, OpenMode::ReadOnly).unwrap();
     }

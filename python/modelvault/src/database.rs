@@ -1,11 +1,11 @@
 //! PyO3 `Database` class: file- and memory-backed [`crate::inner_db::InnerDb`] with concurrent reads.
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
 use crate::db_handle::{
-    collection_info, finish_transaction, lock_inner_read, lock_inner_write, DbHandle,
+    collection_info, finish_transaction, lock_inner_read, lock_inner_write, DbHandle, TxnGateLease,
 };
 use crate::errors::db_error_to_py;
 use crate::fields_json;
@@ -37,17 +37,20 @@ pub struct Database {
 #[pyclass(name = "Transaction")]
 pub struct PyTransaction {
     db: Py<Database>,
+    gate_lease: std::sync::Mutex<Option<TxnGateLease>>,
 }
 
 #[pymethods]
 impl PyTransaction {
     fn __enter__(&self, py: Python<'_>) -> PyResult<()> {
+        let db = self.db.bind(py).borrow();
+        let lease = TxnGateLease::acquire(&db.inner, false);
         {
-            let db = self.db.bind(py).borrow();
             let mut g = lock_inner_write(&db.inner)?;
             g.begin_transaction().map_err(db_error_to_py)?;
             db.inner.txn_enter();
         }
+        *self.gate_lease.lock().map_err(lock_err)? = Some(lease);
         Ok(())
     }
 
@@ -66,9 +69,14 @@ impl PyTransaction {
             Err(e) => Err(e),
         };
         db.inner.txn_exit_if_active(txn_active);
+        *self.gate_lease.lock().map_err(lock_err)? = None;
         finish_result?;
         Ok(false)
     }
+}
+
+fn lock_err<T>(e: std::sync::PoisonError<T>) -> PyErr {
+    PyRuntimeError::new_err(format!("transaction gate lock poisoned: {e}"))
 }
 
 #[pymethods]
@@ -387,6 +395,12 @@ impl Database {
     #[pyo3(name = "transaction")]
     fn py_transaction(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<PyTransaction>> {
         let db: Py<Database> = slf.into_pyobject(py)?.unbind();
-        Py::new(py, PyTransaction { db })
+        Py::new(
+            py,
+            PyTransaction {
+                db,
+                gate_lease: std::sync::Mutex::new(None),
+            },
+        )
     }
 }

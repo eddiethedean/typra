@@ -11,7 +11,7 @@ use crate::storage::{FileStore, Store, VecStore};
 use crate::{checkpoint, publish};
 
 use super::fs_ops::{FsOps, StdFsOps};
-use super::{handle_registry, writer_registry, Database};
+use super::{handle_registry, Database};
 
 /// Best-effort `fsync` on `dest_path`'s parent directory (Unix only).
 #[cfg(unix)]
@@ -225,8 +225,10 @@ impl Database<FileStore> {
 
         let _ = fs.remove_file(&bak_path);
 
-        // 3) Refresh in-memory state by reopening (bypass writer registry; re-register after replace).
-        self.writer_registry = None;
+        // 3) Refresh in-memory state by reopening. Keep writer-registry registration for the
+        // whole operation so another writable handle cannot open the same path mid-reopen.
+        let old_registry = self.writer_registry.take();
+        self.store.release_writer_lock();
         let reopened = match (|| {
             let store = FileStore::open_locked(&live_path, OpenMode::ReadWrite)?;
             Self::open_with_store(
@@ -238,16 +240,15 @@ impl Database<FileStore> {
             Ok(db) => db,
             Err(e) => {
                 let _ = fs.rename(&bak_path, &live_path);
-                self.writer_registry = Some(writer_registry::WriterRegistryGuard::new(
-                    live_path.clone(),
-                )?);
+                if let Ok(store) = FileStore::open_locked(&live_path, OpenMode::ReadWrite) {
+                    self.store = store;
+                }
+                self.writer_registry = old_registry;
                 return Err(e);
             }
         };
         let mut reopened = reopened;
-        reopened.writer_registry = Some(writer_registry::WriterRegistryGuard::new(
-            live_path.clone(),
-        )?);
+        reopened.writer_registry = old_registry;
         *self = reopened;
         self.shared_mirror = Some(handle_registry::register(
             &live_path,

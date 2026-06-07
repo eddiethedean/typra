@@ -100,6 +100,13 @@ pub(crate) fn merge_and(existing: Option<Predicate>, new: Predicate) -> Predicat
     }
 }
 
+fn scalar_leaf_type(ty: &modelvault_core::schema::Type) -> &modelvault_core::schema::Type {
+    match ty {
+        modelvault_core::schema::Type::Optional(inner) => inner.as_ref(),
+        other => other,
+    }
+}
+
 pub(crate) fn scalar_for_path(
     py: Python<'_>,
     col: &modelvault_core::catalog::CollectionInfo,
@@ -109,7 +116,7 @@ pub(crate) fn scalar_for_path(
     let field_path = to_field_path(parts)?;
     let leaf_ty = resolve_leaf_type(col, &field_path)
         .ok_or_else(|| PyValueError::new_err("unknown field path"))?;
-    row_values::scalar_from_py(py, value, leaf_ty)
+    row_values::scalar_from_py(py, value, scalar_leaf_type(leaf_ty))
 }
 
 pub(crate) fn field_defs_allowlist(

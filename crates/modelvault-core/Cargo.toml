@@ -23,6 +23,10 @@ tempfile = "3"
 proptest = "1"
 
 [[test]]
+name = "audit_fixes"
+path = "tests/integration/audit_fixes.rs"
+
+[[test]]
 name = "api_stability_smoke"
 path = "tests/integration/api_stability_smoke.rs"
 

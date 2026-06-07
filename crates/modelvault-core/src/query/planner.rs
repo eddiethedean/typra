@@ -1322,14 +1322,24 @@ fn read_spill_run_item<S: Store>(
     let none_flag = one[0];
 
     if *pos + 4 > payload_len {
-        return Ok(None);
+        return Err(DbError::Query(crate::error::QueryError {
+            message: "external sort spill segment truncated".into(),
+        }));
     }
     let mut len_buf = [0u8; 4];
     spill.read_temp_payload_into(meta.offset, *pos as u64, &mut len_buf)?;
     *pos += 4;
     let key_len = u32::from_le_bytes(len_buf) as usize;
+    crate::file_format::check_field_bytes_len(key_len).map_err(|e| match e {
+        DbError::Format(fe) => DbError::Query(crate::error::QueryError {
+            message: format!("external sort spill key: {fe}"),
+        }),
+        other => other,
+    })?;
     if *pos + key_len > payload_len {
-        return Ok(None);
+        return Err(DbError::Query(crate::error::QueryError {
+            message: "external sort spill segment truncated".into(),
+        }));
     }
 
     let mut key = vec![0u8; key_len];
@@ -1337,13 +1347,23 @@ fn read_spill_run_item<S: Store>(
     *pos += key_len;
 
     if *pos + 4 > payload_len {
-        return Ok(None);
+        return Err(DbError::Query(crate::error::QueryError {
+            message: "external sort spill segment truncated".into(),
+        }));
     }
     spill.read_temp_payload_into(meta.offset, *pos as u64, &mut len_buf)?;
     *pos += 4;
     let pk_len = u32::from_le_bytes(len_buf) as usize;
+    crate::file_format::check_field_bytes_len(pk_len).map_err(|e| match e {
+        DbError::Format(fe) => DbError::Query(crate::error::QueryError {
+            message: format!("external sort spill pk: {fe}"),
+        }),
+        other => other,
+    })?;
     if *pos + pk_len > payload_len {
-        return Ok(None);
+        return Err(DbError::Query(crate::error::QueryError {
+            message: "external sort spill segment truncated".into(),
+        }));
     }
 
     let mut pk = vec![0u8; pk_len];

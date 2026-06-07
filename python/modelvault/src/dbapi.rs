@@ -109,8 +109,12 @@ fn scalar_param(
     let ty = find_leaf_type(col, path).ok_or_else(|| {
         PyValueError::new_err(format!("unknown field path {:?}", sql_path_to_parts(path)))
     })?;
+    let leaf_ty = match ty {
+        Type::Optional(inner) => inner.as_ref(),
+        other => other,
+    };
     let item = params.get_item(idx)?;
-    row_values::scalar_from_py(py, &item, ty)
+    row_values::scalar_from_py(py, &item, leaf_ty)
 }
 
 fn build_predicate(

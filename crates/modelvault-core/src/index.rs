@@ -133,6 +133,7 @@ impl IndexState {
         hi: Option<&ScalarValue>,
         hi_inclusive: bool,
     ) -> Vec<Vec<u8>> {
+        let key_hint = lo.or(hi);
         let Some(m) = self
             .non_unique
             .get(&(collection_id, index_name.to_string()))
@@ -141,7 +142,7 @@ impl IndexState {
         };
         let mut out = Vec::new();
         for (index_key, set) in m {
-            if !index_key_in_range(index_key, lo, lo_inclusive, hi, hi_inclusive) {
+            if !index_key_in_range(index_key, key_hint, lo, lo_inclusive, hi, hi_inclusive) {
                 continue;
             }
             out.extend(set.iter().cloned());
@@ -159,12 +160,13 @@ impl IndexState {
         hi: Option<&ScalarValue>,
         hi_inclusive: bool,
     ) -> Vec<Vec<u8>> {
+        let key_hint = lo.or(hi);
         let Some(m) = self.unique.get(&(collection_id, index_name.to_string())) else {
             return Vec::new();
         };
         m.iter()
             .filter(|(index_key, _)| {
-                index_key_in_range(index_key, lo, lo_inclusive, hi, hi_inclusive)
+                index_key_in_range(index_key, key_hint, lo, lo_inclusive, hi, hi_inclusive)
             })
             .map(|(_, pk)| pk.clone())
             .collect()
@@ -202,9 +204,20 @@ impl IndexState {
     }
 }
 
-fn decode_index_key_scalar(key: &[u8]) -> Option<ScalarValue> {
+fn decode_index_key_scalar(key: &[u8], hint: Option<&ScalarValue>) -> Option<ScalarValue> {
     match key.len() {
-        8 => Some(ScalarValue::Int64(i64::from_le_bytes(key.try_into().ok()?))),
+        8 => {
+            let bytes: [u8; 8] = key.try_into().ok()?;
+            Some(match hint {
+                Some(ScalarValue::Uint64(_)) => ScalarValue::Uint64(u64::from_le_bytes(bytes)),
+                Some(ScalarValue::Int64(_)) => ScalarValue::Int64(i64::from_le_bytes(bytes)),
+                Some(ScalarValue::Float64(_)) => ScalarValue::Float64(f64::from_le_bytes(bytes)),
+                Some(ScalarValue::Timestamp(_)) => {
+                    ScalarValue::Timestamp(i64::from_le_bytes(bytes))
+                }
+                _ => ScalarValue::Int64(i64::from_le_bytes(bytes)),
+            })
+        }
         n if n > 0 => String::from_utf8(key.to_vec())
             .ok()
             .map(ScalarValue::String),
@@ -215,20 +228,27 @@ fn decode_index_key_scalar(key: &[u8]) -> Option<ScalarValue> {
 fn scalar_partial_cmp(a: &ScalarValue, b: &ScalarValue) -> Option<Ordering> {
     use ScalarValue::*;
     match (a, b) {
+        (Bool(x), Bool(y)) => Some(x.cmp(y)),
         (Int64(x), Int64(y)) => Some(x.cmp(y)),
+        (Uint64(x), Uint64(y)) => Some(x.cmp(y)),
+        (Float64(x), Float64(y)) => x.partial_cmp(y),
         (String(x), String(y)) => Some(x.cmp(y)),
+        (Bytes(x), Bytes(y)) => Some(x.cmp(y)),
+        (Uuid(x), Uuid(y)) => Some(x.cmp(y)),
+        (Timestamp(x), Timestamp(y)) => Some(x.cmp(y)),
         _ => None,
     }
 }
 
 fn index_key_in_range(
     key: &[u8],
+    key_hint: Option<&ScalarValue>,
     lo: Option<&ScalarValue>,
     lo_inclusive: bool,
     hi: Option<&ScalarValue>,
     hi_inclusive: bool,
 ) -> bool {
-    let Some(decoded) = decode_index_key_scalar(key) else {
+    let Some(decoded) = decode_index_key_scalar(key, key_hint) else {
         return false;
     };
     if let Some(lo_v) = lo {
