@@ -89,9 +89,9 @@ fn open_does_not_overwrite_existing_header() {
         // Mutate a byte in the header to simulate some future header field changes
         // (while keeping the magic intact so open() continues to read/validate).
         bytes[20] ^= 0b1010_1010;
-        fs::write(&path, &bytes).expect("write mutated header");
         bytes
     };
+    fs::write(&path, &bytes).expect("write mutated header");
 
     let _db2 = Database::open(&path).expect("open again");
     let bytes2 = fs::read(&path).expect("read again");
