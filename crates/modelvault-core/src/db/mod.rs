@@ -50,7 +50,7 @@ use crate::validation;
 
 use self::fs_ops::{FsOps, StdFsOps};
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) use maintenance::best_effort_fsync_parent_dir;
 
 pub(crate) type LatestMap = HashMap<(u32, Vec<u8>), BTreeMap<String, RowValue>>;

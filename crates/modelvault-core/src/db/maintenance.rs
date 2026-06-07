@@ -282,7 +282,14 @@ impl Database<FileStore> {
     ) -> Result<(), DbError> {
         self.checkpoint()?;
         let dest_path = dest_path.as_ref();
-        fs.copy(&self.path, dest_path).map_err(DbError::Io)?;
+        // Read through the open store handle so export works while the writer lock is held
+        // (Windows rejects `fs::copy` on exclusively locked files).
+        let len = self.store.len()?;
+        let len_usize = usize::try_from(len)
+            .map_err(|_| DbError::Io(std::io::Error::other("database file too large")))?;
+        let mut bytes = vec![0u8; len_usize];
+        self.store.read_exact_at(0, &mut bytes)?;
+        Database::<VecStore>::export_snapshot_to_path_with_fsops(fs, dest_path, &bytes)?;
         // Strengthen durability of the copied snapshot: fsync the destination and best-effort
         // fsync its parent directory so the directory entry is persisted.
         if let Ok(f) = fs.open_read(dest_path) {

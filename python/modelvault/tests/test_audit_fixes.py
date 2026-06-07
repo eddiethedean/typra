@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import sys
 import threading
 from dataclasses import dataclass
 from typing import Optional
@@ -115,6 +116,10 @@ class Modern:
     rating: float | None = None
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 10),
+    reason="PEP 604 union syntax requires Python 3.10+",
+)
 def test_pep604_optional_union_schema() -> None:
     """M12: PEP 604 ``float | None`` maps to optional schema."""
     db = modelvault.Database.open_in_memory()
