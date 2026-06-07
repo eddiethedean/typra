@@ -363,4 +363,17 @@ impl Database<FileStore> {
         let _ = fs.remove_file(&bak_path);
         Ok(())
     }
+
+    /// Read the on-disk image via the open store (integration tests).
+    ///
+    /// On Windows, `std::fs::read` fails while the writer holds an exclusive file lock.
+    #[doc(hidden)]
+    pub fn read_image_for_test(&mut self) -> Result<Vec<u8>, DbError> {
+        let len = self.store.len()?;
+        let len_usize = usize::try_from(len)
+            .map_err(|_| DbError::Io(std::io::Error::other("database file too large")))?;
+        let mut bytes = vec![0u8; len_usize];
+        self.store.read_exact_at(0, &mut bytes)?;
+        Ok(bytes)
+    }
 }

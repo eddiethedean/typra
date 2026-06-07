@@ -56,9 +56,9 @@ fn assert_row_readable(db: &Database, cid: CollectionId) {
 fn open_new_db_initializes_superblocks() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    let mut db = Database::open(&path).unwrap();
 
-    let bytes = std::fs::read(&path).unwrap();
+    let bytes = db.read_image_for_test().unwrap();
     let sb_a_offset = FILE_HEADER_SIZE;
     let sb_b_offset = FILE_HEADER_SIZE + SUPERBLOCK_SIZE;
     let sa = decode_superblock(&bytes[sb_a_offset..sb_a_offset + SUPERBLOCK_SIZE]).unwrap();
@@ -214,10 +214,10 @@ fn open_selects_superblock_with_highest_generation() {
 fn open_new_db_publishes_manifest_pointer() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    let mut db = Database::open(&path).unwrap();
 
     // One of the superblocks should now point at a manifest segment.
-    let bytes = std::fs::read(&path).unwrap();
+    let bytes = db.read_image_for_test().unwrap();
     let sb_a_offset = FILE_HEADER_SIZE;
     let sb_b_offset = FILE_HEADER_SIZE + SUPERBLOCK_SIZE;
 
@@ -238,9 +238,9 @@ fn open_new_db_publishes_manifest_pointer() {
 fn open_twice_increases_superblock_generation() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("db.modelvault");
-    let _db = Database::open(&path).unwrap();
+    let mut db = Database::open(&path).unwrap();
 
-    let bytes1 = std::fs::read(&path).unwrap();
+    let bytes1 = db.read_image_for_test().unwrap();
     let sb_a_offset = FILE_HEADER_SIZE;
     let sb_b_offset = FILE_HEADER_SIZE + SUPERBLOCK_SIZE;
     let gen_a1 = u64::from_le_bytes(
@@ -255,7 +255,7 @@ fn open_twice_increases_superblock_generation() {
     );
     let max1 = gen_a1.max(gen_b1);
 
-    drop(_db);
+    drop(db);
     let _db2 = Database::open(&path).unwrap();
     let bytes2 = std::fs::read(&path).unwrap();
     let gen_a2 = u64::from_le_bytes(

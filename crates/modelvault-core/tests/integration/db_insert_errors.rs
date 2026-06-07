@@ -125,7 +125,7 @@ fn lazy_header_v4_to_v5_on_first_record_write() {
         let mut db = Database::open(&path).unwrap();
         db.register_collection("books", vec![title(), year()], "title")
             .unwrap();
-        let bytes = fs::read(&path).unwrap();
+        let bytes = db.read_image_for_test().unwrap();
         let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
         assert_eq!(
             h.format_minor,
@@ -149,8 +149,8 @@ fn lazy_header_v4_to_v5_on_first_record_write() {
 fn new_database_starts_at_format_minor_6() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("new.modelvault");
-    let _db = Database::open(&path).unwrap();
-    let bytes = fs::read(&path).unwrap();
+    let mut db = Database::open(&path).unwrap();
+    let bytes = db.read_image_for_test().unwrap();
     let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
     assert_eq!(
         h.format_minor,

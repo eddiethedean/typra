@@ -127,13 +127,13 @@ fn lazy_header_bump_from_v0_3_to_v0_4_on_register() {
     fs::write(&path, header).unwrap();
 
     let mut db = Database::open(&path).unwrap();
-    let bytes = fs::read(&path).unwrap();
+    let bytes = db.read_image_for_test().unwrap();
     let h = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
     assert_eq!(h.format_minor, 3);
 
     db.register_collection("books", vec![title_field()], "title")
         .unwrap();
-    let bytes = fs::read(&path).unwrap();
+    let bytes = db.read_image_for_test().unwrap();
     let h2 = decode_header(&bytes[..FILE_HEADER_SIZE]).unwrap();
     // First catalog write runs the full header upgrade chain (through format minor 6 for txn framing).
     assert_eq!(

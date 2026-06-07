@@ -8,8 +8,8 @@ fn open_writes_header_on_new_file() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("new.modelvault");
 
-    let _db = Database::open(&path).expect("open");
-    let bytes = fs::read(&path).expect("read");
+    let mut db = Database::open(&path).expect("open");
+    let bytes = db.read_image_for_test().expect("read");
     assert!(bytes.len() >= 4);
     assert_eq!(&bytes[0..4], b"TDB0");
 }
@@ -82,8 +82,8 @@ fn open_does_not_overwrite_existing_header() {
     let path = dir.path().join("no_overwrite.modelvault");
 
     let bytes = {
-        let _db = Database::open(&path).expect("open");
-        let mut bytes = fs::read(&path).expect("read");
+        let mut db = Database::open(&path).expect("open");
+        let mut bytes = db.read_image_for_test().expect("read");
         assert!(bytes.len() >= 32);
 
         // Mutate a byte in the header to simulate some future header field changes
