@@ -27,7 +27,7 @@ jobs:
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
       - name: Install cargo-fuzz
-        uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538
+        uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e
         with:
           tool: cargo-fuzz
 
