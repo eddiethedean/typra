@@ -27,13 +27,13 @@
 
 ```toml
 [dependencies]
-modelvault = "0.15"
+modelvault = "0.16"
 ```
 
 | Variant | Dependency |
 |---------|------------|
-| Engine only (no macros) | `modelvault = { version = "0.15", default-features = false }` |
-| Experimental async | `modelvault = { version = "0.15", features = ["async"] }` |
+| Engine only (no macros) | `modelvault = { version = "0.16", default-features = false }` |
+| Experimental async | `modelvault = { version = "0.16", features = ["async"] }` |
 
 Features: **`derive`** (default, `#[derive(DbModel)]`) · **`async`** (`AsyncDatabase` on a thread pool with **concurrent reads** and exclusive writes — experimental) — see [async policy](https://modelvault.readthedocs.io/en/latest/reference/async_policy/).
 

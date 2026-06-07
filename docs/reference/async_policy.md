@@ -69,7 +69,7 @@ The `modelvault` crate also exposes an **optional** Rust wrapper behind the **`a
 
 ```toml
 [dependencies]
-modelvault = { version = "0.15", features = ["async"] }
+modelvault = { version = "0.16", features = ["async"] }
 ```
 
 ```rust

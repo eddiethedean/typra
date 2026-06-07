@@ -24,9 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Streaming DB-API cursor** (`fetchone`/`fetchmany` pull from `query_iter`).
 - **Fuzz targets**: `decode_record_payload_v3`, `decode_checkpoint_payload`.
 - **Integration tests**: replay idempotence, attach lifecycle, subtle-defect regressions (0.15.x audit).
+- **Security audit regression tests**: `audit_fixes.rs` (Rust) and `test_audit_fixes.py` (Python).
 
 ### Fixed
 
+- **Transaction isolation (Python):** sync `Database` rejects foreign-thread writes during an open transaction on the same handle.
+- **Compaction:** `compact_in_place` keeps the writer registry across reopen; `release_writer_lock()` lifecycle corrected.
+- **FileStore exclusivity:** reject a second writable `FileStore::open_locked` in the same process; fix `unregister_writable` map key.
+- **Replay integrity:** merge fields into existing rows; validate constraints and finite primary keys on replay.
+- **`AsyncModelCollection.all()`:** hydrate model instances (parity with sync `ModelCollection.all()`).
+- **Enum schema:** `enum_variants_for_schema()` uses enum `.value`, not member names.
+- **Uint64 index ranges:** type-hinted 8-byte key decode and complete `scalar_partial_cmp` for range scans.
+- **Query safety:** checked aggregation overflow; spill reads fail on truncation or oversized lengths.
+- **Optional queries:** `where()` and DB-API accept optional fields; PEP 604 `T | None` unions in model schemas.
 - **Attached read-only:** unified live reads via `with_live_snapshot`; streaming `query_iter` with owned Arc snapshot.
 - **Mirror registry:** `SharedDbState` uses Arc swap on write (no full in-place clone under lock).
 - **Encode bounds:** `check_field_bytes_len` on string/bytes encode path.

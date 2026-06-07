@@ -28,6 +28,9 @@ This checklist ties ModelVault’s 1.0 contract to concrete tests and documentat
   - Python: `python/modelvault/tests/test_dbapi_sees_post_attach_insert.py`
 - **Replay idempotence + attach lifecycle (0.16+)**
   - Rust: `crates/modelvault-core/tests/integration/replay_idempotence_016.rs`
+- **Security audit regressions (0.16+)**
+  - Rust: `crates/modelvault-core/tests/integration/audit_fixes.rs`
+  - Python: `python/modelvault/tests/test_audit_fixes.py`
 - **Legacy format minor 5 segments replay after header upgrade to v6**
   - Rust: `crates/modelvault-core/tests/unit/src_db_replay_tests.rs` (`v6_replay_accepts_legacy_unframed_segments_after_header_upgrade`)
 

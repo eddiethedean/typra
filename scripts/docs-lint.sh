@@ -15,7 +15,7 @@ if git ls-files "site/**" | grep -q .; then
   fail "site/ is tracked by git; remove it from the index (build output only)."
 fi
 
-# Stale branding / install ranges after the ModelVault rebrand (0.15.x).
+# Stale branding / install ranges after the ModelVault rebrand (0.16.x).
 STALE_PATTERNS=(
   "\\btypra\\b"
   "modelvault>=1\\.0\\.0,<2"
@@ -24,6 +24,10 @@ STALE_PATTERNS=(
   "modelvault-derive = \"1\\.0\""
   "version = \"1\\.0\""
   "pip install \"typra"
+  "modelvault = \"0\\.15\""
+  "modelvault-core = \"0\\.15\""
+  "modelvault-derive = \"0\\.15\""
+  "version = \"0\\.15\""
 )
 
 DOC_PATHS=(
