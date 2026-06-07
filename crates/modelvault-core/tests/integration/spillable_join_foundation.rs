@@ -75,6 +75,7 @@ fn spillable_hash_join_match_count_i64_forced_spill_matches_baseline() {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&spill_path)
         .unwrap();
     let mut spill = TempSpillFile::new(modelvault_core::storage::FileStore::new(file)).unwrap();

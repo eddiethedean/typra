@@ -64,6 +64,7 @@ fn spillable_group_count_sum_i64_forced_spill_matches_in_memory() {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&spill_path)
         .unwrap();
     let mut spill = TempSpillFile::new(modelvault_core::storage::FileStore::new(file)).unwrap();
