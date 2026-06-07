@@ -93,7 +93,7 @@ fn open_does_not_overwrite_existing_header() {
     };
     fs::write(&path, &bytes).expect("write mutated header");
 
-    let _db2 = Database::open(&path).expect("open again");
-    let bytes2 = fs::read(&path).expect("read again");
+    let mut db2 = Database::open(&path).expect("open again");
+    let bytes2 = db2.read_image_for_test().expect("read again");
     assert_eq!(bytes2, bytes);
 }
