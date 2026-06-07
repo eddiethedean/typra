@@ -58,12 +58,13 @@ fn spillable_group_count_sum_i64_forced_spill_matches_in_memory() {
     };
     let rows = db.query_iter(&q).unwrap();
 
-    // Spill store is the same DB file, using Temp segments.
+    // Spill to a separate temp file (the main DB file is exclusively locked on Windows).
+    let spill_path = dir.path().join("spill.modelvault");
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .create(false)
-        .open(&path)
+        .create(true)
+        .open(&spill_path)
         .unwrap();
     let mut spill = TempSpillFile::new(modelvault_core::storage::FileStore::new(file)).unwrap();
 
