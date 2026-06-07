@@ -86,6 +86,7 @@ fn production_journey_register_insert_index_query_txn_reopen_schema_bump_compact
     assert_eq!(got2.get("note"), Some(&RowValue::String("hi".to_string())));
 
     // Verify segment scan succeeds (integrity-ish).
+    drop(db);
     let file = std::fs::OpenOptions::new().read(true).open(&path).unwrap();
     let mut store = modelvault_core::storage::FileStore::new(file);
     let start = (modelvault_core::file_format::FILE_HEADER_SIZE
