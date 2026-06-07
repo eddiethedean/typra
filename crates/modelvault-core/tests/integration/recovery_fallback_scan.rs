@@ -92,10 +92,10 @@ fn reopen_v0_3_db_reads_and_selects_superblock() {
         let db = Database::open(&path).unwrap();
         assert_row_readable(&db, cid);
     }
-    let db2 = Database::open(&path).unwrap();
+    let mut db2 = Database::open(&path).unwrap();
     assert_row_readable(&db2, cid);
 
-    let bytes = std::fs::read(&path).unwrap();
+    let bytes = db2.read_image_for_test().unwrap();
     let (gen_a, gen_b) = read_superblock_generations(&bytes);
     assert!(
         gen_a.max(gen_b) >= 1,
@@ -137,10 +137,10 @@ fn open_v0_3_db_with_one_bad_superblock_still_opens() {
     bytes[sb_b_offset as usize] ^= 0xff;
     std::fs::write(&path, bytes).unwrap();
 
-    let db2 = Database::open(&path).unwrap();
+    let mut db2 = Database::open(&path).unwrap();
     assert_row_readable(&db2, cid);
 
-    let bytes_after = std::fs::read(&path).unwrap();
+    let bytes_after = db2.read_image_for_test().unwrap();
     let sb_a_offset = FILE_HEADER_SIZE;
     decode_superblock(&bytes_after[sb_a_offset..sb_a_offset + SUPERBLOCK_SIZE])
         .expect("superblock A must remain valid when B is corrupt");
@@ -161,10 +161,10 @@ fn open_v0_3_db_with_only_superblock_b_valid_opens() {
     bytes[sb_a_offset as usize] ^= 0xff;
     std::fs::write(&path, bytes).unwrap();
 
-    let db2 = Database::open(&path).unwrap();
+    let mut db2 = Database::open(&path).unwrap();
     assert_row_readable(&db2, cid);
 
-    let bytes_after = std::fs::read(&path).unwrap();
+    let bytes_after = db2.read_image_for_test().unwrap();
     let sb_b_offset = FILE_HEADER_SIZE + SUPERBLOCK_SIZE;
     decode_superblock(&bytes_after[sb_b_offset..sb_b_offset + SUPERBLOCK_SIZE])
         .expect("superblock B must remain valid when A is corrupt");
@@ -195,10 +195,10 @@ fn open_selects_superblock_with_highest_generation() {
         .copy_from_slice(&crc.to_le_bytes());
     std::fs::write(&path, bytes).unwrap();
 
-    let db2 = Database::open(&path).unwrap();
+    let mut db2 = Database::open(&path).unwrap();
     assert_row_readable(&db2, cid);
 
-    let bytes_after = std::fs::read(&path).unwrap();
+    let bytes_after = db2.read_image_for_test().unwrap();
     let (gen_a, gen_b) = read_superblock_generations(&bytes_after);
     assert!(
         gen_b >= 2,
@@ -256,8 +256,8 @@ fn open_twice_increases_superblock_generation() {
     let max1 = gen_a1.max(gen_b1);
 
     drop(db);
-    let _db2 = Database::open(&path).unwrap();
-    let bytes2 = std::fs::read(&path).unwrap();
+    let mut db2 = Database::open(&path).unwrap();
+    let bytes2 = db2.read_image_for_test().unwrap();
     let gen_a2 = u64::from_le_bytes(
         bytes2[(sb_a_offset + 8)..(sb_a_offset + 16)]
             .try_into()
