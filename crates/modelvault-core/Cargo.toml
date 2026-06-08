@@ -95,6 +95,14 @@ name = "coverage_real_misses"
 path = "tests/integration/coverage_real_misses.rs"
 
 [[test]]
+name = "coverage_file_scan"
+path = "tests/integration/coverage_file_scan.rs"
+
+[[test]]
+name = "coverage_index_range_planner"
+path = "tests/integration/coverage_index_range_planner.rs"
+
+[[test]]
 name = "database_paths"
 path = "tests/integration/database_paths.rs"
 
