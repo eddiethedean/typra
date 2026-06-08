@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.16.0] - 2026-06-06
+## [0.16.0] - 2026-06-07
 
 ### Added
 
@@ -377,7 +377,7 @@ See the release notes above for details.
 [0.11.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.11.0
 [0.12.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.12.0
 [0.13.0]: https://github.com/eddiethedean/modelvault/releases/tag/v0.13.0
-[0.16.0]: https://github.com/eddiethedean/modelvault/compare/v0.15.4...v0.16.0
+[0.16.0]: https://github.com/eddiethedean/modelvault/compare/v0.15.2...v0.16.0
 [0.15.4]: https://github.com/eddiethedean/modelvault/compare/v0.15.3...v0.15.4
 [0.15.3]: https://github.com/eddiethedean/modelvault/compare/v0.15.2...v0.15.3
 [0.15.2]: https://github.com/eddiethedean/modelvault/compare/v0.15.1...v0.15.2
