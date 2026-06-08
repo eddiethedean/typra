@@ -63,10 +63,7 @@ fn scan_database_file_on_live_database_roundtrips_catalog() {
         .unwrap();
         db.insert(
             modelvault_core::schema::CollectionId(1),
-            BTreeMap::from([(
-                "title".to_string(),
-                RowValue::String("Rust".to_string()),
-            )]),
+            BTreeMap::from([("title".to_string(), RowValue::String("Rust".to_string()))]),
         )
         .unwrap();
     }
@@ -95,16 +92,14 @@ fn scan_database_store_and_select_superblock_branches() {
     let mut a = [0u8; SUPERBLOCK_SIZE];
     let mut b = [0u8; SUPERBLOCK_SIZE];
     store.read_exact_at(0, &mut hdr).unwrap();
-    store.read_exact_at(FILE_HEADER_SIZE as u64, &mut a).unwrap();
+    store
+        .read_exact_at(FILE_HEADER_SIZE as u64, &mut a)
+        .unwrap();
     store
         .read_exact_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &mut b)
         .unwrap();
     assert!(select_superblock(&a, &b).is_some());
     assert!(select_superblock(&a, &[0u8; SUPERBLOCK_SIZE]).is_some());
     assert!(select_superblock(&[0u8; SUPERBLOCK_SIZE], &b).is_some());
-    assert!(select_superblock(
-        &[0u8; SUPERBLOCK_SIZE],
-        &[0u8; SUPERBLOCK_SIZE]
-    )
-    .is_none());
+    assert!(select_superblock(&[0u8; SUPERBLOCK_SIZE], &[0u8; SUPERBLOCK_SIZE]).is_none());
 }

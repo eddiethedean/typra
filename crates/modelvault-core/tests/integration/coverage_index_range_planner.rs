@@ -29,7 +29,11 @@ fn indexed_int64_range_plan_explain_query_and_iter() {
         path: path("year"),
         kind: IndexKind::NonUnique,
     }];
-    let fields = vec![field("id", Type::String), field("year", Type::Int64), field("tag", Type::String)];
+    let fields = vec![
+        field("id", Type::String),
+        field("year", Type::Int64),
+        field("tag", Type::String),
+    ];
     let (cid, _) = db
         .register_collection_with_indexes("events", fields, indexes, "id")
         .unwrap();

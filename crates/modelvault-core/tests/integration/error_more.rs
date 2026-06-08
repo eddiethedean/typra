@@ -126,9 +126,7 @@ fn db_error_kind_as_str_and_details_cover_all_variants() {
     let schema_cases: Vec<(SchemaError, &str)> = vec![
         (SchemaError::InvalidFieldPath, "invalid_field_path"),
         (
-            SchemaError::DuplicateCollectionName {
-                name: "x".into(),
-            },
+            SchemaError::DuplicateCollectionName { name: "x".into() },
             "duplicate_collection_name",
         ),
         (
@@ -136,12 +134,13 @@ fn db_error_kind_as_str_and_details_cover_all_variants() {
             "unknown_collection",
         ),
         (
-            SchemaError::UnknownCollectionName {
-                name: "n".into(),
-            },
+            SchemaError::UnknownCollectionName { name: "n".into() },
             "unknown_collection_name",
         ),
-        (SchemaError::InvalidCollectionName, "invalid_collection_name"),
+        (
+            SchemaError::InvalidCollectionName,
+            "invalid_collection_name",
+        ),
         (
             SchemaError::InvalidSchemaVersion {
                 expected: 1,
@@ -165,39 +164,26 @@ fn db_error_kind_as_str_and_details_cover_all_variants() {
             "no_primary_key",
         ),
         (
-            SchemaError::PrimaryFieldNotFound {
-                name: "id".into(),
-            },
+            SchemaError::PrimaryFieldNotFound { name: "id".into() },
             "primary_field_not_found",
         ),
         (
-            SchemaError::PrimaryFieldMissingInSchema {
-                name: "id".into(),
-            },
+            SchemaError::PrimaryFieldMissingInSchema { name: "id".into() },
             "primary_field_missing_in_schema",
         ),
         (
-            SchemaError::RowMissingPrimary {
-                name: "id".into(),
-            },
+            SchemaError::RowMissingPrimary { name: "id".into() },
             "row_missing_primary",
         ),
         (
-            SchemaError::RowUnknownField {
-                name: "z".into(),
-            },
+            SchemaError::RowUnknownField { name: "z".into() },
             "row_unknown_field",
         ),
         (
-            SchemaError::RowMissingField {
-                name: "z".into(),
-            },
+            SchemaError::RowMissingField { name: "z".into() },
             "row_missing_field",
         ),
-        (
-            SchemaError::UniqueIndexViolation,
-            "unique_index_violation",
-        ),
+        (SchemaError::UniqueIndexViolation, "unique_index_violation"),
         (
             SchemaError::IncompatibleSchemaChange {
                 message: "no".into(),
