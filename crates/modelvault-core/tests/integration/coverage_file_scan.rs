@@ -78,8 +78,22 @@ fn scan_database_file_on_live_database_roundtrips_catalog() {
 fn scan_database_store_and_select_superblock_branches() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("sb.modelvault");
-    let _db = Database::open(&path).unwrap();
+    let mut db = Database::open(&path).unwrap();
+    let bytes = db.read_image_for_test().unwrap();
 
+    let sb_a_offset = FILE_HEADER_SIZE;
+    let sb_b_offset = FILE_HEADER_SIZE + SUPERBLOCK_SIZE;
+    let mut a = [0u8; SUPERBLOCK_SIZE];
+    let mut b = [0u8; SUPERBLOCK_SIZE];
+    a.copy_from_slice(&bytes[sb_a_offset..sb_a_offset + SUPERBLOCK_SIZE]);
+    b.copy_from_slice(&bytes[sb_b_offset..sb_b_offset + SUPERBLOCK_SIZE]);
+    assert!(select_superblock(&a, &b).is_some());
+    assert!(select_superblock(&a, &[0u8; SUPERBLOCK_SIZE]).is_some());
+    assert!(select_superblock(&[0u8; SUPERBLOCK_SIZE], &b).is_some());
+    assert!(select_superblock(&[0u8; SUPERBLOCK_SIZE], &[0u8; SUPERBLOCK_SIZE]).is_none());
+
+    // Windows rejects a second open while the writer holds an exclusive lock.
+    drop(db);
     let f = OpenOptions::new().read(true).open(&path).unwrap();
     let mut store = FileStore::new(f);
     let scan = scan_database_store(&mut store, DatabaseScanMode::Inspect).unwrap();
@@ -89,8 +103,6 @@ fn scan_database_store_and_select_superblock_branches() {
     assert!(len >= SEGMENT_REGION_START);
 
     let mut hdr = [0u8; FILE_HEADER_SIZE];
-    let mut a = [0u8; SUPERBLOCK_SIZE];
-    let mut b = [0u8; SUPERBLOCK_SIZE];
     store.read_exact_at(0, &mut hdr).unwrap();
     store
         .read_exact_at(FILE_HEADER_SIZE as u64, &mut a)
@@ -98,8 +110,4 @@ fn scan_database_store_and_select_superblock_branches() {
     store
         .read_exact_at((FILE_HEADER_SIZE + SUPERBLOCK_SIZE) as u64, &mut b)
         .unwrap();
-    assert!(select_superblock(&a, &b).is_some());
-    assert!(select_superblock(&a, &[0u8; SUPERBLOCK_SIZE]).is_some());
-    assert!(select_superblock(&[0u8; SUPERBLOCK_SIZE], &b).is_some());
-    assert!(select_superblock(&[0u8; SUPERBLOCK_SIZE], &[0u8; SUPERBLOCK_SIZE]).is_none());
 }
